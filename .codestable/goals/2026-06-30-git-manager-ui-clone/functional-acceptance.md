@@ -30,6 +30,7 @@
 - AI 提交真实行为链路：
   - `Workspace -> generateCommitCandidates -> /api/repos/:id/generate-commit -> generateAiCommitCandidates -> chat/completions` 已接通。
   - 生成时会真实使用设置中的 `apiKey`、`baseUrl`、`model`、`promptTemplate`、`maxDiffChars`、`generateThree`、`stagedOnly`。
+  - 本地假 AI 服务验证：使用 `baseUrl=http://127.0.0.1:5811`、`model=mock-model`、`stagedOnly=false` 直连 `/api/repos/git-monorepo-tools-5b123e/generate-commit`，成功返回候选 `feat(mock-1): 验证 AI 设置生效`，说明设置已真正参与生成链路。
 
 ## Verdict
 
