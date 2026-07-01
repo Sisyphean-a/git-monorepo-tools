@@ -30,7 +30,7 @@ export interface PullResult {
   id: string;
   name: string;
   path: string;
-  result: 'pulled' | 'skipped' | 'failed' | 'uptodate';
+  result: 'pulled' | 'pushed' | 'skipped' | 'failed' | 'uptodate';
   detail: string;
   commits?: number;
 }
@@ -96,4 +96,15 @@ export interface CommitSummary {
   message: string;
   additions: number;
   deletions: number;
+}
+
+export interface AppSnapshot {
+  scannedAt: string;
+  categories: string[];
+  repos: Repo[];
+  repoDetails: Record<string, RepoDetail>;
+  selectedRepoId: string;
+  pullResults: PullResult[];
+  diffLines: DiffLine[];
+  commitCandidates: Record<string, CommitCandidate[]>;
 }

@@ -17,16 +17,19 @@ import {
   Upload,
   ChevronRight,
 } from 'lucide-react';
+import { mutateRepo } from '../api';
 import { C } from '../theme';
-import { COMMIT_CANDIDATES, REPO_DETAILS, REPOS } from '../data';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
-import type { CommitSummary, FileChange, Repo, RepoDetail } from '../types';
+import type { CommitCandidate, CommitSummary, FileChange, Repo, RepoDetail } from '../types';
 
 type MainTab = 'changes' | 'staged' | 'history' | 'activity';
 
 interface WorkspaceProps {
+  repoDetails: Record<string, RepoDetail>;
+  commitCandidates: Record<string, CommitCandidate[]>;
   selectedRepoId: string;
+  onRefresh: () => void;
   onOpenSettings: () => void;
 }
 
@@ -193,13 +196,14 @@ function summarizeFiles(files: FileChange[]) {
   };
 }
 
-export function Workspace({ selectedRepoId, onOpenSettings }: WorkspaceProps) {
-  const fallbackRepo = REPOS[0];
-  const repo = (REPO_DETAILS[selectedRepoId] ?? (fallbackRepo ? REPO_DETAILS[fallbackRepo.id] : undefined)) as RepoDetail | undefined;
+export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRefresh, onOpenSettings }: WorkspaceProps) {
+  const repoIds = Object.keys(repoDetails);
+  const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
   const [mainTab, setMainTab] = useState<MainTab>('changes');
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [commitMessage, setCommitMessage] = useState('');
   const [stagedIds, setStagedIds] = useState<Set<string>>(new Set());
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   useEffect(() => {
     const nextFiles = repo?.files ?? [];
@@ -219,19 +223,50 @@ export function Workspace({ selectedRepoId, onOpenSettings }: WorkspaceProps) {
   const files = repo.files;
   const fileSummary = summarizeFiles(files);
   const stagedFiles = files.filter(file => stagedIds.has(file.id));
-  const commitCandidates = COMMIT_CANDIDATES[repo.id] ?? [];
+  const repoCommitCandidates = commitCandidates[repo.id] ?? [];
+
+  const runAction = async (action: string, handler: () => Promise<void>) => {
+    setBusyAction(action);
+    try {
+      await handler();
+    } finally {
+      setBusyAction(null);
+    }
+  };
 
   const handleToggleStaged = (id: string) => {
-    setStagedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+    const file = files.find(item => item.id === id);
+    if (!file) return;
+    void runAction('toggle-stage', async () => {
+      await mutateRepo(repo.id, file.staged ? 'unstage-file' : 'stage-file', { fileId: file.id, filePath: file.path });
+      onRefresh();
     });
   };
 
-  const handleStageAll = () => setStagedIds(new Set(files.map(file => file.id)));
-  const handleUnstageAll = () => setStagedIds(new Set());
+  const handleStageAll = () => void runAction('stage-all', async () => {
+    await mutateRepo(repo.id, 'stage-all');
+    onRefresh();
+  });
+  const handleUnstageAll = () => void runAction('unstage-all', async () => {
+    await mutateRepo(repo.id, 'unstage-all');
+    onRefresh();
+  });
+  const handleCommit = () => void runAction('commit', async () => {
+    await mutateRepo(repo.id, 'commit', { message: commitMessage });
+    setCommitMessage('');
+    onRefresh();
+  });
+  const handlePull = () => void runAction('pull', async () => {
+    await mutateRepo(repo.id, 'pull');
+    onRefresh();
+  });
+  const handlePush = () => void runAction('push', async () => {
+    await mutateRepo(repo.id, 'push');
+    onRefresh();
+  });
+  const handleRefresh = () => void runAction('refresh', async () => {
+    onRefresh();
+  });
 
   const totalAdded = fileSummary.added;
   const totalModified = fileSummary.modified;
@@ -322,16 +357,20 @@ export function Workspace({ selectedRepoId, onOpenSettings }: WorkspaceProps) {
       </div>
 
       <div style={{ background: C.panel2, borderBottom: `1px solid ${C.border}`, padding: '8px 14px', display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-        <ToolbarBtn label="Stage All" icon={<PlusSquare size={12} />} onClick={handleStageAll} disabled={files.length === 0 || stagedIds.size === files.length} />
-        <ToolbarBtn label="Unstage All" icon={<MinusSquare size={12} />} onClick={handleUnstageAll} disabled={stagedIds.size === 0} />
+        <ToolbarBtn label="Stage All" icon={<PlusSquare size={12} />} onClick={handleStageAll} disabled={busyAction !== null || files.length === 0 || stagedIds.size === files.length} />
+        <ToolbarBtn label="Unstage All" icon={<MinusSquare size={12} />} onClick={handleUnstageAll} disabled={busyAction !== null || stagedIds.size === 0} />
         <div style={{ width: 1, height: 18, background: C.border, margin: '0 2px' }} />
-        <ToolbarBtn label="Generate AI Message" icon={<Sparkles size={12} />} disabled={!hasStaged} accent onClick={() => setMainTab('changes')} />
-        <ToolbarBtn label="Commit" icon={<GitCommit size={12} />} disabled={!hasStaged || !hasCommitMsg} primary onClick={() => {}} />
+        <ToolbarBtn label={busyAction === 'generate' ? 'Generating…' : 'Generate AI Message'} icon={<Sparkles size={12} />} disabled={busyAction !== null || !hasStaged} accent onClick={() => setMainTab('changes')} />
+        <ToolbarBtn label={busyAction === 'commit' ? 'Committing…' : 'Commit'} icon={<GitCommit size={12} />} disabled={busyAction !== null || !hasStaged || !hasCommitMsg} primary onClick={handleCommit} />
         <div style={{ width: 1, height: 18, background: C.border, margin: '0 2px' }} />
-        <ToolbarBtn label="Pull" icon={<Download size={12} />} warning={hasPull && repo.modified > 0} onClick={() => {}} />
-        <ToolbarBtn label="Push" icon={<Upload size={12} />} dimmed={!hasPush} onClick={() => {}} />
+        <ToolbarBtn label={busyAction === 'pull' ? 'Pulling…' : 'Pull'} icon={<Download size={12} />} disabled={busyAction !== null} warning={hasPull && repo.modified > 0} onClick={handlePull} />
+        <ToolbarBtn label={busyAction === 'push' ? 'Pushing…' : 'Push'} icon={<Upload size={12} />} disabled={busyAction !== null} dimmed={!hasPush} onClick={handlePush} />
         <div style={{ flex: 1 }} />
-        <button style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '4px 6px' }}>
+        <button
+          onClick={handleRefresh}
+          disabled={busyAction !== null}
+          style={{ background: 'none', border: 'none', color: C.textWeak, cursor: busyAction !== null ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '4px 6px', opacity: busyAction !== null ? 0.5 : 1 }}
+        >
           <RefreshCw size={11} /> Refresh
         </button>
       </div>
@@ -381,7 +420,7 @@ export function Workspace({ selectedRepoId, onOpenSettings }: WorkspaceProps) {
           <AiCommitPanel
             stagedCount={stagedIds.size}
             stagedPaths={stagedFiles.map(file => file.path)}
-            candidates={commitCandidates}
+            candidates={repoCommitCandidates}
             message={commitMessage}
             onMessageChange={setCommitMessage}
           />

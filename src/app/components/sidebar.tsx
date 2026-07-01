@@ -15,14 +15,19 @@ import {
   Upload,
 } from 'lucide-react';
 import { C } from '../theme';
-import { CATEGORIES, REPOS, SCANNED_AT } from '../data';
+import type { Repo } from '../types';
 import type { Repo } from '../types';
 import { StatusPill } from './common';
 
 interface SidebarProps {
+  repos: Repo[];
+  categories: string[];
+  scannedAt: string;
   selectedRepoId: string;
   onSelectRepo: (id: string) => void;
   onPullAll: () => void;
+  onPushAll: () => void;
+  onRefresh: () => void;
   onOpenSettings: () => void;
 }
 
@@ -165,22 +170,32 @@ function CategoryGroup({
   );
 }
 
-export function Sidebar({ selectedRepoId, onSelectRepo, onPullAll, onOpenSettings }: SidebarProps) {
+export function Sidebar({
+  repos,
+  categories,
+  scannedAt,
+  selectedRepoId,
+  onSelectRepo,
+  onPullAll,
+  onPushAll,
+  onRefresh,
+  onOpenSettings,
+}: SidebarProps) {
   const [search, setSearch] = useState('');
   const [autoScan, setAutoScan] = useState(true);
 
-  const totalChanged = REPOS.filter(repo => repo.modified > 0 || repo.conflicts > 0).length;
-  const totalPush = REPOS.filter(repo => repo.ahead > 0).length;
-  const totalClean = REPOS.filter(repo => repo.status === 'clean').length;
-  const totalConflicts = REPOS.reduce((sum, repo) => sum + repo.conflicts, 0);
+  const totalChanged = repos.filter(repo => repo.modified > 0 || repo.conflicts > 0).length;
+  const totalPush = repos.filter(repo => repo.ahead > 0).length;
+  const totalClean = repos.filter(repo => repo.status === 'clean').length;
+  const totalConflicts = repos.reduce((sum, repo) => sum + repo.conflicts, 0);
 
   const filteredRepos = search
-    ? REPOS.filter(repo =>
+    ? repos.filter(repo =>
         repo.name.toLowerCase().includes(search.toLowerCase()) ||
         repo.branch.toLowerCase().includes(search.toLowerCase()) ||
         repo.path.toLowerCase().includes(search.toLowerCase())
       )
-    : REPOS;
+    : repos;
 
   return (
     <div
@@ -234,7 +249,7 @@ export function Sidebar({ selectedRepoId, onSelectRepo, onPullAll, onOpenSetting
           </button>
         </div>
         <div style={{ color: C.textWeak, fontSize: 11, marginBottom: 10 }}>
-          {REPOS.length} repos · {totalChanged} changed · {totalPush} to push
+          {repos.length} repos · {totalChanged} changed · {totalPush} to push
         </div>
         <div style={{ position: 'relative' }}>
           <Search size={12} color={C.textWeak} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }} />
@@ -275,8 +290,8 @@ export function Sidebar({ selectedRepoId, onSelectRepo, onPullAll, onOpenSetting
             </div>
           )
         ) : (
-          CATEGORIES.map(category => {
-            const categoryRepos = REPOS.filter(repo => repo.category === category);
+          categories.map(category => {
+            const categoryRepos = repos.filter(repo => repo.category === category);
             if (categoryRepos.length === 0) return null;
             return (
               <CategoryGroup
@@ -293,7 +308,7 @@ export function Sidebar({ selectedRepoId, onSelectRepo, onPullAll, onOpenSetting
 
       <div style={{ borderTop: `1px solid ${C.border}`, padding: '10px 12px', flexShrink: 0 }}>
         <div style={{ color: C.textWeak, fontSize: 10, marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
-          Last scan {SCANNED_AT.split(' ').at(-1) ?? SCANNED_AT} · {totalClean} clean · {totalChanged} changed · {totalConflicts} conflicts
+          Last scan {scannedAt.split(' ').at(-1) ?? scannedAt} · {totalClean} clean · {totalChanged} changed · {totalConflicts} conflicts
         </div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <button
@@ -317,6 +332,7 @@ export function Sidebar({ selectedRepoId, onSelectRepo, onPullAll, onOpenSetting
             <Download size={12} /> Pull All
           </button>
           <button
+            onClick={onPushAll}
             style={{
               flex: 1,
               background: C.panel2,
@@ -338,6 +354,7 @@ export function Sidebar({ selectedRepoId, onSelectRepo, onPullAll, onOpenSetting
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button
+            onClick={onRefresh}
             style={{
               background: C.panel2,
               color: C.textSecondary,

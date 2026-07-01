@@ -2,33 +2,36 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 function main() {
+  const snapshot = buildAppSnapshot();
+  const targetPath = writeDataModule(snapshot);
+  console.log(`wrote ${normalizePath(targetPath)}`);
+}
+
+export function buildAppSnapshot(selectedRepoPath = normalizePath(process.cwd()), pullResultsOverride) {
   const scanTime = new Date();
-  const selectedRepoPath = normalizePath(process.cwd());
   const repoEntries = discoverRepos(buildRoots(selectedRepoPath));
   const snapshots = repoEntries.map(entry => buildRepoSnapshot(entry, scanTime));
   const ordered = sortSnapshots(snapshots, selectedRepoPath);
   const selected = ordered.find(item => item.path === selectedRepoPath) ?? ordered[0];
-  const categories = [...new Set(ordered.map(item => item.category))];
-  const repoMap = Object.fromEntries(ordered.map(item => [item.id, item.detail]));
-  const pullResults = ordered.map(item => item.pullResult);
-  const diffLines = buildPreviewLines(selected);
-  const candidateMap = Object.fromEntries(ordered.map(item => [item.id, item.commitCandidates]));
-  const source = createModule({
-    categories,
-    repos: ordered.map(item => item.detail),
-    repoDetails: repoMap,
-    pullResults,
-    diffLines,
-    selectedRepoId: selected?.id ?? '',
-    commitCandidates: candidateMap,
+  return {
     scannedAt: formatDateTime(scanTime),
-  });
-  const targetPath = path.join(process.cwd(), 'src', 'app', 'data.ts');
+    categories: [...new Set(ordered.map(item => item.category))],
+    repos: ordered.map(item => item.detail),
+    repoDetails: Object.fromEntries(ordered.map(item => [item.id, item.detail])),
+    selectedRepoId: selected?.id ?? '',
+    pullResults: pullResultsOverride ?? ordered.map(item => item.pullResult),
+    diffLines: buildPreviewLines(selected),
+    commitCandidates: Object.fromEntries(ordered.map(item => [item.id, item.commitCandidates])),
+  };
+}
+
+export function writeDataModule(snapshot, targetPath = path.join(process.cwd(), 'src', 'app', 'data.ts')) {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.writeFileSync(targetPath, source, 'utf8');
-  console.log(`wrote ${normalizePath(targetPath)}`);
+  fs.writeFileSync(targetPath, createModule(snapshot), 'utf8');
+  return targetPath;
 }
 
 function buildRoots(selectedRepoPath) {
@@ -371,6 +374,142 @@ function buildPullResult(repoId, repoName, repoPath, repo) {
   return { id: repoId, name: repoName, path: repoPath, result: 'uptodate', detail: '工作区干净，已与远端同步' };
 }
 
+function resolveRepoContext(repoId) {
+  const selectedRepoPath = normalizePath(process.cwd());
+  const repoEntries = discoverRepos(buildRoots(selectedRepoPath));
+  const scanTime = new Date();
+  for (const entry of repoEntries) {
+    const snapshot = buildRepoSnapshot(entry, scanTime);
+    if (snapshot.id === repoId) return snapshot;
+  }
+  throw new Error(`未找到仓库：${repoId}`);
+}
+
+function ensureCleanForPull(repo) {
+  if (repo.conflicts > 0) throw new Error('当前仓库存在冲突，不能执行 pull');
+  if (repo.detail.files.length > 0) throw new Error('当前仓库有本地改动，请先提交或处理后再拉取');
+}
+
+function ensureCommitInput(message) {
+  if (!message.trim()) throw new Error('提交信息不能为空');
+}
+
+function parseFilePath(fileId, filePath) {
+  if (filePath) return filePath;
+  if (!fileId) throw new Error('缺少文件标识');
+  return fileId.split('::')[0];
+}
+
+function runGitStrict(repoPath, args) {
+  const result = spawnSync('git', ['-C', repoPath, ...args], {
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 60_000,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const message = (result.stderr || result.stdout || '').trim();
+    throw new Error(message || `git ${args.join(' ')} 失败`);
+  }
+  return result.stdout.trim();
+}
+
+export function stageAllRepo(repoId) {
+  const repo = resolveRepoContext(repoId);
+  runGitStrict(repo.path, ['add', '-A']);
+  return buildAppSnapshot();
+}
+
+export function unstageAllRepo(repoId) {
+  const repo = resolveRepoContext(repoId);
+  runGitStrict(repo.path, ['restore', '--staged', '.']);
+  return buildAppSnapshot();
+}
+
+export function stageRepoFile(repoId, fileId, filePath) {
+  const repo = resolveRepoContext(repoId);
+  runGitStrict(repo.path, ['add', '--', parseFilePath(fileId, filePath)]);
+  return buildAppSnapshot();
+}
+
+export function unstageRepoFile(repoId, fileId, filePath) {
+  const repo = resolveRepoContext(repoId);
+  runGitStrict(repo.path, ['restore', '--staged', '--', parseFilePath(fileId, filePath)]);
+  return buildAppSnapshot();
+}
+
+export function commitRepo(repoId, message) {
+  ensureCommitInput(message);
+  const repo = resolveRepoContext(repoId);
+  runGitStrict(repo.path, ['commit', '-m', message]);
+  return buildAppSnapshot();
+}
+
+export function pullRepo(repoId) {
+  const repo = resolveRepoContext(repoId);
+  ensureCleanForPull(repo);
+  runGitStrict(repo.path, ['pull', '--ff-only']);
+  return buildAppSnapshot();
+}
+
+export function pushRepo(repoId) {
+  const repo = resolveRepoContext(repoId);
+  if (repo.remote === '—') throw new Error('当前分支没有 upstream，暂不支持自动 push');
+  runGitStrict(repo.path, ['push']);
+  return buildAppSnapshot();
+}
+
+function executePullAll(repo) {
+  if (repo.remote === '—') {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'skipped', detail: '跳过：当前分支没有 upstream' };
+  }
+  if (repo.ahead > 0 && repo.behind > 0) {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'skipped', detail: '跳过：当前分支与远端已分叉' };
+  }
+  if (repo.conflicts > 0) {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'failed', detail: '检测到冲突，需先人工处理' };
+  }
+  if (repo.detail.files.length > 0) {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'skipped', detail: '跳过：存在本地未提交改动' };
+  }
+  if (repo.behind === 0) {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'uptodate', detail: '工作区干净，已与远端同步' };
+  }
+  try {
+    runGitStrict(repo.path, ['pull', '--ff-only']);
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'pulled', detail: `已拉取 ${repo.behind} 个提交`, commits: repo.behind };
+  } catch (error) {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'failed', detail: error.message };
+  }
+}
+
+function executePushAll(repo) {
+  if (repo.remote === '—') {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'skipped', detail: '跳过：当前分支没有 upstream' };
+  }
+  if (repo.ahead === 0) {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'uptodate', detail: '没有需要推送的提交' };
+  }
+  try {
+    runGitStrict(repo.path, ['push']);
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'pushed', detail: `已推送 ${repo.ahead} 个提交`, commits: repo.ahead };
+  } catch (error) {
+    return { id: repo.id, name: repo.name, path: repo.path, result: 'failed', detail: error.message };
+  }
+}
+
+export function pullAllRepos() {
+  const snapshot = buildAppSnapshot();
+  const results = snapshot.repos.map(repo => executePullAll({ ...repo, detail: snapshot.repoDetails[repo.id] }));
+  return { results, snapshot: buildAppSnapshot(undefined, results) };
+}
+
+export function pushAllRepos() {
+  const snapshot = buildAppSnapshot();
+  const results = snapshot.repos.map(repo => executePushAll({ ...repo, detail: snapshot.repoDetails[repo.id] }));
+  return { results, snapshot: buildAppSnapshot(undefined, results) };
+}
+
 function buildPreviewLines(selected) {
   const firstFile = selected?.detail.files[0];
   if (!firstFile) return [];
@@ -445,18 +584,19 @@ function runGit(repoPath, args) {
 }
 
 function createModule(data) {
-  return `import type { CommitCandidate, DiffLine, PullResult, Repo, RepoDetail } from './types';
+  return `import type { AppSnapshot, CommitCandidate, DiffLine, PullResult, Repo, RepoDetail } from './types';
 
 /* auto-generated by npm run sync:data */
-export const SCANNED_AT = ${JSON.stringify(data.scannedAt)};
-export const CATEGORIES: string[] = ${JSON.stringify(data.categories, null, 2)};
-export const REPOS: Repo[] = ${JSON.stringify(data.repos, null, 2)};
-export const REPO_DETAILS: Record<string, RepoDetail> = ${JSON.stringify(data.repoDetails, null, 2)};
-export const SELECTED_REPO_ID = ${JSON.stringify(data.selectedRepoId)};
+export const INITIAL_SNAPSHOT: AppSnapshot = ${JSON.stringify(data, null, 2)};
+export const SCANNED_AT = INITIAL_SNAPSHOT.scannedAt;
+export const CATEGORIES: string[] = INITIAL_SNAPSHOT.categories;
+export const REPOS: Repo[] = INITIAL_SNAPSHOT.repos;
+export const REPO_DETAILS: Record<string, RepoDetail> = INITIAL_SNAPSHOT.repoDetails;
+export const SELECTED_REPO_ID = INITIAL_SNAPSHOT.selectedRepoId;
 export const FILE_CHANGES = REPO_DETAILS[SELECTED_REPO_ID]?.files ?? [];
-export const PULL_RESULTS: PullResult[] = ${JSON.stringify(data.pullResults, null, 2)};
-export const DIFF_LINES: DiffLine[] = ${JSON.stringify(data.diffLines, null, 2)};
-export const COMMIT_CANDIDATES: Record<string, CommitCandidate[]> = ${JSON.stringify(data.commitCandidates, null, 2)};
+export const PULL_RESULTS: PullResult[] = INITIAL_SNAPSHOT.pullResults;
+export const DIFF_LINES: DiffLine[] = INITIAL_SNAPSHOT.diffLines;
+export const COMMIT_CANDIDATES: Record<string, CommitCandidate[]> = INITIAL_SNAPSHOT.commitCandidates;
 `;
 }
 
@@ -489,4 +629,6 @@ function formatDateTime(date) {
   return date.toLocaleString('zh-CN', { hour12: false });
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

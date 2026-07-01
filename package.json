@@ -7,7 +7,7 @@
     "sync:data": "node scripts/sync-real-data.mjs",
     "dev": "npm run sync:data && vite",
     "build": "npm run sync:data && vite build",
-    "preview": "vite preview"
+    "preview": "npm run sync:data && vite preview"
   },
   "dependencies": {
     "lucide-react": "0.487.0",

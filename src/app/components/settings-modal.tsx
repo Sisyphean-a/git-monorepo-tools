@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Plus, Trash2, GripVertical, X } from 'lucide-react';
 import { C } from '../theme';
-import { REPOS } from '../data';
+import type { Repo } from '../types';
 
 interface SettingsModalProps {
+  repos: Repo[];
   open: boolean;
   onClose: () => void;
 }
@@ -135,11 +136,11 @@ function FormRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function RepositoriesTab() {
+function RepositoriesTab({ repos }: { repos: Repo[] }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <span style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>Repositories ({REPOS.length})</span>
+        <span style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>Repositories ({repos.length})</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button style={{ background: C.panel1, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 5, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
             <Plus size={11} /> Add Folder
@@ -150,7 +151,7 @@ function RepositoriesTab() {
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {REPOS.map(repo => (
+        {repos.map(repo => (
           <div
             key={repo.id}
             style={{
@@ -384,7 +385,7 @@ function GitBehaviorTab() {
   );
 }
 
-export function SettingsModal({ open, onClose }: SettingsModalProps) {
+export function SettingsModal({ repos, open, onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<SettingsTab>('ai-commit');
 
   if (!open) return null;
@@ -453,7 +454,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-            {tab === 'repositories' && <RepositoriesTab />}
+            {tab === 'repositories' && <RepositoriesTab repos={repos} />}
             {tab === 'ai-commit' && <AICommitTab />}
             {tab === 'git-behavior' && <GitBehaviorTab />}
           </div>

@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GitMerge, Settings } from 'lucide-react';
+import { fetchSnapshot, getInitialSnapshot, runBatch } from './api';
 import { C } from './theme';
-import { SELECTED_REPO_ID } from './data';
 import { Sidebar } from './components/sidebar';
 import { Workspace } from './components/workspace';
 import { PullAllDrawer } from './components/pull-all-drawer';
 import { SettingsModal } from './components/settings-modal';
+import type { PullResult } from './types';
 
 function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
@@ -73,9 +74,33 @@ function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
 }
 
 export default function App() {
-  const [selectedRepoId, setSelectedRepoId] = useState(() => SELECTED_REPO_ID);
+  const [snapshot, setSnapshot] = useState(() => getInitialSnapshot());
+  const [selectedRepoId, setSelectedRepoId] = useState(() => getInitialSnapshot().selectedRepoId);
   const [showPullDrawer, setShowPullDrawer] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [drawerOperation, setDrawerOperation] = useState<'pullAll' | 'pushAll'>('pullAll');
+  const [drawerResults, setDrawerResults] = useState<PullResult[]>(() => getInitialSnapshot().pullResults);
+
+  const applySnapshot = (nextSnapshot: typeof snapshot) => {
+    setSnapshot(nextSnapshot);
+    setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
+  };
+
+  const refreshSnapshot = async () => {
+    applySnapshot(await fetchSnapshot());
+  };
+
+  const handleBatch = async (operation: 'pull' | 'push') => {
+    const result = await runBatch(operation);
+    applySnapshot(result.snapshot);
+    setDrawerOperation(result.operation ?? (operation === 'pull' ? 'pullAll' : 'pushAll'));
+    setDrawerResults(result.results ?? []);
+    setShowPullDrawer(true);
+  };
+
+  useEffect(() => {
+    void refreshSnapshot();
+  }, []);
 
   return (
     <div
@@ -93,18 +118,32 @@ export default function App() {
       <TopBar onOpenSettings={() => setShowSettings(true)} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <Sidebar
+          repos={snapshot.repos}
+          categories={snapshot.categories}
+          scannedAt={snapshot.scannedAt}
           selectedRepoId={selectedRepoId}
           onSelectRepo={id => setSelectedRepoId(id)}
-          onPullAll={() => setShowPullDrawer(true)}
+          onPullAll={() => void handleBatch('pull')}
+          onPushAll={() => void handleBatch('push')}
+          onRefresh={() => void refreshSnapshot()}
           onOpenSettings={() => setShowSettings(true)}
         />
         <Workspace
+          repoDetails={snapshot.repoDetails}
+          commitCandidates={snapshot.commitCandidates}
           selectedRepoId={selectedRepoId}
+          onRefresh={() => void refreshSnapshot()}
           onOpenSettings={() => setShowSettings(true)}
         />
       </div>
-      <PullAllDrawer open={showPullDrawer} onClose={() => setShowPullDrawer(false)} />
-      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <PullAllDrawer
+        open={showPullDrawer}
+        operation={drawerOperation}
+        results={drawerResults}
+        scannedAt={snapshot.scannedAt}
+        onClose={() => setShowPullDrawer(false)}
+      />
+      <SettingsModal repos={snapshot.repos} open={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 }
