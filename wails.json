@@ -1,0 +1,9 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Git Monorepo Tools",
+  "outputfilename": "git-monorepo-tools",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run web:build",
+  "frontend:dev:watcher": "npm run web:dev",
+  "frontend:dev:serverUrl": "auto"
+}

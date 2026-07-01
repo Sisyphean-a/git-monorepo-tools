@@ -1,0 +1,43 @@
+feature: 2026-07-01-wails-shell-bootstrap
+created: 2026-07-01
+
+steps:
+  - action: "宿主骨架：建立 Wails2 工程并加载现有前端资源"
+    exit_signal: "`wails dev` 可打开应用窗口并看到现有 UI 骨架"
+    status: done
+  - action: "快照绑定：导出 GetSnapshot 并返回真实 AppSnapshot"
+    exit_signal: "首屏仓库列表来自 Go 绑定真实扫描结果"
+    status: done
+  - action: "入口校准：补齐 Wails 开发入口与最小说明"
+    exit_signal: "仓库内可找到明确的 Wails 启动方式"
+    status: done
+  - action: "首屏烟测：验证窗口、快照和错误显式暴露"
+    exit_signal: "核心首屏场景具备命令与截图证据"
+    status: done
+
+checks:
+  - item: "GetSnapshot 返回结构与 AppSnapshot 字段保持一致"
+    source: 名词契约
+    status: passed
+  - item: "首屏主流程从 Wails 绑定走到真实快照服务"
+    source: 编排骨架
+    status: passed
+  - item: "宿主入口、绑定入口和开发命令入口已显式挂载"
+    source: 挂载点
+    status: passed
+  - item: "本 feature 不要求迁移写操作和批量操作"
+    source: 范围守护
+    status: passed
+  - item: "首屏启动和真实快照场景可被验收核验"
+    source: 验收场景
+    status: passed
+
+dod:
+  commands:
+    - id: CMD-001
+      command: "wails dev"
+      core: true
+      failure_handling: fix-or-block
+  evidence_required: [command_output, screenshot]
+  cleanliness:
+    debug_output: forbidden

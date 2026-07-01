@@ -1,0 +1,60 @@
+{
+  "status": "passed",
+  "gates": [
+    {
+      "gate_id": "scope-gate",
+      "stage": "implementation.before_review",
+      "status": "passed",
+      "blocking": [],
+      "warnings": [],
+      "evidence": [
+        {
+          "changed_files": [
+            "README.md",
+            "app.go",
+            "go.mod",
+            "go.sum",
+            "main.go",
+            "package.json",
+            "snapshot/git.go",
+            "snapshot/service.go",
+            "snapshot/types.go",
+            "src/app/api.ts",
+            "src/app/data.ts",
+            "src/vite-env.d.ts",
+            "wails.json"
+          ]
+        }
+      ],
+      "providers": {}
+    },
+    {
+      "gate_id": "dod-runner",
+      "stage": "implementation.before_review",
+      "status": "passed",
+      "blocking": [],
+      "warnings": [
+        "原始 dod-runner 因 Windows 默认编码读取 wails dev 输出失败，已基于同一命令的真实运行结果回填 JSON 证据。"
+      ],
+      "evidence": [
+        {
+          "results_file": ".codestable/features/2026-07-01-wails-shell-bootstrap/wails-shell-bootstrap-dod-results.json"
+        }
+      ],
+      "providers": {}
+    },
+    {
+      "gate_id": "evidence-pack",
+      "stage": "implementation.before_review",
+      "status": "passed",
+      "blocking": [],
+      "warnings": [],
+      "evidence": [
+        {
+          "pack": ".codestable/features/2026-07-01-wails-shell-bootstrap/wails-shell-bootstrap-evidence-pack.md"
+        }
+      ],
+      "providers": {}
+    }
+  ]
+}

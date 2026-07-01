@@ -1,0 +1,21 @@
+# node-removal-and-regression goal spec
+
+- Roadmap item: `node-removal-and-regression`
+- Design: `.codestable/features/2026-07-01-node-removal-and-regression/node-removal-and-regression-design.md`
+- Checklist: `.codestable/features/2026-07-01-node-removal-and-regression/node-removal-and-regression-checklist.yaml`
+- Design review: `.codestable/features/2026-07-01-node-removal-and-regression/node-removal-and-regression-design-review.md`
+- Review: `.codestable/features/2026-07-01-node-removal-and-regression/node-removal-and-regression-review.md`
+- QA: `.codestable/features/2026-07-01-node-removal-and-regression/node-removal-and-regression-qa.md`
+- Acceptance: `.codestable/features/2026-07-01-node-removal-and-regression/node-removal-and-regression-acceptance.md`
+- Depends on: `frontend-transport-cutover`
+- Feature type: non-functional
+- Core runtime path: none
+- 替代证据：`wails build`、`wails dev`、搜索清单、文档 diff、桌面回归截图
+- Mandatory commands: `wails build`, `wails dev`
+- Feature DoD: 旧 Node 运行时桥接移除，Wails 构建通过，文档同步完成
+- Stage gates: implementation.before_review, review.before_pass, qa.before_acceptance, acceptance.before_done
+- Gate inputs: design, checklist, build output, smoke evidence, doc diff
+- Failure recovery: 构建或残留依赖问题回 impl；review blocking 回 review-fix；QA failed 回 qa-fix 并重跑 review/QA
+- Acceptance evidence: command_output, diff_summary, screenshot, acceptance_report
+- Deliverables: 清理后的运行时入口、文档更新、回归证据
+- Cleanliness: 禁止调试输出、TODO、注释掉代码、无用 import

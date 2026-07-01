@@ -1,0 +1,43 @@
+feature: 2026-07-01-ai-commit-parity
+created: 2026-07-01
+
+steps:
+  - action: "输入对齐：复用现有 AICommitSettings 与请求参数"
+    exit_signal: "前端能向 Go 绑定传递完整 AI 设置"
+    status: pending
+  - action: "diff 预处理：迁移 staged-only 与摘要化逻辑"
+    exit_signal: "模型输入满足暂存区与裁剪约束"
+    status: pending
+  - action: "候选生成：迁移提示词构建与模型调用"
+    exit_signal: "前端收到兼容的候选数组"
+    status: pending
+  - action: "AI 烟测：验证正常与空暂存错误路径"
+    exit_signal: "AI commit 核心场景具备证据"
+    status: pending
+
+checks:
+  - item: "AICommitSettings 与 CommitCandidate 结构保持兼容"
+    source: 名词契约
+    status: pending
+  - item: "模型输入只来自 staged diff"
+    source: 编排骨架
+    status: pending
+  - item: "GenerateCommitCandidates 已挂到 Wails 绑定"
+    source: 挂载点
+    status: pending
+  - item: "本 feature 不改 AI 设置页字段"
+    source: 范围守护
+    status: pending
+  - item: "正常与空暂存 AI 场景可被验收核验"
+    source: 验收场景
+    status: pending
+
+dod:
+  commands:
+    - id: CMD-001
+      command: "wails dev"
+      core: true
+      failure_handling: fix-or-block
+  evidence_required: [command_output, diff_summary, screenshot]
+  cleanliness:
+    debug_output: forbidden
