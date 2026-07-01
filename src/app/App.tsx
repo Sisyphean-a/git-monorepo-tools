@@ -43,7 +43,7 @@ function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       <div style={{ flex: 1 }} />
       <button
         onClick={onOpenSettings}
-        title="Settings"
+        title="设置"
         style={{
           background: 'none',
           border: '1px solid transparent',

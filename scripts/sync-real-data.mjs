@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 function main() {
   const snapshot = buildAppSnapshot();
   const targetPath = writeDataModule(snapshot);
-  console.log(`wrote ${normalizePath(targetPath)}`);
+  console.log(`已写入 ${normalizePath(targetPath)}`);
 }
 
 export function buildAppSnapshot(selectedRepoPath = normalizePath(process.cwd()), pullResultsOverride) {
@@ -307,7 +307,7 @@ function buildCommitCandidates(files) {
   return [
     {
       id: 'emoji',
-      style: 'Emoji',
+      style: '表情风格',
       icon: '✨',
       title: `feat(${scopes[0]}): 更新 ${summary}`,
       body: `基于 ${totalFiles} 个暂存文件生成`,
@@ -315,7 +315,7 @@ function buildCommitCandidates(files) {
     },
     {
       id: 'short',
-      style: 'Standard Short',
+      style: '标准短句',
       icon: '📝',
       title: `${scopes[0]}: 更新 ${totalFiles} 个暂存文件`,
       body: `基于 ${totalFiles} 个暂存文件生成`,
@@ -323,11 +323,11 @@ function buildCommitCandidates(files) {
     },
     {
       id: 'conventional',
-      style: 'Conventional Commit',
+      style: '约定式提交',
       icon: '📐',
-      title: `chore(${scopes[0]}): refresh staged workspace changes`,
+      title: `chore(${scopes[0]}): 更新暂存区改动`,
       body: `基于 ${totalFiles} 个暂存文件生成`,
-      full: `chore(${scopes[0]}): refresh staged workspace changes\n\nstaged files: ${totalFiles}\nscopes: ${summary}`,
+      full: `chore(${scopes[0]}): 更新暂存区改动\n\n暂存文件：${totalFiles}\n主要范围：${summary}`,
     },
   ];
 }
@@ -570,7 +570,7 @@ function safeReadLines(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
   } catch {
-    return ['[binary file]'];
+    return ['[二进制文件]'];
   }
 }
 

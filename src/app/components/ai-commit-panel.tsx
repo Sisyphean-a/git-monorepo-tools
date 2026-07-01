@@ -97,7 +97,7 @@ function CommitCard({
                 fontWeight: 500,
               }}
             >
-              Use
+              使用
             </button>
             <button
               onClick={onCopy}
@@ -115,7 +115,7 @@ function CommitCard({
               }}
             >
               {copied ? <Check size={11} /> : <Copy size={11} />}
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? '已复制' : '复制'}
             </button>
             <button
               onClick={onRegenerate}
@@ -132,7 +132,7 @@ function CommitCard({
                 gap: 4,
               }}
             >
-              <RefreshCw size={10} /> Regenerate style
+              <RefreshCw size={10} /> 重新生成此风格
             </button>
           </div>
         </div>
@@ -200,7 +200,7 @@ export function AiCommitPanel({
           >
             <Sparkles size={12} color="white" />
           </div>
-          <span style={{ color: C.textPrimary, fontSize: 13, fontWeight: 600 }}>AI Commit Message</span>
+          <span style={{ color: C.textPrimary, fontSize: 13, fontWeight: 600 }}>AI 提交信息</span>
           <span
             style={{
               marginLeft: 'auto',
@@ -212,12 +212,12 @@ export function AiCommitPanel({
               padding: '2px 6px',
             }}
           >
-            Based on staged changes only
+            仅基于已暂存变更
           </span>
         </div>
         {stagedCount === 0 && (
           <div style={{ color: C.modified, fontSize: 11, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-            ⚠ Stage at least one file to generate
+            ⚠ 至少先暂存一个文件才能生成
           </div>
         )}
       </div>
@@ -245,7 +245,7 @@ export function AiCommitPanel({
             }}
           >
             <Wand2 size={13} />
-            {generated ? 'Regenerate' : 'Generate'}
+            {generated ? '重新生成' : '生成'}
           </button>
           <button
             onClick={() => setShowPrompt(value => !value)}
@@ -262,7 +262,7 @@ export function AiCommitPanel({
               gap: 5,
             }}
           >
-            <Eye size={12} /> View Prompt
+            <Eye size={12} /> 查看提示词
           </button>
         </div>
 
@@ -281,9 +281,9 @@ export function AiCommitPanel({
               overflowY: 'auto',
             }}
           >
-            <div style={{ color: C.textWeak, marginBottom: 4 }}>System prompt:</div>
-            You are a Git commit message generator. Analyze the following staged diff and generate concise, conventional commit messages. Focus only on the staged changes. Output 3 candidates in different styles.
-            <div style={{ color: C.textWeak, marginTop: 8, marginBottom: 4 }}>Staged files ({stagedCount}):</div>
+            <div style={{ color: C.textWeak, marginBottom: 4 }}>系统提示词：</div>
+            你是 Git 提交信息生成器。请分析下面已暂存的 Diff，并生成简洁、符合 Conventional Commit 风格的提交信息。只关注已暂存变更，并输出 3 条不同风格的候选。
+            <div style={{ color: C.textWeak, marginTop: 8, marginBottom: 4 }}>已暂存文件（{stagedCount}）：</div>
             {renderPromptFiles(stagedPaths)}
           </div>
         )}
@@ -324,13 +324,13 @@ export function AiCommitPanel({
 
         <div style={{ marginBottom: 10 }}>
           <div style={{ color: C.textSecondary, fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
-            Commit Message
-            {message && <span style={{ color: C.textWeak, fontWeight: 400, marginLeft: 6 }}>(edited)</span>}
+            提交信息
+            {message && <span style={{ color: C.textWeak, fontWeight: 400, marginLeft: 6 }}>(已编辑)</span>}
           </div>
           <textarea
             value={message}
             onChange={e => onMessageChange(e.target.value)}
-            placeholder="Enter commit message or pick one from the suggestions above…"
+            placeholder="输入提交信息，或从上方候选中选择…"
             style={{
               width: '100%',
               background: C.panel2,
@@ -368,8 +368,8 @@ export function AiCommitPanel({
             }}
           >
             <Sparkles size={24} color={C.aiAccent} style={{ opacity: 0.4, marginBottom: 8 }} />
-            <div style={{ color: C.textSecondary, marginBottom: 4 }}>AI-powered commit message</div>
-            <div>Stage files and click Generate to create 3 commit message candidates</div>
+            <div style={{ color: C.textSecondary, marginBottom: 4 }}>AI 生成提交信息</div>
+            <div>暂存文件后点击“生成”，即可创建 3 条提交信息候选</div>
           </div>
         )}
       </div>

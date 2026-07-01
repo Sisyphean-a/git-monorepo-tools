@@ -20,11 +20,11 @@ function ResultIcon({ result }: { result: PullResult['result'] }) {
 
 function ResultBadge({ result }: { result: PullResult['result'] }) {
   const cfg = {
-    pulled: { label: 'Pulled', color: C.added, bg: `${C.added}18` },
-    pushed: { label: 'Pushed', color: C.added, bg: `${C.added}18` },
-    skipped: { label: 'Skipped', color: C.textWeak, bg: `${C.textWeak}18` },
-    failed: { label: 'Failed', color: C.conflict, bg: `${C.conflict}18` },
-    uptodate: { label: 'Up to date', color: C.clean, bg: `${C.clean}18` },
+    pulled: { label: '已拉取', color: C.added, bg: `${C.added}18` },
+    pushed: { label: '已推送', color: C.added, bg: `${C.added}18` },
+    skipped: { label: '已跳过', color: C.textWeak, bg: `${C.textWeak}18` },
+    failed: { label: '失败', color: C.conflict, bg: `${C.conflict}18` },
+    uptodate: { label: '已同步', color: C.clean, bg: `${C.clean}18` },
   }[result];
 
   return (
@@ -45,9 +45,9 @@ function ResultBadge({ result }: { result: PullResult['result'] }) {
 }
 
 export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: PullAllDrawerProps) {
-  const successLabel = operation === 'pullAll' ? 'Pulled' : 'Pushed';
+  const successLabel = operation === 'pullAll' ? '已拉取' : '已推送';
   const successResult = operation === 'pullAll' ? 'pulled' : 'pushed';
-  const title = operation === 'pullAll' ? 'Pull All Results' : 'Push All Results';
+  const title = operation === 'pullAll' ? '批量 Pull 结果' : '批量 Push 结果';
   const success = results.filter(result => result.result === successResult).length;
   const skipped = results.filter(result => result.result === 'skipped').length;
   const failed = results.filter(result => result.result === 'failed').length;
@@ -91,7 +91,7 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: 
               {title}
             </h3>
             <div style={{ color: C.textWeak, fontSize: 11 }}>
-              {results.length} repos scanned · {success} {successLabel.toLowerCase()} · {skipped} skipped · {failed} failed · {uptodate} up to date
+              共扫描 {results.length} 个仓库 · {success} 个{successLabel} · {skipped} 个已跳过 · {failed} 个失败 · {uptodate} 个已同步
             </div>
           </div>
           <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center' }}>
@@ -102,9 +102,9 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: 
         <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
           {[
             { label: successLabel, count: success, color: C.added },
-            { label: 'Up to date', count: uptodate, color: C.clean },
-            { label: 'Skipped', count: skipped, color: C.textWeak },
-            { label: 'Failed', count: failed, color: C.conflict },
+            { label: '已同步', count: uptodate, color: C.clean },
+            { label: '已跳过', count: skipped, color: C.textWeak },
+            { label: '失败', count: failed, color: C.conflict },
           ].map((stat, index) => (
             <div
               key={stat.label}
@@ -143,7 +143,7 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ color: C.textPrimary, fontSize: 13, fontWeight: 500 }}>{result.name}</span>
                   <ResultBadge result={result.result} />
-                  {result.commits && <span style={{ color: C.added, fontSize: 11 }}>+{result.commits} commits</span>}
+                  {result.commits && <span style={{ color: C.added, fontSize: 11 }}>+{result.commits} 个提交</span>}
                 </div>
                 <div style={{ color: C.textWeak, fontSize: 11, fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>
                   {result.detail}
@@ -154,15 +154,15 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: 
               </div>
               <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                 <button style={{ background: 'none', border: `1px solid ${C.border}`, color: C.textWeak, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <FolderOpen size={11} /> Open
+                  <FolderOpen size={11} /> 打开
                 </button>
                 {result.result === 'failed' && (
                   <button style={{ background: `${C.conflict}15`, border: `1px solid ${C.conflict}40`, color: C.conflict, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <RefreshCw size={11} /> Retry
+                    <RefreshCw size={11} /> 重试
                   </button>
                 )}
                 <button style={{ background: 'none', border: `1px solid ${C.border}`, color: C.textWeak, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <ScrollText size={11} /> Log
+                  <ScrollText size={11} /> 日志
                 </button>
               </div>
             </div>
@@ -170,13 +170,13 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: 
         </div>
 
         <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <span style={{ color: C.textWeak, fontSize: 11 }}>Completed at {scannedAt.split(' ').at(-1) ?? scannedAt}</span>
+          <span style={{ color: C.textWeak, fontSize: 11 }}>完成于 {scannedAt.split(' ').at(-1) ?? scannedAt}</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 12 }}>
-              Copy Report
+              复制报告
             </button>
             <button onClick={onClose} style={{ background: C.btnPrimary, color: 'white', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
-              Done
+              完成
             </button>
           </div>
         </div>

@@ -180,16 +180,16 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
       <span style={{ color: C.textSecondary, fontSize: 11, fontWeight: 600, flex: 1 }}>
         {title}{' '}
         <span style={{ color: C.textWeak }}>
-          ({count} files · <span style={{ color: C.added }}>+{totalAdd}</span> <span style={{ color: C.deleted }}>-{totalDel}</span>)
+          ({count} 个文件 · <span style={{ color: C.added }}>+{totalAdd}</span> <span style={{ color: C.deleted }}>-{totalDel}</span>)
         </span>
       </span>
       {isStaged ? (
         <button onClick={onUnstage} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textWeak, fontSize: 10, padding: '2px 4px' }}>
-          Unstage all
+          全部取消暂存
         </button>
       ) : (
         <button onClick={onStage} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textWeak, fontSize: 10, padding: '2px 4px' }}>
-          Stage all
+          全部暂存
         </button>
       )}
     </div>
@@ -261,7 +261,7 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
         {(filter === 'all' || filter === 'staged') && stagedFiles.length > 0 && (
           <>
             <SectionHeader
-              title="Staged changes"
+              title="已暂存变更"
               count={stagedFiles.length}
               totalAdd={stagedFiles.reduce((sum, file) => sum + file.additions, 0)}
               totalDel={stagedFiles.reduce((sum, file) => sum + file.deletions, 0)}
@@ -286,7 +286,7 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
         {(filter === 'all' || filter === 'unstaged') && unstagedFiles.length > 0 && (
           <>
             <SectionHeader
-              title="Unstaged changes"
+              title="未暂存变更"
               count={unstagedFiles.length}
               totalAdd={unstagedFiles.reduce((sum, file) => sum + file.additions, 0)}
               totalDel={unstagedFiles.reduce((sum, file) => sum + file.deletions, 0)}
@@ -321,7 +321,7 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
 
         {filtered.length === 0 && (
           <div style={{ padding: 30, textAlign: 'center', color: C.textWeak, fontSize: 12 }}>
-            No files match the filter
+            没有匹配当前筛选的文件
           </div>
         )}
       </div>
@@ -342,7 +342,7 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
         >
           <div style={{ color: C.textSecondary, fontSize: 12, marginBottom: 4 }}>还没有暂存内容</div>
           <div style={{ color: C.textWeak, fontSize: 11 }}>
-            选择文件或点击 Stage All 后，AI 才能根据暂存区生成提交信息。
+            选择文件或点击“全部暂存”后，AI 才能根据暂存区生成提交信息。
           </div>
         </div>
       )}

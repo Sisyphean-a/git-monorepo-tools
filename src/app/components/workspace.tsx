@@ -49,17 +49,17 @@ function ConflictBanner({ repo }: { repo: Repo }) {
     >
       <AlertTriangle size={14} color={C.conflict} style={{ marginTop: 1, flexShrink: 0 }} />
       <div>
-        <div style={{ color: C.conflict, fontSize: 12, fontWeight: 600, marginBottom: 2 }}>Merge Conflict Detected</div>
+        <div style={{ color: C.conflict, fontSize: 12, fontWeight: 600, marginBottom: 2 }}>检测到合并冲突</div>
         <div style={{ color: C.textSecondary, fontSize: 11, lineHeight: 1.5 }}>
-          {repo.conflicts} file{repo.conflicts > 1 ? 's' : ''} have conflicts that must be resolved before you can merge.
-          Pull was skipped to prevent data loss. Resolve conflicts manually, then stage and commit.
+          {repo.conflicts} 个文件存在冲突，合并前必须先解决。
+          为避免数据丢失，已跳过 Pull。请先手动解决冲突，再执行暂存和提交。
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <button style={{ background: C.conflict, color: 'white', border: 'none', borderRadius: 5, padding: '4px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
-            Open Conflict Resolver
+            打开冲突处理器
           </button>
           <button style={{ background: 'none', border: `1px solid ${C.conflict}50`, color: C.conflict, borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>
-            View Log
+            查看日志
           </button>
         </div>
       </div>
@@ -278,10 +278,10 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
   const hasPush = repo.ahead > 0;
 
   const mainTabs: { key: MainTab; label: string }[] = [
-    { key: 'changes', label: `Changes ${fileSummary.total > 0 ? `(${fileSummary.total})` : ''}` },
-    { key: 'staged', label: `Staged (${stagedIds.size})` },
-    { key: 'history', label: 'History' },
-    { key: 'activity', label: 'Activity' },
+    { key: 'changes', label: `变更 ${fileSummary.total > 0 ? `(${fileSummary.total})` : ''}` },
+    { key: 'staged', label: `已暂存 (${stagedIds.size})` },
+    { key: 'history', label: '历史' },
+    { key: 'activity', label: '活动' },
   ];
 
   return (
@@ -299,17 +299,17 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
               <span style={{ color: C.textWeak, fontSize: 11 }}>{repo.remote}</span>
               {repo.ahead > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.needPush, fontSize: 11 }}>
-                  <ArrowUp size={11} /> {repo.ahead} to push
+                  <ArrowUp size={11} /> {repo.ahead} 待 Push
                 </div>
               )}
               {repo.behind > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.needPull, fontSize: 11 }}>
-                  <ArrowDown size={11} /> {repo.behind} to pull
+                  <ArrowDown size={11} /> {repo.behind} 待 Pull
                 </div>
               )}
               {isConflict && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.conflict, fontSize: 11 }}>
-                  <AlertTriangle size={11} /> {repo.conflicts} conflicts
+                  <AlertTriangle size={11} /> {repo.conflicts} 个冲突
                 </div>
               )}
             </div>
@@ -319,22 +319,22 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
                 <>
                   <span style={{ color: C.textWeak, fontSize: 10 }}>·</span>
                   <span style={{ color: C.textSecondary, fontSize: 10 }}>
-                    {fileSummary.total} changes ·
-                    <span style={{ color: C.added }}> +{totalAdded} added</span> ·
-                    <span style={{ color: C.modified }}> ~{totalModified} modified</span> ·
-                    <span style={{ color: C.deleted }}> -{totalDeleted} deleted</span>
+                    {fileSummary.total} 处变更 ·
+                    <span style={{ color: C.added }}> +{totalAdded} 新增</span> ·
+                    <span style={{ color: C.modified }}> ~{totalModified} 修改</span> ·
+                    <span style={{ color: C.deleted }}> -{totalDeleted} 删除</span>
                   </span>
                 </>
               )}
-              <span style={{ color: C.textWeak, fontSize: 10 }}>· Updated {repo.lastScan}</span>
+              <span style={{ color: C.textWeak, fontSize: 10 }}>· 更新于 {repo.lastScan}</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
             <button style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <FolderOpen size={11} /> Folder
+              <FolderOpen size={11} /> 文件夹
             </button>
             <button style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Terminal size={11} /> Terminal
+              <Terminal size={11} /> 终端
             </button>
             <button
               onClick={onOpenSettings}
@@ -357,21 +357,21 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
       </div>
 
       <div style={{ background: C.panel2, borderBottom: `1px solid ${C.border}`, padding: '8px 14px', display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-        <ToolbarBtn label="Stage All" icon={<PlusSquare size={12} />} onClick={handleStageAll} disabled={busyAction !== null || files.length === 0 || stagedIds.size === files.length} />
-        <ToolbarBtn label="Unstage All" icon={<MinusSquare size={12} />} onClick={handleUnstageAll} disabled={busyAction !== null || stagedIds.size === 0} />
+        <ToolbarBtn label="全部暂存" icon={<PlusSquare size={12} />} onClick={handleStageAll} disabled={busyAction !== null || files.length === 0 || stagedIds.size === files.length} />
+        <ToolbarBtn label="全部取消暂存" icon={<MinusSquare size={12} />} onClick={handleUnstageAll} disabled={busyAction !== null || stagedIds.size === 0} />
         <div style={{ width: 1, height: 18, background: C.border, margin: '0 2px' }} />
-        <ToolbarBtn label={busyAction === 'generate' ? 'Generating…' : 'Generate AI Message'} icon={<Sparkles size={12} />} disabled={busyAction !== null || !hasStaged} accent onClick={() => setMainTab('changes')} />
-        <ToolbarBtn label={busyAction === 'commit' ? 'Committing…' : 'Commit'} icon={<GitCommit size={12} />} disabled={busyAction !== null || !hasStaged || !hasCommitMsg} primary onClick={handleCommit} />
+        <ToolbarBtn label={busyAction === 'generate' ? '生成中…' : '生成 AI 提交信息'} icon={<Sparkles size={12} />} disabled={busyAction !== null || !hasStaged} accent onClick={() => setMainTab('changes')} />
+        <ToolbarBtn label={busyAction === 'commit' ? '提交中…' : '提交'} icon={<GitCommit size={12} />} disabled={busyAction !== null || !hasStaged || !hasCommitMsg} primary onClick={handleCommit} />
         <div style={{ width: 1, height: 18, background: C.border, margin: '0 2px' }} />
-        <ToolbarBtn label={busyAction === 'pull' ? 'Pulling…' : 'Pull'} icon={<Download size={12} />} disabled={busyAction !== null} warning={hasPull && repo.modified > 0} onClick={handlePull} />
-        <ToolbarBtn label={busyAction === 'push' ? 'Pushing…' : 'Push'} icon={<Upload size={12} />} disabled={busyAction !== null} dimmed={!hasPush} onClick={handlePush} />
+        <ToolbarBtn label={busyAction === 'pull' ? 'Pull 中…' : 'Pull'} icon={<Download size={12} />} disabled={busyAction !== null} warning={hasPull && repo.modified > 0} onClick={handlePull} />
+        <ToolbarBtn label={busyAction === 'push' ? 'Push 中…' : 'Push'} icon={<Upload size={12} />} disabled={busyAction !== null} dimmed={!hasPush} onClick={handlePush} />
         <div style={{ flex: 1 }} />
         <button
           onClick={handleRefresh}
           disabled={busyAction !== null}
           style={{ background: 'none', border: 'none', color: C.textWeak, cursor: busyAction !== null ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '4px 6px', opacity: busyAction !== null ? 0.5 : 1 }}
         >
-          <RefreshCw size={11} /> Refresh
+          <RefreshCw size={11} /> 刷新
         </button>
       </div>
 
@@ -404,7 +404,7 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
         <HistoryTab commits={repo.history} />
       ) : mainTab === 'activity' ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>
-          Activity log — no events yet
+          暂无活动记录
         </div>
       ) : (
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>

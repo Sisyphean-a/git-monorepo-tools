@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { C } from '../theme';
 import type { Repo } from '../types';
-import type { Repo } from '../types';
 import { StatusPill } from './common';
 
 interface SidebarProps {
@@ -249,7 +248,7 @@ export function Sidebar({
           </button>
         </div>
         <div style={{ color: C.textWeak, fontSize: 11, marginBottom: 10 }}>
-          {repos.length} repos · {totalChanged} changed · {totalPush} to push
+          {repos.length} 个仓库 · {totalChanged} 个有变更 · {totalPush} 个待 Push
         </div>
         <div style={{ position: 'relative' }}>
           <Search size={12} color={C.textWeak} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }} />
@@ -286,7 +285,7 @@ export function Sidebar({
             ))
           ) : (
             <div style={{ padding: 20, textAlign: 'center', color: C.textWeak, fontSize: 12 }}>
-              No repos found
+              未找到仓库
             </div>
           )
         ) : (
@@ -308,7 +307,7 @@ export function Sidebar({
 
       <div style={{ borderTop: `1px solid ${C.border}`, padding: '10px 12px', flexShrink: 0 }}>
         <div style={{ color: C.textWeak, fontSize: 10, marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
-          Last scan {scannedAt.split(' ').at(-1) ?? scannedAt} · {totalClean} clean · {totalChanged} changed · {totalConflicts} conflicts
+          上次扫描 {scannedAt.split(' ').at(-1) ?? scannedAt} · {totalClean} 个干净 · {totalChanged} 个有变更 · {totalConflicts} 个冲突
         </div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <button
@@ -329,7 +328,7 @@ export function Sidebar({
               gap: 5,
             }}
           >
-            <Download size={12} /> Pull All
+            <Download size={12} /> 全部 Pull
           </button>
           <button
             onClick={onPushAll}
@@ -349,7 +348,7 @@ export function Sidebar({
               gap: 5,
             }}
           >
-            <Upload size={12} /> Push All
+            <Upload size={12} /> 全部 Push
           </button>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -368,7 +367,7 @@ export function Sidebar({
               gap: 4,
             }}
           >
-            <RefreshCw size={11} /> Scan
+            <RefreshCw size={11} /> 扫描
           </button>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
             <div
@@ -398,7 +397,7 @@ export function Sidebar({
                 }}
               />
             </div>
-            <span style={{ color: C.textWeak, fontSize: 11 }}>Auto scan: 60s</span>
+            <span style={{ color: C.textWeak, fontSize: 11 }}>自动扫描：60 秒</span>
           </div>
           <button onClick={onOpenSettings} style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', display: 'flex' }}>
             <Settings size={14} />

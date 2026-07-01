@@ -52,7 +52,7 @@ function DiffFileHeader({
             gap: 3,
           }}
         >
-          <AlignLeft size={11} /> Unified
+          <AlignLeft size={11} /> 统一
         </button>
         <button
           onClick={() => setViewMode('split')}
@@ -69,7 +69,7 @@ function DiffFileHeader({
             gap: 3,
           }}
         >
-          <Columns2 size={11} /> Split
+          <Columns2 size={11} /> 分栏
         </button>
       </div>
     </div>
@@ -84,7 +84,7 @@ export function DiffPreview({ selectedFileId }: DiffPreviewProps) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.appBg }}>
         <div style={{ textAlign: 'center', color: C.textWeak, fontSize: 13 }}>
-          Select a file to view diff
+          选择文件以查看 Diff
         </div>
       </div>
     );
@@ -97,7 +97,7 @@ export function DiffPreview({ selectedFileId }: DiffPreviewProps) {
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', color: C.deleted, fontSize: 13 }}>
             <AlertCircle size={24} style={{ marginBottom: 8, opacity: 0.7 }} />
-            <div>File deleted · {file.path}</div>
+            <div>文件已删除 · {file.path}</div>
           </div>
         </div>
       </div>

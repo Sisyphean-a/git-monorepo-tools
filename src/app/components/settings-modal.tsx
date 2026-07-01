@@ -140,13 +140,13 @@ function RepositoriesTab({ repos }: { repos: Repo[] }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <span style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>Repositories ({repos.length})</span>
+        <span style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>仓库（{repos.length}）</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button style={{ background: C.panel1, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 5, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={11} /> Add Folder
+            <Plus size={11} /> 添加文件夹
           </button>
           <button style={{ background: C.btnPrimary, border: 'none', color: 'white', borderRadius: 5, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={11} /> Add Repository
+            <Plus size={11} /> 添加仓库
           </button>
         </div>
       </div>
@@ -193,12 +193,12 @@ function AICommitTab() {
   const [gen3, setGen3] = useState(true);
   const [stagedOnly, setStagedOnly] = useState(true);
   const [prompt, setPrompt] = useState(
-    'You are a Git commit message generator. Analyze the following staged diff and generate concise commit messages. Output 3 candidates in different styles: emoji, short, and conventional commit format.'
+    '你是 Git 提交信息生成器。请分析下面已暂存的 Diff，并生成简洁的提交信息。输出 3 条不同风格的候选，包括表情风格、短句风格和约定式提交风格。'
   );
 
   return (
     <div>
-      <FormRow label="API Key">
+      <FormRow label="API 密钥">
         <div style={{ position: 'relative' }}>
           <input
             value={showKey ? 'sk-abcdefghij1234567890abcdefghij12' : apiKey}
@@ -242,10 +242,10 @@ function AICommitTab() {
           </button>
         </div>
       </FormRow>
-      <FormRow label="Base URL">
+      <FormRow label="基础 URL">
         <Input value={baseUrl} onChange={setBaseUrl} monospace />
       </FormRow>
-      <FormRow label="Model">
+      <FormRow label="模型">
         <Select
           value={model}
           onChange={setModel}
@@ -257,7 +257,7 @@ function AICommitTab() {
           ]}
         />
       </FormRow>
-      <FormRow label="Prompt Template">
+      <FormRow label="提示词模板">
         <textarea
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
@@ -284,22 +284,22 @@ function AICommitTab() {
           }}
         />
       </FormRow>
-      <FormRow label="Max Diff Characters">
+      <FormRow label="Diff 最大字符数">
         <Input value={maxDiff} onChange={setMaxDiff} monospace />
-        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>Large diffs will be truncated to this limit before sending</div>
+        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>较大的 Diff 会在发送前截断到这个长度</div>
       </FormRow>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>Generate 3 commit options</div>
-            <div style={{ color: C.textWeak, fontSize: 11 }}>Return Emoji, Standard Short, and Conventional Commit formats</div>
+            <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>生成 3 条提交候选</div>
+            <div style={{ color: C.textWeak, fontSize: 11 }}>返回表情、标准短句和约定式提交三种格式</div>
           </div>
           <Toggle checked={gen3} onChange={() => setGen3(value => !value)} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>Use staged changes only</div>
-            <div style={{ color: C.textWeak, fontSize: 11 }}>Only include staged files in the diff sent to AI</div>
+            <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>仅使用已暂存变更</div>
+            <div style={{ color: C.textWeak, fontSize: 11 }}>只将已暂存文件的 Diff 发送给 AI</div>
           </div>
           <Toggle checked={stagedOnly} onChange={() => setStagedOnly(value => !value)} />
         </div>
@@ -317,65 +317,65 @@ function GitBehaviorTab() {
 
   return (
     <div>
-      <FormRow label="Auto Scan Interval">
+      <FormRow label="自动扫描间隔">
         <Select
           value={scanInterval}
           onChange={setScanInterval}
           options={[
-            { value: '30', label: '30 seconds' },
-            { value: '60', label: '60 seconds' },
-            { value: '120', label: '120 seconds' },
-            { value: '0', label: 'Manual only' },
+            { value: '30', label: '30 秒' },
+            { value: '60', label: '60 秒' },
+            { value: '120', label: '120 秒' },
+            { value: '0', label: '仅手动' },
           ]}
         />
       </FormRow>
-      <FormRow label="Pull All Strategy">
+      <FormRow label="批量 Pull 策略">
         <Select
           value={pullStrategy}
           onChange={setPullStrategy}
           options={[
-            { value: 'ff-only', label: 'Fast-forward only (recommended)' },
-            { value: 'rebase', label: 'Rebase' },
-            { value: 'merge', label: 'Merge' },
+            { value: 'ff-only', label: '仅 Fast-forward（推荐）' },
+            { value: 'rebase', label: '变基' },
+            { value: 'merge', label: '合并' },
           ]}
         />
-        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>Repos with local changes or diverged history will be skipped</div>
+        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>有本地改动或历史分叉的仓库会被跳过</div>
       </FormRow>
-      <FormRow label="Push All Strategy">
+      <FormRow label="批量 Push 策略">
         <Select
           value={pushStrategy}
           onChange={setPushStrategy}
           options={[
-            { value: 'upstream-only', label: 'Only push branches with upstream (recommended)' },
-            { value: 'all', label: 'Push all ahead branches' },
+            { value: 'upstream-only', label: '仅推送有 upstream 的分支（推荐）' },
+            { value: 'all', label: '推送所有领先分支' },
           ]}
         />
-        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>Branches without a remote upstream will be skipped</div>
+        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>没有远端 upstream 的分支会被跳过</div>
       </FormRow>
       <div style={{ display: 'flex', gap: 12 }}>
         <div style={{ flex: 1 }}>
-          <FormRow label="Concurrency">
+          <FormRow label="并发数">
             <Select
               value={concurrency}
               onChange={setConcurrency}
               options={[
-                { value: '1', label: '1 (sequential)' },
+                { value: '1', label: '1（串行）' },
                 { value: '2', label: '2' },
                 { value: '3', label: '3' },
-                { value: '5', label: '5 (max)' },
+                { value: '5', label: '5（最大）' },
               ]}
             />
           </FormRow>
         </div>
         <div style={{ flex: 1 }}>
-          <FormRow label="Operation Timeout">
+          <FormRow label="操作超时">
             <Select
               value={timeout}
               onChange={setTimeout}
               options={[
-                { value: '30', label: '30 seconds' },
-                { value: '60', label: '60 seconds' },
-                { value: '120', label: '120 seconds' },
+                { value: '30', label: '30 秒' },
+                { value: '60', label: '60 秒' },
+                { value: '120', label: '120 秒' },
               ]}
             />
           </FormRow>
@@ -391,9 +391,9 @@ export function SettingsModal({ repos, open, onClose }: SettingsModalProps) {
   if (!open) return null;
 
   const tabs: { key: SettingsTab; label: string }[] = [
-    { key: 'repositories', label: 'Repositories' },
-    { key: 'ai-commit', label: 'AI Commit' },
-    { key: 'git-behavior', label: 'Git Behavior' },
+    { key: 'repositories', label: '仓库' },
+    { key: 'ai-commit', label: 'AI 提交' },
+    { key: 'git-behavior', label: 'Git 行为' },
   ];
 
   return (
@@ -422,7 +422,7 @@ export function SettingsModal({ repos, open, onClose }: SettingsModalProps) {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-          <h3 style={{ color: C.textPrimary, fontSize: 15, fontWeight: 600, margin: 0 }}>Settings</h3>
+          <h3 style={{ color: C.textPrimary, fontSize: 15, fontWeight: 600, margin: 0 }}>设置</h3>
           <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center' }}>
             <X size={16} />
           </button>
@@ -473,7 +473,7 @@ export function SettingsModal({ repos, open, onClose }: SettingsModalProps) {
               fontSize: 12,
             }}
           >
-            Cancel
+            取消
           </button>
           <button
             onClick={onClose}
@@ -488,7 +488,7 @@ export function SettingsModal({ repos, open, onClose }: SettingsModalProps) {
               fontWeight: 500,
             }}
           >
-            Save Changes
+            保存更改
           </button>
         </div>
       </div>
