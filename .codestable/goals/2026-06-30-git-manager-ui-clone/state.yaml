@@ -1,0 +1,21 @@
+schema_version: 1
+goal: "git-manager-ui-clone"
+status: active
+objective: "完成当前项目的 UI 复刻，使其与 E:\\其他\\figma-ui 的样式和交互一致，并使用真实本地 Git 数据而不是 mock 数据。"
+start_point: "当前仓库已有可运行前端壳，但仓库列表、差异列表、历史和批量结果最初都来自 mock 数据，未满足 owner 对真实数据的要求。"
+acceptance:
+  - "应用可启动并展示与参考 UI 一致的主界面。"
+  - "左侧仓库栏、右侧工作区、Pull All 抽屉、Settings 弹窗等核心界面保持参考 UI 的结构与视觉层级。"
+  - "仓库列表、差异列表、提交历史、Pull All 结果等展示真实本地 Git 数据，而不是参考项目里的 mock 常量。"
+  - "当前阶段产物已提交并推送到远端。"
+non_goals:
+  - "不改造参考项目本身。"
+budget:
+  kind: none
+  limit: null
+current_iteration: 3
+next_action: "补齐真实 Git 操作通道（stage/unstage/commit/pull/push/refresh），消除仍停留在前端本地状态的交互。"
+blocker_signature: null
+blocker_count: 0
+owner_stop: null
+updated_at: "2026-07-01"
