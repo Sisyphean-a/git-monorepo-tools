@@ -44,11 +44,6 @@ export interface CommitCandidate {
   full: string;
 }
 
-export interface DiffLine {
-  type: 'hunk' | 'added' | 'deleted' | 'context';
-  content: string;
-}
-
 export interface ScanRootSetting {
   path: string;
   category: string;
@@ -81,12 +76,6 @@ export interface AppSettings {
   customCategories: string[];
   aiCommit: AICommitSettings;
   gitBehavior: GitBehaviorSettings;
-}
-
-export interface RepoDiff {
-  file: FileChange | null;
-  diffLines: DiffLine[];
-  view: 'staged' | 'unstaged';
 }
 
 export interface RepoLog {
@@ -156,7 +145,6 @@ export interface AppSnapshot {
   repoDetails: Record<string, RepoDetail>;
   selectedRepoId: string;
   pullResults: PullResult[];
-  diffLines: DiffLine[];
   commitCandidates: Record<string, CommitCandidate[]>;
 }
 

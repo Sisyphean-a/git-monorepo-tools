@@ -1,11 +1,10 @@
 import { INITIAL_SNAPSHOT } from './data';
-import type { AICommitPreview, AppSettings, AppSnapshot, CommitCandidate, PullResult, RepoDiff, RepoLog } from './types';
+import type { AICommitPreview, AppSettings, AppSnapshot, CommitCandidate, PullResult, RepoLog } from './types';
 
 interface SnapshotResponse {
   snapshot: AppSnapshot;
   results?: PullResult[];
   operation?: 'pullAll' | 'pushAll';
-  diff?: RepoDiff;
   log?: RepoLog;
   candidates?: CommitCandidate[];
   path?: string | null;
@@ -48,14 +47,6 @@ export async function mutateRepo(repoId: string, action: string, settings?: AppS
 
 export async function runBatch(operation: 'pull' | 'push', settings?: AppSettings) {
   return request(`/api/batch/${operation}${buildQuery(settings)}`, { method: 'POST' });
-}
-
-export async function fetchRepoDiff(repoId: string, settings: AppSettings, body: { fileId?: string | null; filePath?: string; staged?: boolean }) {
-  return (await request(`/api/repos/${repoId}/diff${buildQuery(settings)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })).diff ?? null;
 }
 
 export async function fetchRepoLog(repoId: string, settings: AppSettings) {

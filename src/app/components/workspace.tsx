@@ -17,12 +17,11 @@ import {
   Upload,
   ChevronRight,
 } from 'lucide-react';
-import { fetchRepoDiff, fetchRepoLog, generateCommitCandidates, invokeLocalRepoAction, mutateRepo } from '../api';
+import { fetchRepoLog, generateCommitCandidates, invokeLocalRepoAction, mutateRepo } from '../api';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
-import { DiffPreview } from './diff-preview';
-import type { AppSettings, CommitCandidate, CommitSummary, FileChange, Repo, RepoDetail, RepoDiff, RepoLog } from '../types';
+import type { AppSettings, CommitCandidate, CommitSummary, FileChange, Repo, RepoDetail, RepoLog } from '../types';
 
 type MainTab = 'changes' | 'staged' | 'history' | 'activity';
 
@@ -219,45 +218,19 @@ export function Workspace({
   const repoIds = Object.keys(repoDetails);
   const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
   const [mainTab, setMainTab] = useState<MainTab>('changes');
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [commitMessage, setCommitMessage] = useState('');
   const [stagedIds, setStagedIds] = useState<Set<string>>(new Set());
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [diff, setDiff] = useState<RepoDiff | null>(null);
-  const [loadingDiff, setLoadingDiff] = useState(false);
   const [aiCandidates, setAiCandidates] = useState<CommitCandidate[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     const nextFiles = repo?.files ?? [];
-    setSelectedFileId(current => {
-      const currentPath = current?.split('::')[0];
-      const matched = currentPath ? nextFiles.find(file => file.path === currentPath) : undefined;
-      return matched?.id ?? nextFiles[0]?.id ?? null;
-    });
     setStagedIds(new Set(nextFiles.filter(file => file.staged).map(file => file.id)));
     setCommitMessage('');
     setAiCandidates([]);
     setAiError(null);
   }, [repo?.id, repo?.scannedAt]);
-
-  useEffect(() => {
-    if (!repo || !selectedFileId) {
-      setDiff(null);
-      return;
-    }
-    const selectedFile = repo.files.find(file => file.id === selectedFileId);
-    if (!selectedFile) {
-      setDiff(null);
-      return;
-    }
-    setLoadingDiff(true);
-    void fetchRepoDiff(repo.id, settings, {
-      fileId: selectedFile.id,
-      filePath: selectedFile.path,
-      staged: stagedIds.has(selectedFile.id),
-    }).then(setDiff).finally(() => setLoadingDiff(false));
-  }, [repo?.id, repo?.scannedAt, selectedFileId, stagedIds, settings]);
 
   if (!repo) {
     return (
@@ -486,16 +459,11 @@ export function Workspace({
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
           <DiffList
             files={files}
-            selectedFileId={selectedFileId}
-            onSelectFile={id => setSelectedFileId(id)}
             stagedIds={stagedIds}
             onToggleStaged={handleToggleStaged}
             onStageAll={handleStageAll}
             onUnstageAll={handleUnstageAll}
           />
-          <div style={{ flex: 1.1, minWidth: 0, display: 'flex', borderRight: `1px solid ${C.border}` }}>
-            <DiffPreview diff={diff} loading={loadingDiff} />
-          </div>
           <div style={{ width: 360, flexShrink: 0, display: 'flex' }}>
             <AiCommitPanel
               settings={settings}

@@ -1,6 +1,5 @@
 import {
   buildAppSnapshot,
-  buildRepoDiff,
   commitRepo,
   generateAiCommitCandidates,
   pullAllRepos,
@@ -81,11 +80,6 @@ async function handleApiRequest(req, res, next) {
 
     if (req.method !== 'POST') {
       sendJson(res, 405, { error: '不支持的请求方法' });
-      return;
-    }
-
-    if (action === 'diff') {
-      sendJson(res, 200, { diff: buildRepoDiff(repoId, body.fileId, body.filePath, body.staged, scanRoots) });
       return;
     }
 

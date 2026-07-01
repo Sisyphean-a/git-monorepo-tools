@@ -7,8 +7,6 @@ type FilterType = 'all' | 'unstaged' | 'staged' | 'added' | 'modified' | 'delete
 
 interface DiffListProps {
   files: FileChange[];
-  selectedFileId: string | null;
-  onSelectFile: (id: string) => void;
   stagedIds: Set<string>;
   onToggleStaged: (id: string) => void;
   onStageAll: () => void;
@@ -47,15 +45,11 @@ function StatusTag({ status }: { status: FileStatus }) {
 
 function FileRow({
   file,
-  selected,
   isStaged,
-  onSelect,
   onToggleStage,
 }: {
   file: FileChange;
-  selected: boolean;
   isStaged: boolean;
-  onSelect: () => void;
   onToggleStage: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -65,7 +59,6 @@ function FileRow({
 
   return (
     <div
-      onClick={onSelect}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -73,8 +66,8 @@ function FileRow({
         alignItems: 'center',
         gap: 6,
         padding: '7px 10px',
-        background: selected ? C.selectedBg : hovered ? C.hoverBg : 'transparent',
-        cursor: 'pointer',
+        background: hovered ? C.hoverBg : 'transparent',
+        cursor: 'default',
         borderRadius: 4,
         borderLeft: isStaged ? `2px solid ${C.btnPrimary}40` : '2px solid transparent',
         transition: 'background 0.08s',
@@ -95,7 +88,7 @@ function FileRow({
           style={{
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: 12,
-            color: file.status === 'D' ? C.deleted : selected ? C.textPrimary : C.textSecondary,
+            color: file.status === 'D' ? C.deleted : C.textSecondary,
             textDecoration: file.status === 'D' ? 'line-through' : 'none',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -117,7 +110,7 @@ function FileRow({
   );
 }
 
-export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onToggleStaged, onStageAll, onUnstageAll }: DiffListProps) {
+export function DiffList({ files, stagedIds, onToggleStaged, onStageAll, onUnstageAll }: DiffListProps) {
   const [filter, setFilter] = useState<FilterType>('all');
   const [search, setSearch] = useState('');
 
@@ -198,8 +191,8 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
   return (
     <div
       style={{
-        width: 420,
-        flexShrink: 0,
+        flex: 1,
+        minWidth: 0,
         background: C.panel1,
         borderRight: `1px solid ${C.border}`,
         display: 'flex',
@@ -273,9 +266,7 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
                 <FileRow
                   key={file.id}
                   file={file}
-                  selected={file.id === selectedFileId}
                   isStaged
-                  onSelect={() => onSelectFile(file.id)}
                   onToggleStage={() => onToggleStaged(file.id)}
                 />
               ))}
@@ -298,9 +289,7 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
                 <FileRow
                   key={file.id}
                   file={file}
-                  selected={file.id === selectedFileId}
                   isStaged={false}
-                  onSelect={() => onSelectFile(file.id)}
                   onToggleStage={() => onToggleStaged(file.id)}
                 />
               ))}
@@ -312,9 +301,7 @@ export function DiffList({ files, selectedFileId, onSelectFile, stagedIds, onTog
           <FileRow
             key={file.id}
             file={file}
-            selected={file.id === selectedFileId}
             isStaged={stagedIds.has(file.id)}
-            onSelect={() => onSelectFile(file.id)}
             onToggleStage={() => onToggleStaged(file.id)}
           />
         ))}
