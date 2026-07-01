@@ -4,12 +4,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "sync:data": "node scripts/sync-real-data.mjs",
     "dev": "wails dev",
     "build": "wails build",
-    "web:dev": "npm run sync:data && vite",
-    "web:build": "npm run sync:data && vite build",
-    "preview": "npm run sync:data && vite preview",
+    "web:dev": "vite",
+    "web:build": "vite build",
+    "preview": "vite preview",
     "wails:dev": "wails dev",
     "wails:build": "wails build"
   },

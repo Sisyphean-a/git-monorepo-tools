@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { GitMerge, Settings } from 'lucide-react';
-import { fetchRepoLog, fetchSnapshot, getInitialSnapshot, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch } from './api';
+import { fetchRepoLog, fetchSnapshot, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch } from './api';
 import { C } from './theme';
 import { Sidebar } from './components/sidebar';
 import { Workspace } from './components/workspace';
@@ -9,7 +9,7 @@ import { SettingsModal } from './components/settings-modal';
 import { AddRepoMenu } from './components/add-repo-menu';
 import { LogViewerModal } from './components/log-viewer-modal';
 import { loadSettings, saveSettings, sanitizeSettings } from './settings';
-import type { AppSettings, PullResult, RepoLog, SettingsTab } from './types';
+import type { AppSettings, AppSnapshot, PullResult, RepoLog, SettingsTab } from './types';
 
 function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
@@ -77,18 +77,18 @@ function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
 }
 
 export default function App() {
-  const [snapshot, setSnapshot] = useState(() => getInitialSnapshot());
-  const [selectedRepoId, setSelectedRepoId] = useState(() => getInitialSnapshot().selectedRepoId);
+  const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
+  const [selectedRepoId, setSelectedRepoId] = useState('');
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [showPullDrawer, setShowPullDrawer] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai-commit');
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [drawerOperation, setDrawerOperation] = useState<'pullAll' | 'pushAll'>('pullAll');
-  const [drawerResults, setDrawerResults] = useState<PullResult[]>(() => getInitialSnapshot().pullResults);
+  const [drawerResults, setDrawerResults] = useState<PullResult[]>([]);
   const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
 
-  const applySnapshot = (nextSnapshot: typeof snapshot) => {
+  const applySnapshot = (nextSnapshot: AppSnapshot) => {
     setSnapshot(nextSnapshot);
     setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
   };
@@ -190,6 +190,7 @@ export default function App() {
   };
 
   const handleOpenRepoFromDrawer = async (path: string) => {
+    if (!snapshot) return;
     const repo = snapshot.repos.find(item => item.path === path);
     if (!repo) return;
     await invokeLocalRepoAction(repo.id, 'open-folder', settings, path);
@@ -211,6 +212,28 @@ export default function App() {
     }, settings.gitBehavior.autoScanIntervalSeconds * 1000);
     return () => window.clearInterval(timer);
   }, [settings]);
+
+  if (!snapshot) {
+    return (
+      <div
+        style={{
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          background: C.appBg,
+          color: C.textPrimary,
+          fontFamily: 'Inter, system-ui, sans-serif',
+          overflow: 'hidden',
+          fontSize: 14,
+        }}
+      >
+        <TopBar onOpenSettings={() => setShowSettings(true)} />
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>
+          正在扫描仓库...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

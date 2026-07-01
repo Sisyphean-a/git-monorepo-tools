@@ -1,4 +1,3 @@
-import { INITIAL_SNAPSHOT } from './data';
 import type { AICommitPreview, AppSettings, AppSnapshot, CommitCandidate, PullResult, RepoLog } from './types';
 
 interface SnapshotRequest {
@@ -50,10 +49,6 @@ const WAILS_REPO_ACTIONS = new Set([
   'pull',
   'push',
 ]);
-
-export function getInitialSnapshot() {
-  return INITIAL_SNAPSHOT;
-}
 
 function buildSnapshotRequest(settings?: AppSettings): SnapshotRequest {
   return {
