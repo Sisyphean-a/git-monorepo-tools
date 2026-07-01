@@ -8,6 +8,9 @@ interface PullAllDrawerProps {
   results: PullResult[];
   scannedAt: string;
   onClose: () => void;
+  onOpenRepo: (path: string) => void;
+  onViewLog: (repoId: string) => void;
+  onRetry: (repoId: string, operation: 'pullAll' | 'pushAll') => void;
 }
 
 function ResultIcon({ result }: { result: PullResult['result'] }) {
@@ -44,7 +47,7 @@ function ResultBadge({ result }: { result: PullResult['result'] }) {
   );
 }
 
-export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: PullAllDrawerProps) {
+export function PullAllDrawer({ open, operation, results, scannedAt, onClose, onOpenRepo, onViewLog, onRetry }: PullAllDrawerProps) {
   const successLabel = operation === 'pullAll' ? '已拉取' : '已推送';
   const successResult = operation === 'pullAll' ? 'pulled' : 'pushed';
   const title = operation === 'pullAll' ? '批量 Pull 结果' : '批量 Push 结果';
@@ -153,15 +156,15 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: 
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                <button style={{ background: 'none', border: `1px solid ${C.border}`, color: C.textWeak, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
+                <button onClick={() => onOpenRepo(result.path)} style={{ background: 'none', border: `1px solid ${C.border}`, color: C.textWeak, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
                   <FolderOpen size={11} /> 打开
                 </button>
                 {result.result === 'failed' && (
-                  <button style={{ background: `${C.conflict}15`, border: `1px solid ${C.conflict}40`, color: C.conflict, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <button onClick={() => onRetry(result.id, operation)} style={{ background: `${C.conflict}15`, border: `1px solid ${C.conflict}40`, color: C.conflict, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
                     <RefreshCw size={11} /> 重试
                   </button>
                 )}
-                <button style={{ background: 'none', border: `1px solid ${C.border}`, color: C.textWeak, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
+                <button onClick={() => onViewLog(result.id)} style={{ background: 'none', border: `1px solid ${C.border}`, color: C.textWeak, borderRadius: 5, padding: '4px 8px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
                   <ScrollText size={11} /> 日志
                 </button>
               </div>
@@ -172,7 +175,13 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose }: 
         <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <span style={{ color: C.textWeak, fontSize: 11 }}>完成于 {scannedAt.split(' ').at(-1) ?? scannedAt}</span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 12 }}>
+            <button
+              onClick={() => {
+                const report = results.map(result => `${result.name} [${result.result}] ${result.detail}`).join('\n');
+                navigator.clipboard.writeText(report).catch(() => {});
+              }}
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 12 }}
+            >
               复制报告
             </button>
             <button onClick={onClose} style={{ background: C.btnPrimary, color: 'white', border: 'none', borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>

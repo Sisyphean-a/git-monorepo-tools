@@ -1,13 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, ChevronRight, Eye, RefreshCw, Sparkles, Wand2 } from 'lucide-react';
 import { C } from '../theme';
-import type { CommitCandidate } from '../types';
+import type { AppSettings, CommitCandidate } from '../types';
 
 interface AiCommitPanelProps {
+  settings: AppSettings;
   stagedCount: number;
   stagedPaths: string[];
   candidates: CommitCandidate[];
+  loading: boolean;
   message: string;
+  error: string | null;
+  onGenerate: () => void;
+  onRegenerateStyle: (style: string) => void;
   onMessageChange: (message: string) => void;
 }
 
@@ -15,6 +20,7 @@ function CommitCard({
   candidate,
   selected,
   copied,
+  loading,
   onSelect,
   onCopy,
   onUse,
@@ -23,6 +29,7 @@ function CommitCard({
   candidate: CommitCandidate;
   selected: boolean;
   copied: boolean;
+  loading: boolean;
   onSelect: () => void;
   onCopy: () => void;
   onUse: () => void;
@@ -119,17 +126,19 @@ function CommitCard({
             </button>
             <button
               onClick={onRegenerate}
+              disabled={loading}
               style={{
                 background: 'none',
                 color: C.textWeak,
                 border: `1px solid ${C.border}`,
                 borderRadius: 5,
                 padding: '5px 10px',
-                cursor: 'pointer',
+                cursor: loading ? 'not-allowed' : 'pointer',
                 fontSize: 11,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 4,
+                opacity: loading ? 0.5 : 1,
               }}
             >
               <RefreshCw size={10} /> 重新生成此风格
@@ -148,10 +157,15 @@ function renderPromptFiles(stagedPaths: string[]) {
 }
 
 export function AiCommitPanel({
+  settings,
   stagedCount,
   stagedPaths,
   candidates,
+  loading,
   message,
+  error,
+  onGenerate,
+  onRegenerateStyle,
   onMessageChange,
 }: AiCommitPanelProps) {
   const [generated, setGenerated] = useState(false);
@@ -163,12 +177,30 @@ export function AiCommitPanel({
     setGenerated(false);
     setSelectedId(null);
     setCopiedId(null);
-  }, [stagedCount, candidates]);
+  }, [stagedCount]);
+
+  useEffect(() => {
+    if (candidates.length > 0) {
+      setGenerated(true);
+      setSelectedId(current => current && candidates.some(candidate => candidate.id === current) ? current : candidates[0]?.id ?? null);
+    }
+  }, [candidates]);
+
+  const promptPreview = useMemo(() => [
+    settings.aiCommit.promptTemplate,
+    '',
+    `模型：${settings.aiCommit.model}`,
+    `仅暂存：${settings.aiCommit.stagedOnly ? '是' : '否'}`,
+    `最大字符数：${settings.aiCommit.maxDiffChars}`,
+    `候选数量：${settings.aiCommit.generateThree ? 3 : 1}`,
+    `已暂存文件（${stagedCount}）：`,
+    renderPromptFiles(stagedPaths),
+  ].join('\n'), [settings, stagedCount, stagedPaths]);
 
   const handleGenerate = () => {
-    if (stagedCount === 0) return;
+    if (stagedCount === 0 || loading) return;
     setGenerated(true);
-    setSelectedId(candidates[0]?.id ?? null);
+    onGenerate();
   };
 
   const handleCopy = (id: string, text: string) => {
@@ -212,12 +244,17 @@ export function AiCommitPanel({
               padding: '2px 6px',
             }}
           >
-            仅基于已暂存变更
+            {settings.aiCommit.stagedOnly ? '仅基于已暂存变更' : '基于当前全部变更'}
           </span>
         </div>
         {stagedCount === 0 && (
           <div style={{ color: C.modified, fontSize: 11, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
             ⚠ 至少先暂存一个文件才能生成
+          </div>
+        )}
+        {error && (
+          <div style={{ color: C.conflict, fontSize: 11, marginTop: 6, lineHeight: 1.5 }}>
+            {error}
           </div>
         )}
       </div>
@@ -226,26 +263,26 @@ export function AiCommitPanel({
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           <button
             onClick={handleGenerate}
-            disabled={stagedCount === 0}
+            disabled={stagedCount === 0 || loading}
             style={{
               flex: 1,
-              background: stagedCount === 0 ? C.panel2 : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
-              color: stagedCount === 0 ? C.textWeak : 'white',
-              border: `1px solid ${stagedCount === 0 ? C.border : '#7C3AED'}`,
+              background: stagedCount === 0 || loading ? C.panel2 : 'linear-gradient(135deg, #7C3AED, #5B21B6)',
+              color: stagedCount === 0 || loading ? C.textWeak : 'white',
+              border: `1px solid ${stagedCount === 0 || loading ? C.border : '#7C3AED'}`,
               borderRadius: 7,
               padding: '8px 0',
-              cursor: stagedCount === 0 ? 'not-allowed' : 'pointer',
+              cursor: stagedCount === 0 || loading ? 'not-allowed' : 'pointer',
               fontSize: 12,
               fontWeight: 500,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              opacity: stagedCount === 0 ? 0.5 : 1,
+              opacity: stagedCount === 0 || loading ? 0.5 : 1,
             }}
           >
             <Wand2 size={13} />
-            {generated ? '重新生成' : '生成'}
+            {loading ? '生成中…' : generated ? '重新生成' : '生成'}
           </button>
           <button
             onClick={() => setShowPrompt(value => !value)}
@@ -277,14 +314,13 @@ export function AiCommitPanel({
               fontFamily: 'JetBrains Mono, monospace',
               fontSize: 11,
               color: C.textSecondary,
-              maxHeight: 120,
+              maxHeight: 180,
               overflowY: 'auto',
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.6,
             }}
           >
-            <div style={{ color: C.textWeak, marginBottom: 4 }}>系统提示词：</div>
-            你是 Git 提交信息生成器。请分析下面已暂存的 Diff，并生成简洁、符合 Conventional Commit 风格的提交信息。只关注已暂存变更，并输出 3 条不同风格的候选。
-            <div style={{ color: C.textWeak, marginTop: 8, marginBottom: 4 }}>已暂存文件（{stagedCount}）：</div>
-            {renderPromptFiles(stagedPaths)}
+            {promptPreview}
           </div>
         )}
 
@@ -296,16 +332,17 @@ export function AiCommitPanel({
                 candidate={candidate}
                 selected={selectedId === candidate.id}
                 copied={copiedId === candidate.id}
+                loading={loading}
                 onSelect={() => setSelectedId(candidate.id === selectedId ? null : candidate.id)}
                 onCopy={() => handleCopy(candidate.id, candidate.full)}
                 onUse={() => handleUse(candidate.full)}
-                onRegenerate={() => {}}
+                onRegenerate={() => onRegenerateStyle(candidate.style)}
               />
             ))}
           </div>
         )}
 
-        {generated && candidates.length === 0 && (
+        {generated && !loading && candidates.length === 0 && (
           <div
             style={{
               marginBottom: 16,
@@ -318,7 +355,7 @@ export function AiCommitPanel({
               lineHeight: 1.6,
             }}
           >
-            当前暂存区没有可生成的提交候选。
+            当前没有可显示的 AI 提交候选。
           </div>
         )}
 
@@ -369,12 +406,10 @@ export function AiCommitPanel({
           >
             <Sparkles size={24} color={C.aiAccent} style={{ opacity: 0.4, marginBottom: 8 }} />
             <div style={{ color: C.textSecondary, marginBottom: 4 }}>AI 生成提交信息</div>
-            <div>暂存文件后点击“生成”，即可创建 3 条提交信息候选</div>
+            <div>暂存文件后点击“生成”，将按当前设置调用真实 AI 服务生成候选</div>
           </div>
         )}
       </div>
-
-      <style>{``}</style>
     </div>
   );
 }

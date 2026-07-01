@@ -1,21 +1,24 @@
 import { useState } from 'react';
 import { AlertCircle, AlignLeft, Columns2 } from 'lucide-react';
 import { C } from '../theme';
-import { DIFF_LINES, FILE_CHANGES } from '../data';
+import type { RepoDiff } from '../types';
 
 interface DiffPreviewProps {
-  selectedFileId: string | null;
+  diff: RepoDiff | null;
+  loading: boolean;
 }
 
 function DiffFileHeader({
-  file,
+  diff,
   viewMode,
   setViewMode,
 }: {
-  file: { path: string; status: string; additions: number; deletions: number };
+  diff: RepoDiff;
   viewMode: 'unified' | 'split';
   setViewMode: (mode: 'unified' | 'split') => void;
 }) {
+  const file = diff.file;
+  if (!file) return null;
   const parts = file.path.split('/');
   const fname = parts.pop() ?? '';
   const dir = parts.join('/');
@@ -33,8 +36,13 @@ function DiffFileHeader({
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: C.textWeak }}>{dir}/</span>
-        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: C.textPrimary, fontWeight: 500 }}>{fname}</span>
+        <div style={{ marginBottom: 2 }}>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: C.textWeak }}>{dir ? `${dir}/` : ''}</span>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: C.textPrimary, fontWeight: 500 }}>{fname}</span>
+        </div>
+        <div style={{ color: C.textWeak, fontSize: 10 }}>
+          {diff.view === 'staged' ? '已暂存视图' : '未暂存视图'} · +{file.additions} -{file.deletions} · {file.size}
+        </div>
       </div>
       <div style={{ display: 'flex', gap: 2, background: C.panel1, borderRadius: 5, padding: 2 }}>
         <button
@@ -76,28 +84,33 @@ function DiffFileHeader({
   );
 }
 
-export function DiffPreview({ selectedFileId }: DiffPreviewProps) {
+export function DiffPreview({ diff, loading }: DiffPreviewProps) {
   const [viewMode, setViewMode] = useState<'unified' | 'split'>('unified');
-  const file = selectedFileId ? FILE_CHANGES.find(item => item.id === selectedFileId) : FILE_CHANGES[0];
 
-  if (!file) {
+  if (loading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.appBg }}>
-        <div style={{ textAlign: 'center', color: C.textWeak, fontSize: 13 }}>
-          选择文件以查看 Diff
-        </div>
+        <div style={{ textAlign: 'center', color: C.textWeak, fontSize: 13 }}>正在加载真实 Diff…</div>
       </div>
     );
   }
 
-  if (file.status === 'D') {
+  if (!diff?.file) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.appBg }}>
+        <div style={{ textAlign: 'center', color: C.textWeak, fontSize: 13 }}>选择文件以查看 Diff</div>
+      </div>
+    );
+  }
+
+  if (diff.file.status === 'D') {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.appBg, overflow: 'hidden' }}>
-        <DiffFileHeader file={file} viewMode={viewMode} setViewMode={setViewMode} />
+        <DiffFileHeader diff={diff} viewMode={viewMode} setViewMode={setViewMode} />
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', color: C.deleted, fontSize: 13 }}>
             <AlertCircle size={24} style={{ marginBottom: 8, opacity: 0.7 }} />
-            <div>文件已删除 · {file.path}</div>
+            <div>文件已删除 · {diff.file.path}</div>
           </div>
         </div>
       </div>
@@ -105,12 +118,12 @@ export function DiffPreview({ selectedFileId }: DiffPreviewProps) {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.appBg, overflow: 'hidden' }}>
-      <DiffFileHeader file={file} viewMode={viewMode} setViewMode={setViewMode} />
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.appBg, overflow: 'hidden', minWidth: 0 }}>
+      <DiffFileHeader diff={diff} viewMode={viewMode} setViewMode={setViewMode} />
       <div style={{ flex: 1, overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <tbody>
-            {DIFF_LINES.map((line, index) => {
+            {diff.diffLines.map((line, index) => {
               if (line.type === 'hunk') {
                 return (
                   <tr key={index}>
@@ -163,9 +176,6 @@ export function DiffPreview({ selectedFileId }: DiffPreviewProps) {
             })}
           </tbody>
         </table>
-        <div style={{ padding: '8px 12px', color: C.textWeak, fontSize: 11, borderTop: `1px solid ${C.border}`, marginTop: 8 }}>
-          +{file.additions} -{file.deletions} · {file.size}
-        </div>
       </div>
     </div>
   );

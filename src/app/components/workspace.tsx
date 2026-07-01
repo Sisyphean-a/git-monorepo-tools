@@ -17,23 +17,34 @@ import {
   Upload,
   ChevronRight,
 } from 'lucide-react';
-import { mutateRepo } from '../api';
+import { fetchRepoDiff, fetchRepoLog, generateCommitCandidates, invokeLocalRepoAction, mutateRepo } from '../api';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
-import type { CommitCandidate, CommitSummary, FileChange, Repo, RepoDetail } from '../types';
+import { DiffPreview } from './diff-preview';
+import type { AppSettings, CommitCandidate, CommitSummary, FileChange, Repo, RepoDetail, RepoDiff, RepoLog } from '../types';
 
 type MainTab = 'changes' | 'staged' | 'history' | 'activity';
 
 interface WorkspaceProps {
   repoDetails: Record<string, RepoDetail>;
   commitCandidates: Record<string, CommitCandidate[]>;
+  settings: AppSettings;
   selectedRepoId: string;
   onRefresh: () => void;
   onOpenSettings: () => void;
+  onShowLog: (log: RepoLog) => void;
 }
 
-function ConflictBanner({ repo }: { repo: Repo }) {
+function ConflictBanner({
+  repo,
+  onOpenConflicts,
+  onViewLog,
+}: {
+  repo: Repo;
+  onOpenConflicts: () => void;
+  onViewLog: () => void;
+}) {
   return (
     <div
       style={{
@@ -55,10 +66,10 @@ function ConflictBanner({ repo }: { repo: Repo }) {
           为避免数据丢失，已跳过 Pull。请先手动解决冲突，再执行暂存和提交。
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button style={{ background: C.conflict, color: 'white', border: 'none', borderRadius: 5, padding: '4px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
+          <button onClick={onOpenConflicts} style={{ background: C.conflict, color: 'white', border: 'none', borderRadius: 5, padding: '4px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 500 }}>
             打开冲突处理器
           </button>
-          <button style={{ background: 'none', border: `1px solid ${C.conflict}50`, color: C.conflict, borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>
+          <button onClick={onViewLog} style={{ background: 'none', border: `1px solid ${C.conflict}50`, color: C.conflict, borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>
             查看日志
           </button>
         </div>
@@ -196,7 +207,15 @@ function summarizeFiles(files: FileChange[]) {
   };
 }
 
-export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRefresh, onOpenSettings }: WorkspaceProps) {
+export function Workspace({
+  repoDetails,
+  commitCandidates,
+  settings,
+  selectedRepoId,
+  onRefresh,
+  onOpenSettings,
+  onShowLog,
+}: WorkspaceProps) {
   const repoIds = Object.keys(repoDetails);
   const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
   const [mainTab, setMainTab] = useState<MainTab>('changes');
@@ -204,13 +223,41 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
   const [commitMessage, setCommitMessage] = useState('');
   const [stagedIds, setStagedIds] = useState<Set<string>>(new Set());
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [diff, setDiff] = useState<RepoDiff | null>(null);
+  const [loadingDiff, setLoadingDiff] = useState(false);
+  const [aiCandidates, setAiCandidates] = useState<CommitCandidate[]>([]);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     const nextFiles = repo?.files ?? [];
-    setSelectedFileId(nextFiles[0]?.id ?? null);
+    setSelectedFileId(current => {
+      const currentPath = current?.split('::')[0];
+      const matched = currentPath ? nextFiles.find(file => file.path === currentPath) : undefined;
+      return matched?.id ?? nextFiles[0]?.id ?? null;
+    });
     setStagedIds(new Set(nextFiles.filter(file => file.staged).map(file => file.id)));
     setCommitMessage('');
+    setAiCandidates([]);
+    setAiError(null);
   }, [repo?.id, repo?.scannedAt]);
+
+  useEffect(() => {
+    if (!repo || !selectedFileId) {
+      setDiff(null);
+      return;
+    }
+    const selectedFile = repo.files.find(file => file.id === selectedFileId);
+    if (!selectedFile) {
+      setDiff(null);
+      return;
+    }
+    setLoadingDiff(true);
+    void fetchRepoDiff(repo.id, settings, {
+      fileId: selectedFile.id,
+      filePath: selectedFile.path,
+      staged: stagedIds.has(selectedFile.id),
+    }).then(setDiff).finally(() => setLoadingDiff(false));
+  }, [repo?.id, repo?.scannedAt, selectedFileId, stagedIds, settings]);
 
   if (!repo) {
     return (
@@ -234,38 +281,67 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
     }
   };
 
+  const refreshAndSync = async () => {
+    await onRefresh();
+  };
+
   const handleToggleStaged = (id: string) => {
     const file = files.find(item => item.id === id);
     if (!file) return;
     void runAction('toggle-stage', async () => {
-      await mutateRepo(repo.id, file.staged ? 'unstage-file' : 'stage-file', { fileId: file.id, filePath: file.path });
-      onRefresh();
+      await mutateRepo(repo.id, file.staged ? 'unstage-file' : 'stage-file', settings, { fileId: file.id, filePath: file.path });
+      await refreshAndSync();
     });
   };
 
   const handleStageAll = () => void runAction('stage-all', async () => {
-    await mutateRepo(repo.id, 'stage-all');
-    onRefresh();
+    await mutateRepo(repo.id, 'stage-all', settings);
+    await refreshAndSync();
   });
   const handleUnstageAll = () => void runAction('unstage-all', async () => {
-    await mutateRepo(repo.id, 'unstage-all');
-    onRefresh();
+    await mutateRepo(repo.id, 'unstage-all', settings);
+    await refreshAndSync();
   });
   const handleCommit = () => void runAction('commit', async () => {
-    await mutateRepo(repo.id, 'commit', { message: commitMessage });
+    await mutateRepo(repo.id, 'commit', settings, { message: commitMessage });
     setCommitMessage('');
-    onRefresh();
+    await refreshAndSync();
   });
   const handlePull = () => void runAction('pull', async () => {
-    await mutateRepo(repo.id, 'pull');
-    onRefresh();
+    await mutateRepo(repo.id, 'pull', settings);
+    await refreshAndSync();
   });
   const handlePush = () => void runAction('push', async () => {
-    await mutateRepo(repo.id, 'push');
-    onRefresh();
+    await mutateRepo(repo.id, 'push', settings);
+    await refreshAndSync();
   });
-  const handleRefresh = () => void runAction('refresh', async () => {
-    onRefresh();
+  const handleRefresh = () => void runAction('refresh', refreshAndSync);
+  const handleOpenFolder = () => void runAction('open-folder', async () => {
+    await invokeLocalRepoAction(repo.id, 'open-folder', settings, repo.path);
+  });
+  const handleOpenTerminal = () => void runAction('open-terminal', async () => {
+    await invokeLocalRepoAction(repo.id, 'open-terminal', settings, repo.path);
+  });
+  const handleOpenConflicts = () => void runAction('open-conflicts', async () => {
+    await invokeLocalRepoAction(repo.id, 'open-conflicts', settings, repo.path);
+  });
+  const handleViewLog = () => void runAction('log', async () => {
+    const log = await fetchRepoLog(repo.id, settings);
+    if (log) onShowLog(log);
+  });
+  const handleGenerateCommit = (styleHint?: string) => void runAction('generate', async () => {
+    try {
+      setAiError(null);
+      const result = await generateCommitCandidates(repo.id, settings, styleHint);
+      setAiCandidates(styleHint && result.candidates.length === 1 && aiCandidates.length > 0
+        ? aiCandidates.map(candidate => candidate.style === styleHint ? result.candidates[0] : candidate)
+        : result.candidates);
+      if (!styleHint && result.candidates[0]) {
+        setCommitMessage(result.candidates[0].full);
+      }
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'AI 生成失败');
+    }
   });
 
   const totalAdded = fileSummary.added;
@@ -330,10 +406,10 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
-            <button style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={handleOpenFolder} style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
               <FolderOpen size={11} /> 文件夹
             </button>
-            <button style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={handleOpenTerminal} style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Terminal size={11} /> 终端
             </button>
             <button
@@ -360,7 +436,7 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
         <ToolbarBtn label="全部暂存" icon={<PlusSquare size={12} />} onClick={handleStageAll} disabled={busyAction !== null || files.length === 0 || stagedIds.size === files.length} />
         <ToolbarBtn label="全部取消暂存" icon={<MinusSquare size={12} />} onClick={handleUnstageAll} disabled={busyAction !== null || stagedIds.size === 0} />
         <div style={{ width: 1, height: 18, background: C.border, margin: '0 2px' }} />
-        <ToolbarBtn label={busyAction === 'generate' ? '生成中…' : '生成 AI 提交信息'} icon={<Sparkles size={12} />} disabled={busyAction !== null || !hasStaged} accent onClick={() => setMainTab('changes')} />
+        <ToolbarBtn label={busyAction === 'generate' ? '生成中…' : '生成 AI 提交信息'} icon={<Sparkles size={12} />} disabled={busyAction !== null || !hasStaged} accent onClick={() => handleGenerateCommit()} />
         <ToolbarBtn label={busyAction === 'commit' ? '提交中…' : '提交'} icon={<GitCommit size={12} />} disabled={busyAction !== null || !hasStaged || !hasCommitMsg} primary onClick={handleCommit} />
         <div style={{ width: 1, height: 18, background: C.border, margin: '0 2px' }} />
         <ToolbarBtn label={busyAction === 'pull' ? 'Pull 中…' : 'Pull'} icon={<Download size={12} />} disabled={busyAction !== null} warning={hasPull && repo.modified > 0} onClick={handlePull} />
@@ -375,7 +451,7 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
         </button>
       </div>
 
-      {isConflict && <ConflictBanner repo={repo} />}
+      {isConflict && <ConflictBanner repo={repo} onOpenConflicts={handleOpenConflicts} onViewLog={handleViewLog} />}
 
       <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}`, background: C.panel1, flexShrink: 0, padding: '0 14px' }}>
         {mainTabs.map(tab => (
@@ -417,13 +493,23 @@ export function Workspace({ repoDetails, commitCandidates, selectedRepoId, onRef
             onStageAll={handleStageAll}
             onUnstageAll={handleUnstageAll}
           />
-          <AiCommitPanel
-            stagedCount={stagedIds.size}
-            stagedPaths={stagedFiles.map(file => file.path)}
-            candidates={repoCommitCandidates}
-            message={commitMessage}
-            onMessageChange={setCommitMessage}
-          />
+          <div style={{ flex: 1.1, minWidth: 0, display: 'flex', borderRight: `1px solid ${C.border}` }}>
+            <DiffPreview diff={diff} loading={loadingDiff} />
+          </div>
+          <div style={{ width: 360, flexShrink: 0, display: 'flex' }}>
+            <AiCommitPanel
+              settings={settings}
+              stagedCount={stagedIds.size}
+              stagedPaths={stagedFiles.map(file => file.path)}
+              candidates={aiCandidates.length > 0 ? aiCandidates : repoCommitCandidates}
+              loading={busyAction === 'generate'}
+              message={commitMessage}
+              error={aiError}
+              onGenerate={() => handleGenerateCommit()}
+              onRegenerateStyle={style => handleGenerateCommit(style)}
+              onMessageChange={setCommitMessage}
+            />
+          </div>
         </div>
       )}
     </div>

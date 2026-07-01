@@ -1,20 +1,22 @@
 schema_version: 1
 goal: "git-manager-ui-clone"
-status: active
-objective: "完成当前项目的 UI 复刻，使其与 E:\\其他\\figma-ui 的样式和交互一致，并使用真实本地 Git 数据而不是 mock 数据。"
-start_point: "当前仓库已有可运行前端壳，但仓库列表、差异列表、历史和批量结果最初都来自 mock 数据，未满足 owner 对真实数据的要求。"
+status: complete
+objective: "完成当前项目的 UI 复刻，使其与 E:\其他\figma-ui 的样式和交互一致，并补齐真实 diff 预览、空按钮本地能力、设置持久化和自动扫描。"
+start_point: "当前仓库已接入真实本地 Git 数据与本地 Git API，但 diff 预览仍依赖静态快照，多个按钮未接真实能力，设置仅存在于前端 state，自动扫描未实际生效。"
 acceptance:
-  - "应用可启动并展示与参考 UI 一致的主界面。"
-  - "左侧仓库栏、右侧工作区、Pull All 抽屉、Settings 弹窗等核心界面保持参考 UI 的结构与视觉层级。"
-  - "仓库列表、差异列表、提交历史、Pull All 结果等展示真实本地 Git 数据，而不是参考项目里的 mock 常量。"
-  - "当前阶段产物已提交并推送到远端。"
+  - "Diff 预览展示当前选中仓库与文件的真实内容，而不是静态 data.ts 常量。"
+  - "现有空按钮接到真实本地能力，包括文件夹、终端、日志、重试与新增入口。"
+  - "设置面板关键配置可持久化，并驱动真实行为，至少覆盖自动扫描和 AI 提交配置。"
+  - "自动扫描按设置生效并刷新界面。"
+  - "完成 Task agent 功能验收。"
 non_goals:
-  - "不改造参考项目本身。"
+  - "不改造成 Electron 桌面壳。"
+  - "不重做参考 UI 视觉。"
 budget:
   kind: none
   limit: null
-current_iteration: 3
-next_action: "补齐真实 Git 操作通道（stage/unstage/commit/pull/push/refresh），消除仍停留在前端本地状态的交互。"
+current_iteration: 4
+next_action: "执行功能验收；若通过则提交并推送当前版本。"
 blocker_signature: null
 blocker_count: 0
 owner_stop: null

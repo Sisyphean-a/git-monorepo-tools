@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  FolderPlus,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
@@ -15,19 +16,23 @@ import {
   Upload,
 } from 'lucide-react';
 import { C } from '../theme';
-import type { Repo } from '../types';
+import { formatAutoScanLabel } from '../settings';
+import type { AppSettings, Repo } from '../types';
 import { StatusPill } from './common';
 
 interface SidebarProps {
   repos: Repo[];
   categories: string[];
   scannedAt: string;
+  settings: AppSettings;
   selectedRepoId: string;
   onSelectRepo: (id: string) => void;
   onPullAll: () => void;
   onPushAll: () => void;
   onRefresh: () => void;
   onOpenSettings: () => void;
+  onOpenAddMenu: () => void;
+  onToggleAutoScan: () => void;
 }
 
 function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; onClick: () => void }) {
@@ -173,15 +178,17 @@ export function Sidebar({
   repos,
   categories,
   scannedAt,
+  settings,
   selectedRepoId,
   onSelectRepo,
   onPullAll,
   onPushAll,
   onRefresh,
   onOpenSettings,
+  onOpenAddMenu,
+  onToggleAutoScan,
 }: SidebarProps) {
   const [search, setSearch] = useState('');
-  const [autoScan, setAutoScan] = useState(true);
 
   const totalChanged = repos.filter(repo => repo.modified > 0 || repo.conflicts > 0).length;
   const totalPush = repos.filter(repo => repo.ahead > 0).length;
@@ -230,7 +237,7 @@ export function Sidebar({
             </span>
           </div>
           <button
-            onClick={() => {}}
+            onClick={onOpenAddMenu}
             style={{
               background: C.panel2,
               border: `1px solid ${C.border}`,
@@ -244,7 +251,7 @@ export function Sidebar({
               alignItems: 'center',
             }}
           >
-            <Plus size={13} />
+            <FolderPlus size={13} />
           </button>
         </div>
         <div style={{ color: C.textWeak, fontSize: 11, marginBottom: 10 }}>
@@ -291,7 +298,6 @@ export function Sidebar({
         ) : (
           categories.map(category => {
             const categoryRepos = repos.filter(repo => repo.category === category);
-            if (categoryRepos.length === 0) return null;
             return (
               <CategoryGroup
                 key={category}
@@ -371,13 +377,13 @@ export function Sidebar({
           </button>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
             <div
-              onClick={() => setAutoScan(value => !value)}
+              onClick={onToggleAutoScan}
               style={{
                 width: 28,
                 height: 16,
                 borderRadius: 8,
-                background: autoScan ? C.btnPrimary : C.panel3,
-                border: `1px solid ${autoScan ? C.btnPrimary : C.border}`,
+                background: settings.gitBehavior.autoScanEnabled ? C.btnPrimary : C.panel3,
+                border: `1px solid ${settings.gitBehavior.autoScanEnabled ? C.btnPrimary : C.border}`,
                 cursor: 'pointer',
                 position: 'relative',
                 transition: 'all 0.15s',
@@ -388,7 +394,7 @@ export function Sidebar({
                 style={{
                   position: 'absolute',
                   top: 2,
-                  left: autoScan ? 13 : 2,
+                  left: settings.gitBehavior.autoScanEnabled ? 13 : 2,
                   width: 10,
                   height: 10,
                   borderRadius: '50%',
@@ -397,7 +403,7 @@ export function Sidebar({
                 }}
               />
             </div>
-            <span style={{ color: C.textWeak, fontSize: 11 }}>自动扫描：60 秒</span>
+            <span style={{ color: C.textWeak, fontSize: 11 }}>{formatAutoScanLabel(settings)}</span>
           </div>
           <button onClick={onOpenSettings} style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', display: 'flex' }}>
             <Settings size={14} />

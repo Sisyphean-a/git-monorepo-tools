@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye, EyeOff, Plus, Trash2, GripVertical, X } from 'lucide-react';
 import { C } from '../theme';
-import type { Repo } from '../types';
+import type { AppSettings, Repo, SettingsTab } from '../types';
 
 interface SettingsModalProps {
   repos: Repo[];
+  settings: AppSettings;
   open: boolean;
+  initialTab?: SettingsTab;
   onClose: () => void;
+  onSave: (settings: AppSettings) => void;
+  onAddScanRoot: () => Promise<void>;
+  onAddCategory: () => void;
+  onRemoveScanRoot: (path: string) => void;
 }
-
-type SettingsTab = 'repositories' | 'ai-commit' | 'git-behavior';
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -136,20 +140,89 @@ function FormRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function RepositoriesTab({ repos }: { repos: Repo[] }) {
+function RepositoriesTab({
+  repos,
+  settings,
+  onAddScanRoot,
+  onAddCategory,
+  onRemoveScanRoot,
+}: {
+  repos: Repo[];
+  settings: AppSettings;
+  onAddScanRoot: () => Promise<void>;
+  onAddCategory: () => void;
+  onRemoveScanRoot: (path: string) => void;
+}) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <span style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>仓库（{repos.length}）</span>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button style={{ background: C.panel1, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 5, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            onClick={() => void onAddScanRoot()}
+            style={{ background: C.panel1, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 5, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+          >
             <Plus size={11} /> 添加文件夹
           </button>
-          <button style={{ background: C.btnPrimary, border: 'none', color: 'white', borderRadius: 5, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={11} /> 添加仓库
+          <button
+            onClick={onAddCategory}
+            style={{ background: C.btnPrimary, border: 'none', color: 'white', borderRadius: 5, padding: '5px 10px', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <Plus size={11} /> 添加分类
           </button>
         </div>
       </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>已配置扫描目录（{settings.scanRoots.length}）</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {settings.scanRoots.length === 0 && (
+            <div style={{ color: C.textWeak, fontSize: 11, background: C.panel1, border: `1px dashed ${C.border}`, borderRadius: 6, padding: '10px 12px' }}>
+              当前仅扫描默认工作区。可添加本地目录补充仓库来源。
+            </div>
+          )}
+          {settings.scanRoots.map(root => (
+            <div
+              key={root.path}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: C.panel1,
+                border: `1px solid ${C.border}`,
+                borderRadius: 6,
+                padding: '8px 10px',
+              }}
+            >
+              <GripVertical size={12} color={C.textWeak} style={{ cursor: 'grab', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: C.textPrimary, fontSize: 12, fontWeight: 500 }}>{root.category}</div>
+                <div style={{ color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {root.path}
+                </div>
+              </div>
+              <button onClick={() => onRemoveScanRoot(root.path)} style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>自定义分类（{settings.customCategories.length}）</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {settings.customCategories.length === 0 && (
+            <span style={{ color: C.textWeak, fontSize: 11 }}>当前没有额外分类</span>
+          )}
+          {settings.customCategories.map(category => (
+            <span key={category} style={{ color: C.textSecondary, fontSize: 11, background: C.panel1, border: `1px solid ${C.border}`, borderRadius: 999, padding: '4px 10px' }}>
+              {category}
+            </span>
+          ))}
+        </div>
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {repos.map(repo => (
           <div
@@ -174,9 +247,6 @@ function RepositoriesTab({ repos }: { repos: Repo[] }) {
             <span style={{ color: C.textWeak, fontSize: 10, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 3, padding: '2px 6px', flexShrink: 0 }}>
               {repo.category}
             </span>
-            <button style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
-              <Trash2 size={12} />
-            </button>
           </div>
         ))}
       </div>
@@ -184,25 +254,23 @@ function RepositoriesTab({ repos }: { repos: Repo[] }) {
   );
 }
 
-function AICommitTab() {
-  const [apiKey, setApiKey] = useState('sk-••••••••••••••••••••••••••••••');
+function AICommitTab({
+  draft,
+  setDraft,
+}: {
+  draft: AppSettings;
+  setDraft: React.Dispatch<React.SetStateAction<AppSettings>>;
+}) {
   const [showKey, setShowKey] = useState(false);
-  const [baseUrl, setBaseUrl] = useState('https://api.deepseek.com');
-  const [model, setModel] = useState('deepseek-chat');
-  const [maxDiff, setMaxDiff] = useState('8000');
-  const [gen3, setGen3] = useState(true);
-  const [stagedOnly, setStagedOnly] = useState(true);
-  const [prompt, setPrompt] = useState(
-    '你是 Git 提交信息生成器。请分析下面已暂存的 Diff，并生成简洁的提交信息。输出 3 条不同风格的候选，包括表情风格、短句风格和约定式提交风格。'
-  );
+  const ai = draft.aiCommit;
 
   return (
     <div>
       <FormRow label="API 密钥">
         <div style={{ position: 'relative' }}>
           <input
-            value={showKey ? 'sk-abcdefghij1234567890abcdefghij12' : apiKey}
-            onChange={e => setApiKey(e.target.value)}
+            value={ai.apiKey}
+            onChange={e => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, apiKey: e.target.value } }))}
             type={showKey ? 'text' : 'password'}
             placeholder="sk-..."
             style={{
@@ -211,17 +279,11 @@ function AICommitTab() {
               border: `1px solid ${C.border}`,
               borderRadius: 6,
               padding: '8px 36px 8px 10px',
-              color: C.textPrimary,
+              color: ai.apiKey ? C.textPrimary : C.textWeak,
               fontSize: 12,
               outline: 'none',
               fontFamily: 'JetBrains Mono, monospace',
               boxSizing: 'border-box',
-            }}
-            onFocus={e => {
-              e.target.style.borderColor = C.btnPrimary;
-            }}
-            onBlur={e => {
-              e.target.style.borderColor = C.border;
             }}
           />
           <button
@@ -243,12 +305,12 @@ function AICommitTab() {
         </div>
       </FormRow>
       <FormRow label="基础 URL">
-        <Input value={baseUrl} onChange={setBaseUrl} monospace />
+        <Input value={ai.baseUrl} onChange={value => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, baseUrl: value } }))} monospace />
       </FormRow>
       <FormRow label="模型">
         <Select
-          value={model}
-          onChange={setModel}
+          value={ai.model}
+          onChange={value => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, model: value } }))}
           options={[
             { value: 'deepseek-chat', label: 'deepseek-chat' },
             { value: 'deepseek-v4-flash', label: 'deepseek-v4-flash' },
@@ -259,8 +321,8 @@ function AICommitTab() {
       </FormRow>
       <FormRow label="提示词模板">
         <textarea
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
+          value={ai.promptTemplate}
+          onChange={e => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, promptTemplate: e.target.value } }))}
           style={{
             width: '100%',
             background: C.panel1,
@@ -276,17 +338,20 @@ function AICommitTab() {
             minHeight: 90,
             lineHeight: 1.6,
           }}
-          onFocus={e => {
-            e.target.style.borderColor = C.btnPrimary;
-          }}
-          onBlur={e => {
-            e.target.style.borderColor = C.border;
-          }}
         />
       </FormRow>
       <FormRow label="Diff 最大字符数">
-        <Input value={maxDiff} onChange={setMaxDiff} monospace />
-        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>较大的 Diff 会在发送前截断到这个长度</div>
+        <Select
+          value={String(ai.maxDiffChars)}
+          onChange={value => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, maxDiffChars: Number(value) } }))}
+          options={[
+            { value: '2000', label: '2000' },
+            { value: '4000', label: '4000' },
+            { value: '8000', label: '8000' },
+            { value: '12000', label: '12000' },
+            { value: '20000', label: '20000' },
+          ]}
+        />
       </FormRow>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -294,70 +359,79 @@ function AICommitTab() {
             <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>生成 3 条提交候选</div>
             <div style={{ color: C.textWeak, fontSize: 11 }}>返回表情、标准短句和约定式提交三种格式</div>
           </div>
-          <Toggle checked={gen3} onChange={() => setGen3(value => !value)} />
+          <Toggle checked={ai.generateThree} onChange={() => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, generateThree: !current.aiCommit.generateThree } }))} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>仅使用已暂存变更</div>
             <div style={{ color: C.textWeak, fontSize: 11 }}>只将已暂存文件的 Diff 发送给 AI</div>
           </div>
-          <Toggle checked={stagedOnly} onChange={() => setStagedOnly(value => !value)} />
+          <Toggle checked={ai.stagedOnly} onChange={() => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, stagedOnly: !current.aiCommit.stagedOnly } }))} />
         </div>
       </div>
     </div>
   );
 }
 
-function GitBehaviorTab() {
-  const [scanInterval, setScanInterval] = useState('60');
-  const [pullStrategy, setPullStrategy] = useState('ff-only');
-  const [pushStrategy, setPushStrategy] = useState('upstream-only');
-  const [concurrency, setConcurrency] = useState('3');
-  const [timeout, setTimeout] = useState('60');
+function GitBehaviorTab({
+  draft,
+  setDraft,
+}: {
+  draft: AppSettings;
+  setDraft: React.Dispatch<React.SetStateAction<AppSettings>>;
+}) {
+  const gitBehavior = draft.gitBehavior;
 
   return (
     <div>
+      <FormRow label="自动扫描">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>启用自动扫描</div>
+            <div style={{ color: C.textWeak, fontSize: 11 }}>按间隔刷新真实仓库状态</div>
+          </div>
+          <Toggle checked={gitBehavior.autoScanEnabled} onChange={() => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, autoScanEnabled: !current.gitBehavior.autoScanEnabled } }))} />
+        </div>
+      </FormRow>
       <FormRow label="自动扫描间隔">
         <Select
-          value={scanInterval}
-          onChange={setScanInterval}
+          value={String(gitBehavior.autoScanIntervalSeconds)}
+          onChange={value => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, autoScanIntervalSeconds: Number(value) } }))}
           options={[
             { value: '30', label: '30 秒' },
             { value: '60', label: '60 秒' },
             { value: '120', label: '120 秒' },
-            { value: '0', label: '仅手动' },
+            { value: '300', label: '300 秒' },
           ]}
         />
       </FormRow>
       <FormRow label="批量 Pull 策略">
         <Select
-          value={pullStrategy}
-          onChange={setPullStrategy}
+          value={gitBehavior.pullStrategy}
+          onChange={value => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, pullStrategy: value as AppSettings['gitBehavior']['pullStrategy'] } }))}
           options={[
             { value: 'ff-only', label: '仅 Fast-forward（推荐）' },
             { value: 'rebase', label: '变基' },
             { value: 'merge', label: '合并' },
           ]}
         />
-        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>有本地改动或历史分叉的仓库会被跳过</div>
       </FormRow>
       <FormRow label="批量 Push 策略">
         <Select
-          value={pushStrategy}
-          onChange={setPushStrategy}
+          value={gitBehavior.pushStrategy}
+          onChange={value => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, pushStrategy: value as AppSettings['gitBehavior']['pushStrategy'] } }))}
           options={[
             { value: 'upstream-only', label: '仅推送有 upstream 的分支（推荐）' },
             { value: 'all', label: '推送所有领先分支' },
           ]}
         />
-        <div style={{ color: C.textWeak, fontSize: 10, marginTop: 3 }}>没有远端 upstream 的分支会被跳过</div>
       </FormRow>
       <div style={{ display: 'flex', gap: 12 }}>
         <div style={{ flex: 1 }}>
           <FormRow label="并发数">
             <Select
-              value={concurrency}
-              onChange={setConcurrency}
+              value={String(gitBehavior.concurrency)}
+              onChange={value => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, concurrency: Number(value) } }))}
               options={[
                 { value: '1', label: '1（串行）' },
                 { value: '2', label: '2' },
@@ -370,8 +444,8 @@ function GitBehaviorTab() {
         <div style={{ flex: 1 }}>
           <FormRow label="操作超时">
             <Select
-              value={timeout}
-              onChange={setTimeout}
+              value={String(gitBehavior.timeoutSeconds)}
+              onChange={value => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, timeoutSeconds: Number(value) } }))}
               options={[
                 { value: '30', label: '30 秒' },
                 { value: '60', label: '60 秒' },
@@ -385,8 +459,25 @@ function GitBehaviorTab() {
   );
 }
 
-export function SettingsModal({ repos, open, onClose }: SettingsModalProps) {
-  const [tab, setTab] = useState<SettingsTab>('ai-commit');
+export function SettingsModal({
+  repos,
+  settings,
+  open,
+  initialTab = 'ai-commit',
+  onClose,
+  onSave,
+  onAddScanRoot,
+  onAddCategory,
+  onRemoveScanRoot,
+}: SettingsModalProps) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
+  const [draft, setDraft] = useState(settings);
+
+  useEffect(() => {
+    if (!open) return;
+    setDraft(settings);
+    setTab(initialTab);
+  }, [settings, open, initialTab]);
 
   if (!open) return null;
 
@@ -454,9 +545,17 @@ export function SettingsModal({ repos, open, onClose }: SettingsModalProps) {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
-            {tab === 'repositories' && <RepositoriesTab repos={repos} />}
-            {tab === 'ai-commit' && <AICommitTab />}
-            {tab === 'git-behavior' && <GitBehaviorTab />}
+            {tab === 'repositories' && (
+              <RepositoriesTab
+                repos={repos}
+                settings={draft}
+                onAddScanRoot={onAddScanRoot}
+                onAddCategory={onAddCategory}
+                onRemoveScanRoot={onRemoveScanRoot}
+              />
+            )}
+            {tab === 'ai-commit' && <AICommitTab draft={draft} setDraft={setDraft} />}
+            {tab === 'git-behavior' && <GitBehaviorTab draft={draft} setDraft={setDraft} />}
           </div>
         </div>
 
@@ -476,7 +575,7 @@ export function SettingsModal({ repos, open, onClose }: SettingsModalProps) {
             取消
           </button>
           <button
-            onClick={onClose}
+            onClick={() => onSave(draft)}
             style={{
               background: C.btnPrimary,
               border: 'none',

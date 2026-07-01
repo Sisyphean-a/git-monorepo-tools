@@ -1,27 +1,44 @@
----
-doc_type: functional-acceptance
-goal: "git-manager-ui-clone"
-status: superseded
-reviewer: "独立 Task agent（原报告已撤销）"
-updated_at: "2026-07-01"
----
+# 功能验收报告
 
-# 功能验收
+## Reviewer
 
-## 结论
+独立 Task agent（explorer 子代理）
 
-`2026-06-30` 的这份 mock UI 验收已失效，不再作为当前 goal 的完成依据。
+## Scope
 
-## 撤销原因
+当前 goal 的 4 项验收标准：
 
-owner 后续明确指出“不能用 mock 数据”。因此，原报告中“所有交互仅依赖 mock 数据”这一前提与当前目标冲突，原先的 `pass` 结论必须撤销。
+- 真实 diff 预览。
+- 空按钮接真实本地能力。
+- 设置持久化并驱动真实行为。
+- 自动扫描按设置生效。
 
-## 当前状态
+## Acceptance Checks
 
-- 当前代码已经改为扫描真实本地 Git 仓库并生成数据快照，界面展示不再依赖参考项目的 mock 常量。
-- 当前 goal 仍处于 `active`，后续需要在真实 Git 操作链接入完成后重新做终态功能验收。
+- 通过：真实 diff 预览已接到 `fetchRepoDiff -> /api/repos/:id/diff -> buildRepoDiff/buildFilePreviewLines`，运行证据显示首仓首文件返回 48 行真实 diff，`view=unstaged`。
+- 通过：文件夹、终端、日志、重试、加号新增入口已接到真实本地能力，分别走 `invokeLocalRepoAction`、`fetchRepoLog`、`mutateRepo`、`pickFolder` 与本地 Vite API。
+- 通过：设置已通过 `src/app/settings.ts` 持久化到 `localStorage`，并驱动扫描目录、自动扫描间隔、pull/push 策略，以及 AI 提交的 API Key、Base URL、模型、提示词、候选数量、Diff 截断、stagedOnly 等真实行为。
+- 通过：自动扫描已由 `App.tsx` 中的定时 `useEffect` 按设置生效，侧栏开关与文案同步真实设置。
 
-## 对后续验收的要求
+## Functional Evidence
 
-- 需要以“真实本地 Git 数据 + 真实 Git 操作链 + 参考 UI 精准复刻”为标准重新验收。
-- 原 `001-page.png` 仅能证明旧版 mock UI 外观，不再代表当前完成态。
+- `npm run build`：通过。
+- 本地 `5700` 接口证据：
+  - `/api/snapshot` 返回 16 个真实仓库。
+  - 首仓首文件 `/api/repos/:id/diff` 返回 48 行真实 diff，`view=unstaged`。
+  - `/api/repos/:id/log` 返回真实日志，内容长度 7634。
+- AI 提交真实行为链路：
+  - `Workspace -> generateCommitCandidates -> /api/repos/:id/generate-commit -> generateAiCommitCandidates -> chat/completions` 已接通。
+  - 生成时会真实使用设置中的 `apiKey`、`baseUrl`、`model`、`promptTemplate`、`maxDiffChars`、`generateThree`、`stagedOnly`。
+
+## Verdict
+
+通过
+
+## Residual Risks
+
+- 无
+
+## Follow-up
+
+- 若 verdict 为通过，则提交并推送当前版本。

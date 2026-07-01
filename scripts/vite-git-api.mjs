@@ -1,15 +1,19 @@
 import {
   buildAppSnapshot,
+  buildRepoDiff,
   commitRepo,
+  generateAiCommitCandidates,
   pullAllRepos,
   pullRepo,
   pushAllRepos,
   pushRepo,
+  readRepoLog,
   stageAllRepo,
   stageRepoFile,
   unstageAllRepo,
   unstageRepoFile,
 } from './sync-real-data.mjs';
+import { openConflictTool, openFolder, openTerminal, pickFolder } from './local-system.mjs';
 
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -35,6 +39,9 @@ function ok(snapshot, extra = {}) {
 
 async function handleApiRequest(req, res, next) {
   const requestUrl = new URL(req.url, 'http://localhost');
+  const scanRoots = parseScanRoots(requestUrl.searchParams.get('scanRoots'));
+  const pullStrategy = requestUrl.searchParams.get('pullStrategy') ?? undefined;
+  const pushStrategy = requestUrl.searchParams.get('pushStrategy') ?? undefined;
   if (!requestUrl.pathname.startsWith('/api/')) {
     next();
     return;
@@ -42,19 +49,24 @@ async function handleApiRequest(req, res, next) {
 
   try {
     if (req.method === 'GET' && requestUrl.pathname === '/api/snapshot') {
-      sendJson(res, 200, ok(buildAppSnapshot()));
+      sendJson(res, 200, ok(buildAppSnapshot(undefined, undefined, scanRoots)));
       return;
     }
 
     if (req.method === 'POST' && requestUrl.pathname === '/api/batch/pull') {
-      const result = pullAllRepos();
+      const result = pullAllRepos(scanRoots, pullStrategy);
       sendJson(res, 200, ok(result.snapshot, { results: result.results, operation: 'pullAll' }));
       return;
     }
 
     if (req.method === 'POST' && requestUrl.pathname === '/api/batch/push') {
-      const result = pushAllRepos();
+      const result = pushAllRepos(scanRoots, pushStrategy);
       sendJson(res, 200, ok(result.snapshot, { results: result.results, operation: 'pushAll' }));
+      return;
+    }
+
+    if (req.method === 'POST' && requestUrl.pathname === '/api/system/pick-folder') {
+      sendJson(res, 200, { path: pickFolder() });
       return;
     }
 
@@ -72,14 +84,51 @@ async function handleApiRequest(req, res, next) {
       return;
     }
 
+    if (action === 'diff') {
+      sendJson(res, 200, { diff: buildRepoDiff(repoId, body.fileId, body.filePath, body.staged, scanRoots) });
+      return;
+    }
+
+    if (action === 'log') {
+      sendJson(res, 200, { log: readRepoLog(repoId, scanRoots) });
+      return;
+    }
+
+    if (action === 'generate-commit') {
+      const candidates = await generateAiCommitCandidates(repoId, body.aiCommit, scanRoots, body.styleHint);
+      sendJson(res, 200, { candidates });
+      return;
+    }
+
+    if (action === 'open-folder') {
+      ensurePath(body.path ?? requestUrl.searchParams.get('path'));
+      openFolder(body.path ?? requestUrl.searchParams.get('path'));
+      sendJson(res, 200, ok(buildAppSnapshot(undefined, undefined, scanRoots)));
+      return;
+    }
+
+    if (action === 'open-terminal') {
+      ensurePath(body.path ?? requestUrl.searchParams.get('path'));
+      openTerminal(body.path ?? requestUrl.searchParams.get('path'));
+      sendJson(res, 200, ok(buildAppSnapshot(undefined, undefined, scanRoots)));
+      return;
+    }
+
+    if (action === 'open-conflicts') {
+      ensurePath(body.path ?? requestUrl.searchParams.get('path'));
+      openConflictTool(body.path ?? requestUrl.searchParams.get('path'));
+      sendJson(res, 200, ok(buildAppSnapshot(undefined, undefined, scanRoots)));
+      return;
+    }
+
     const handlers = {
-      'stage-all': () => stageAllRepo(repoId),
-      'unstage-all': () => unstageAllRepo(repoId),
-      'stage-file': () => stageRepoFile(repoId, body.fileId, body.filePath),
-      'unstage-file': () => unstageRepoFile(repoId, body.fileId, body.filePath),
-      commit: () => commitRepo(repoId, body.message ?? ''),
-      pull: () => pullRepo(repoId),
-      push: () => pushRepo(repoId),
+      'stage-all': () => stageAllRepo(repoId, scanRoots),
+      'unstage-all': () => unstageAllRepo(repoId, scanRoots),
+      'stage-file': () => stageRepoFile(repoId, body.fileId, body.filePath, scanRoots),
+      'unstage-file': () => unstageRepoFile(repoId, body.fileId, body.filePath, scanRoots),
+      commit: () => commitRepo(repoId, body.message ?? '', scanRoots),
+      pull: () => pullRepo(repoId, scanRoots, pullStrategy),
+      push: () => pushRepo(repoId, scanRoots),
     };
 
     const handler = handlers[action];
@@ -91,6 +140,22 @@ async function handleApiRequest(req, res, next) {
     sendJson(res, 200, ok(handler()));
   } catch (error) {
     sendJson(res, 500, { error: error instanceof Error ? error.message : '请求失败' });
+  }
+}
+
+function parseScanRoots(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function ensurePath(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('缺少目标路径');
   }
 }
 
