@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GitMerge, Settings } from 'lucide-react';
 import { fetchRepoLog, fetchSnapshot, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch } from './api';
 import { C } from './theme';
@@ -87,6 +87,7 @@ export default function App() {
   const [drawerOperation, setDrawerOperation] = useState<'pullAll' | 'pushAll'>('pullAll');
   const [drawerResults, setDrawerResults] = useState<PullResult[]>([]);
   const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
+  const autoScanRunning = useRef(false);
 
   const applySnapshot = (nextSnapshot: AppSnapshot) => {
     setSnapshot(nextSnapshot);
@@ -207,8 +208,14 @@ export default function App() {
 
   useEffect(() => {
     if (!settings.gitBehavior.autoScanEnabled) return;
-    const timer = window.setInterval(() => {
-      void refreshSnapshot();
+    const timer = window.setInterval(async () => {
+      if (autoScanRunning.current) return;
+      autoScanRunning.current = true;
+      try {
+        await refreshSnapshot();
+      } finally {
+        autoScanRunning.current = false;
+      }
     }, settings.gitBehavior.autoScanIntervalSeconds * 1000);
     return () => window.clearInterval(timer);
   }, [settings]);

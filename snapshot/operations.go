@@ -169,6 +169,7 @@ func executePushAll(repo RepoDetail, strategy string) PullResult {
 
 func runGitStrict(repoPath string, args []string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", repoPath}, args...)...)
+	applyBackgroundProcessAttrs(cmd)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout

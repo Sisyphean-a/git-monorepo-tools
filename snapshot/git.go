@@ -25,6 +25,7 @@ type parsedStatus struct {
 
 func runGit(repoPath string, args []string) string {
 	cmd := exec.Command("git", append([]string{"-C", repoPath}, args...)...)
+	applyBackgroundProcessAttrs(cmd)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
@@ -64,24 +65,62 @@ func buildFileChanges(repoPath string, entries []string) []FileChange {
 }
 
 func buildHistory(repoPath string) []CommitSummary {
-	output := runGit(repoPath, []string{"log", "-5", "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s"})
+	output := runGit(repoPath, []string{"log", "-5", "--numstat", "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s"})
 	if strings.TrimSpace(output) == "" {
 		return nil
 	}
 	lines := filterNonEmpty(strings.Split(output, "\n"))
 	history := make([]CommitSummary, 0, len(lines))
+	var currentCommit *CommitSummary
 	for _, line := range lines {
-		parts := strings.Split(line, "\x1f")
-		if len(parts) < 5 {
+		if strings.Contains(line, "\x1f") {
+			if currentCommit != nil {
+				history = append(history, *currentCommit)
+			}
+			commit, ok := parseHistoryCommit(line)
+			if !ok {
+				currentCommit = nil
+				continue
+			}
+			currentCommit = &commit
 			continue
 		}
-		additions, deletions := buildCommitStats(repoPath, parts[0])
-		history = append(history, CommitSummary{
-			Hash: parts[0], ShortHash: parts[1], Author: parts[2], Time: parts[3],
-			Message: parts[4], Additions: additions, Deletions: deletions,
-		})
+		if currentCommit == nil {
+			continue
+		}
+		additions, deletions, ok := parseNumstatLine(line)
+		if !ok {
+			continue
+		}
+		currentCommit.Additions += additions
+		currentCommit.Deletions += deletions
+	}
+	if currentCommit != nil {
+		history = append(history, *currentCommit)
 	}
 	return history
+}
+
+func parseHistoryCommit(line string) (CommitSummary, bool) {
+	parts := strings.Split(line, "\x1f")
+	if len(parts) < 5 {
+		return CommitSummary{}, false
+	}
+	return CommitSummary{
+		Hash:      parts[0],
+		ShortHash: parts[1],
+		Author:    parts[2],
+		Time:      parts[3],
+		Message:   parts[4],
+	}, true
+}
+
+func parseNumstatLine(line string) (int, int, bool) {
+	parts := strings.Split(line, "\t")
+	if len(parts) != 3 {
+		return 0, 0, false
+	}
+	return toNumber(parts[0]), toNumber(parts[1]), true
 }
 
 func buildPullResult(repo Repo, repoPath string) PullResult {
@@ -203,18 +242,6 @@ func listFiles(repoPath, rootPath string) []string {
 		}
 	}
 	return files
-}
-
-func buildCommitStats(repoPath, hash string) (int, int) {
-	output := runGit(repoPath, []string{"show", "--shortstat", "--format=", hash})
-	line := ""
-	for _, candidate := range strings.Split(output, "\n") {
-		if strings.Contains(candidate, "file changed") || strings.Contains(candidate, "files changed") {
-			line = candidate
-			break
-		}
-	}
-	return extractShortstat(line, `(\d+)\sinsertions?\(\+\)`), extractShortstat(line, `(\d+)\sdeletions?\(-\)`)
 }
 
 func extractBranch(line string) string {
