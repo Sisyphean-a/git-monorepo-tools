@@ -1,16 +1,12 @@
-import { useState } from 'react';
-import { CheckSquare, Minus, Plus, Search, Square } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { C } from '../theme';
 import type { FileChange, FileStatus } from '../types';
-
-type FilterType = 'all' | 'unstaged' | 'staged' | 'added' | 'modified' | 'deleted';
 
 interface DiffListProps {
   files: FileChange[];
   stagedIds: Set<string>;
   onToggleStaged: (id: string) => void;
-  onStageAll: () => void;
-  onUnstageAll: () => void;
 }
 
 function StatusTag({ status }: { status: FileStatus }) {
@@ -43,6 +39,14 @@ function StatusTag({ status }: { status: FileStatus }) {
   );
 }
 
+function summarizeSection(files: FileChange[]) {
+  return files.reduce((summary, file) => ({
+    count: summary.count + 1,
+    additions: summary.additions + file.additions,
+    deletions: summary.deletions + file.deletions,
+  }), { count: 0, additions: 0, deletions: 0 });
+}
+
 function FileRow({
   file,
   isStaged,
@@ -58,30 +62,27 @@ function FileRow({
   const dirPath = pathParts.join('/');
 
   return (
-    <div
+    <button
+      type="button"
+      title={isStaged ? '点击取消暂存' : '点击暂存'}
+      onClick={onToggleStage}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
+        width: '100%',
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
-        padding: '7px 10px',
+        gap: 8,
+        padding: '8px 10px',
         background: hovered ? C.hoverBg : 'transparent',
-        cursor: 'default',
+        border: 'none',
+        cursor: 'pointer',
         borderRadius: 4,
         borderLeft: isStaged ? `2px solid ${C.btnPrimary}40` : '2px solid transparent',
         transition: 'background 0.08s',
+        textAlign: 'left',
       }}
     >
-      <button
-        onClick={e => {
-          e.stopPropagation();
-          onToggleStage();
-        }}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0, display: 'flex', color: C.textWeak }}
-      >
-        {isStaged ? <CheckSquare size={13} color={C.btnPrimary} /> : <Square size={13} color={C.textWeak} />}
-      </button>
       <StatusTag status={file.status} />
       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <div
@@ -105,88 +106,57 @@ function FileRow({
         {file.additions > 0 && <span style={{ color: C.added, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>+{file.additions}</span>}
         {file.deletions > 0 && <span style={{ color: C.deleted, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>-{file.deletions}</span>}
         <span style={{ color: C.textWeak, fontSize: 10, minWidth: 44, textAlign: 'right' }}>{file.size}</span>
+        {hovered && <span style={{ color: C.btnPrimary, fontSize: 10 }}>{isStaged ? '取消暂存' : '暂存'}</span>}
       </div>
-    </div>
+    </button>
   );
 }
 
-export function DiffList({ files, stagedIds, onToggleStaged, onStageAll, onUnstageAll }: DiffListProps) {
-  const [filter, setFilter] = useState<FilterType>('all');
+function ChangeSection({
+  title,
+  files,
+  stagedIds,
+  onToggleStaged,
+}: {
+  title: string;
+  files: FileChange[];
+  stagedIds: Set<string>;
+  onToggleStaged: (id: string) => void;
+}) {
+  if (files.length === 0) return null;
+  const summary = summarizeSection(files);
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px 6px', borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ color: C.textSecondary, fontSize: 11, fontWeight: 600 }}>{title}</span>
+        <span style={{ color: C.textWeak, fontSize: 11 }}>{summary.count}</span>
+        <span style={{ color: C.added, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>+{summary.additions}</span>
+        <span style={{ color: C.deleted, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>-{summary.deletions}</span>
+      </div>
+      <div style={{ padding: '4px 0 8px' }}>
+        {files.map(file => (
+          <FileRow
+            key={file.id}
+            file={file}
+            isStaged={stagedIds.has(file.id)}
+            onToggleStage={() => onToggleStaged(file.id)}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+export function DiffList({ files, stagedIds, onToggleStaged }: DiffListProps) {
   const [search, setSearch] = useState('');
-
-  const allFiles = files;
-  const totalAdded = allFiles.filter(file => file.status === 'A').length;
-  const totalModified = allFiles.filter(file => file.status === 'M').length;
-  const totalDeleted = allFiles.filter(file => file.status === 'D').length;
-  const totalStaged = stagedIds.size;
-  const totalUnstaged = allFiles.length - totalStaged;
-
-  const chips: { key: FilterType; label: string; count: number }[] = [
-    { key: 'all', label: '全部', count: allFiles.length },
-    { key: 'unstaged', label: '未暂存', count: totalUnstaged },
-    { key: 'staged', label: '已暂存', count: totalStaged },
-    { key: 'added', label: '新增', count: totalAdded },
-    { key: 'modified', label: '修改', count: totalModified },
-    { key: 'deleted', label: '删除', count: totalDeleted },
-  ];
-
-  const filtered = allFiles.filter(file => {
-    const matchSearch = !search || file.path.toLowerCase().includes(search.toLowerCase());
-    const matchFilter =
-      filter === 'all' ? true :
-      filter === 'staged' ? stagedIds.has(file.id) :
-      filter === 'unstaged' ? !stagedIds.has(file.id) :
-      filter === 'added' ? file.status === 'A' :
-      filter === 'modified' ? file.status === 'M' :
-      filter === 'deleted' ? file.status === 'D' : true;
-    return matchSearch && matchFilter;
-  });
+  const filtered = useMemo(
+    () => files.filter(file => !search || file.path.toLowerCase().includes(search.toLowerCase())),
+    [files, search],
+  );
 
   const stagedFiles = filtered.filter(file => stagedIds.has(file.id));
   const unstagedFiles = filtered.filter(file => !stagedIds.has(file.id));
-
-  const SectionHeader = ({
-    title,
-    count,
-    totalAdd,
-    totalDel,
-    onStage,
-    onUnstage,
-    isStaged,
-  }: {
-    title: string;
-    count: number;
-    totalAdd: number;
-    totalDel: number;
-    onStage?: () => void;
-    onUnstage?: () => void;
-    isStaged?: boolean;
-  }) => (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '6px 10px 4px',
-        borderBottom: `1px solid ${C.border}`,
-      }}
-    >
-      <span style={{ color: C.textSecondary, fontSize: 11, fontWeight: 600, flex: 1 }}>
-        {title}{' '}
-        <span style={{ color: C.textWeak }}>
-          ({count} 个文件 · <span style={{ color: C.added }}>+{totalAdd}</span> <span style={{ color: C.deleted }}>-{totalDel}</span>)
-        </span>
-      </span>
-      {isStaged ? (
-        <button onClick={onUnstage} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textWeak, fontSize: 10, padding: '2px 4px' }}>
-          全部取消暂存
-        </button>
-      ) : (
-        <button onClick={onStage} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textWeak, fontSize: 10, padding: '2px 4px' }}>
-          全部暂存
-        </button>
-      )}
-    </div>
-  );
 
   return (
     <div
@@ -202,137 +172,39 @@ export function DiffList({ files, stagedIds, onToggleStaged, onStageAll, onUnsta
         overflow: 'hidden',
       }}
     >
-      <div style={{ padding: '10px 10px 0', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <span style={{ color: C.textPrimary, fontSize: 12, fontWeight: 600 }}>
-            差异列表 <span style={{ color: C.textWeak }}>{allFiles.length} / {allFiles.length}</span>
-          </span>
-          <div style={{ flex: 1 }} />
-          <div style={{ position: 'relative' }}>
-            <Search size={11} color={C.textWeak} style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="搜索路径或类型"
-              style={{
-                background: C.panel2,
-                border: `1px solid ${C.border}`,
-                borderRadius: 5,
-                padding: '4px 8px 4px 22px',
-                color: C.textSecondary,
-                fontSize: 11,
-                outline: 'none',
-                width: 140,
-                fontFamily: 'Inter, sans-serif',
-              }}
-            />
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 4, paddingBottom: 8, flexWrap: 'wrap' }}>
-          {chips.map(chip => (
-            <button
-              key={chip.key}
-              onClick={() => setFilter(chip.key)}
-              style={{
-                background: filter === chip.key ? `${C.btnPrimary}22` : C.panel2,
-                border: `1px solid ${filter === chip.key ? C.btnPrimary : C.border}`,
-                color: filter === chip.key ? C.btnPrimary : C.textWeak,
-                borderRadius: 4,
-                padding: '3px 8px',
-                cursor: 'pointer',
-                fontSize: 11,
-                transition: 'all 0.1s',
-              }}
-            >
-              {chip.label} <span style={{ opacity: 0.7 }}>{chip.count}</span>
-            </button>
-          ))}
+      <div style={{ padding: '10px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ position: 'relative' }}>
+          <Search size={11} color={C.textWeak} style={{ position: 'absolute', left: 7, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="搜索路径"
+            style={{
+              width: '100%',
+              background: C.panel2,
+              border: `1px solid ${C.border}`,
+              borderRadius: 6,
+              padding: '6px 8px 6px 22px',
+              color: C.textSecondary,
+              fontSize: 11,
+              outline: 'none',
+              fontFamily: 'Inter, sans-serif',
+              boxSizing: 'border-box',
+            }}
+          />
         </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-        {(filter === 'all' || filter === 'staged') && stagedFiles.length > 0 && (
-          <>
-            <SectionHeader
-              title="已暂存变更"
-              count={stagedFiles.length}
-              totalAdd={stagedFiles.reduce((sum, file) => sum + file.additions, 0)}
-              totalDel={stagedFiles.reduce((sum, file) => sum + file.deletions, 0)}
-              isStaged
-              onUnstage={onUnstageAll}
-            />
-            <div style={{ padding: '2px 0' }}>
-              {stagedFiles.map(file => (
-                <FileRow
-                  key={file.id}
-                  file={file}
-                  isStaged
-                  onToggleStage={() => onToggleStaged(file.id)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        {(filter === 'all' || filter === 'unstaged') && unstagedFiles.length > 0 && (
-          <>
-            <SectionHeader
-              title="未暂存变更"
-              count={unstagedFiles.length}
-              totalAdd={unstagedFiles.reduce((sum, file) => sum + file.additions, 0)}
-              totalDel={unstagedFiles.reduce((sum, file) => sum + file.deletions, 0)}
-              onStage={onStageAll}
-              isStaged={false}
-            />
-            <div style={{ padding: '2px 0' }}>
-              {unstagedFiles.map(file => (
-                <FileRow
-                  key={file.id}
-                  file={file}
-                  isStaged={false}
-                  onToggleStage={() => onToggleStaged(file.id)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        {filter !== 'all' && filter !== 'staged' && filter !== 'unstaged' && filtered.map(file => (
-          <FileRow
-            key={file.id}
-            file={file}
-            isStaged={stagedIds.has(file.id)}
-            onToggleStage={() => onToggleStaged(file.id)}
-          />
-        ))}
+        <ChangeSection title="暂存的更改" files={stagedFiles} stagedIds={stagedIds} onToggleStaged={onToggleStaged} />
+        <ChangeSection title="更改" files={unstagedFiles} stagedIds={stagedIds} onToggleStaged={onToggleStaged} />
 
         {filtered.length === 0 && (
           <div style={{ padding: 30, textAlign: 'center', color: C.textWeak, fontSize: 12 }}>
-            没有匹配当前筛选的文件
+            没有匹配的文件
           </div>
         )}
       </div>
-
-      {stagedIds.size === 0 && filter === 'staged' && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 80,
-            left: 10,
-            right: 10,
-            background: C.panel2,
-            border: `1px solid ${C.border}`,
-            borderRadius: 8,
-            padding: 16,
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ color: C.textSecondary, fontSize: 12, marginBottom: 4 }}>还没有暂存内容</div>
-          <div style={{ color: C.textWeak, fontSize: 11 }}>
-            选择文件或点击“全部暂存”后，AI 才能根据暂存区生成提交信息。
-          </div>
-        </div>
-      )}
     </div>
   );
 }

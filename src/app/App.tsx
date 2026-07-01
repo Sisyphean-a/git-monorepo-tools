@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { GitMerge, Settings } from 'lucide-react';
 import { fetchRepoLog, fetchSnapshot, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch } from './api';
 import { C } from './theme';
 import { Sidebar } from './components/sidebar';
@@ -11,67 +10,21 @@ import { LogViewerModal } from './components/log-viewer-modal';
 import { loadSettings, saveSettings, sanitizeSettings } from './settings';
 import type { AppSettings, AppSnapshot, PullResult, RepoLog, SettingsTab } from './types';
 
-function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
+function AppFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
-        height: 48,
-        flexShrink: 0,
-        background: C.panel1,
-        borderBottom: `1px solid ${C.border}`,
+        height: '100vh',
         display: 'flex',
-        alignItems: 'center',
-        padding: '0 16px',
-        gap: 12,
+        flexDirection: 'column',
+        background: C.appBg,
+        color: C.textPrimary,
+        fontFamily: 'Inter, system-ui, sans-serif',
+        overflow: 'hidden',
+        fontSize: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <div
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: 6,
-            background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <GitMerge size={12} color="white" />
-        </div>
-        <span style={{ color: C.textPrimary, fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em' }}>
-          VibeGit Desk
-        </span>
-      </div>
-      <div style={{ flex: 1 }} />
-      <button
-        onClick={onOpenSettings}
-        title="设置"
-        style={{
-          background: 'none',
-          border: '1px solid transparent',
-          color: C.textWeak,
-          borderRadius: 6,
-          padding: '5px 7px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-        }}
-        onMouseEnter={e => {
-          const target = e.currentTarget;
-          target.style.background = C.hoverBg;
-          target.style.borderColor = C.border;
-          target.style.color = C.textSecondary;
-        }}
-        onMouseLeave={e => {
-          const target = e.currentTarget;
-          target.style.background = 'none';
-          target.style.borderColor = 'transparent';
-          target.style.color = C.textWeak;
-        }}
-      >
-        <Settings size={13} />
-      </button>
+      {children}
     </div>
   );
 }
@@ -222,40 +175,16 @@ export default function App() {
 
   if (!snapshot) {
     return (
-      <div
-        style={{
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          background: C.appBg,
-          color: C.textPrimary,
-          fontFamily: 'Inter, system-ui, sans-serif',
-          overflow: 'hidden',
-          fontSize: 14,
-        }}
-      >
-        <TopBar onOpenSettings={() => setShowSettings(true)} />
+      <AppFrame>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>
           正在扫描仓库...
         </div>
-      </div>
+      </AppFrame>
     );
   }
 
   return (
-    <div
-      style={{
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        background: C.appBg,
-        color: C.textPrimary,
-        fontFamily: 'Inter, system-ui, sans-serif',
-        overflow: 'hidden',
-        fontSize: 14,
-      }}
-    >
-      <TopBar onOpenSettings={() => setShowSettings(true)} />
+    <AppFrame>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <Sidebar
           repos={snapshot.repos}
@@ -315,6 +244,6 @@ export default function App() {
         onRemoveScanRoot={handleRemoveScanRoot}
       />
       <LogViewerModal log={repoLog} onClose={() => setRepoLog(null)} />
-    </div>
+    </AppFrame>
   );
 }
