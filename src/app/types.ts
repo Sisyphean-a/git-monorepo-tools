@@ -1,6 +1,7 @@
 export type RepoStatus = 'clean' | 'changed' | 'conflict' | 'checking' | 'error';
 export type FileStatus = 'A' | 'M' | 'D' | 'R';
 export type RepoMutationAction = 'stage-all' | 'unstage-all' | 'stage-file' | 'unstage-file' | 'commit' | 'pull' | 'push' | 'discard-all';
+export type BuiltInCommandAction = 'stage-all' | 'unstage-all' | 'generate' | 'commit' | 'pull' | 'push' | 'refresh';
 
 export interface Repo {
   id: string;
@@ -73,11 +74,29 @@ export interface GitBehaviorSettings {
   timeoutSeconds: number;
 }
 
+export interface CommandCombo {
+  id: string;
+  label: string;
+  actions: BuiltInCommandAction[];
+}
+
+export interface CustomCommandButton {
+  id: string;
+  label: string;
+  command: string;
+}
+
+export interface CommandCenterSettings {
+  combos: CommandCombo[];
+  customCommands: CustomCommandButton[];
+}
+
 export interface AppSettings {
   scanRoots: ScanRootSetting[];
   customCategories: string[];
   aiCommit: AICommitSettings;
   gitBehavior: GitBehaviorSettings;
+  commandCenter: CommandCenterSettings;
 }
 
 export interface RepoLog {
@@ -119,6 +138,15 @@ export interface BatchGitOperationResult {
   items: GitOperationResult[];
 }
 
+export interface RepoCommandResult {
+  repoPath: string;
+  command: string;
+  output: string;
+  exitCode: number;
+  startedAt: number;
+  endedAt: number;
+}
+
 export interface WorkspaceBootstrap {
   repos: Repo[];
   selectedRepoId: string;
@@ -146,4 +174,4 @@ export interface AppSnapshot {
   commitCandidates: Record<string, CommitCandidate[]>;
 }
 
-export type SettingsTab = 'repositories' | 'ai-commit' | 'git-behavior';
+export type SettingsTab = 'repositories' | 'ai-commit' | 'git-behavior' | 'commands';

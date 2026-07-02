@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateCommitMessage, invokeLocalRepoAction, mutateRepo } from './api.js';
+import { generateCommitMessage, invokeLocalRepoAction, mutateRepo, runRepoCommand } from './api.js';
 
 test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
   const calls: string[] = [];
@@ -18,6 +18,9 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
       throw new Error('unused');
     },
     GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    RunRepoCommand: async () => {
       throw new Error('unused');
     },
     GenerateCommitMessage: async () => {
@@ -76,6 +79,9 @@ test('generateCommitMessage uses dedicated binding', async () => {
     GetRepoLog: async () => {
       throw new Error('unused');
     },
+    RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
     GenerateCommitMessage: async (repoId: string) => {
       calls.push(`GenerateCommitMessage:${repoId}`);
       return 'feat: 统一 AI 提交生成';
@@ -118,6 +124,10 @@ test('generateCommitMessage uses dedicated binding', async () => {
         concurrency: 5,
         timeoutSeconds: 60,
       },
+      commandCenter: {
+        combos: [],
+        customCommands: [],
+      },
     });
     assert.equal(message, 'feat: 统一 AI 提交生成');
   } finally {
@@ -156,6 +166,9 @@ test('mutateRepo accepts discard-all action', async () => {
     GetRepoLog: async () => {
       throw new Error('unused');
     },
+    RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
     GenerateCommitMessage: async () => {
       throw new Error('unused');
     },
@@ -186,4 +199,66 @@ test('mutateRepo accepts discard-all action', async () => {
   }
 
   assert.deepEqual(calls, ['MutateRepo:discard-all']);
+});
+
+test('runRepoCommand uses dedicated binding', async () => {
+  const calls: string[] = [];
+  const originalWindow = globalThis.window;
+
+  const bindings = {
+    GetSnapshot: async () => {
+      throw new Error('unused');
+    },
+    MutateRepo: async () => {
+      throw new Error('unused');
+    },
+    RunBatch: async () => {
+      throw new Error('unused');
+    },
+    GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    RunRepoCommand: async ({ repoPath, command }: { repoPath: string; command: string }) => {
+      calls.push(`RunRepoCommand:${repoPath}:${command}`);
+      return {
+        repoPath,
+        command,
+        output: 'build ok',
+        exitCode: 0,
+        startedAt: 1,
+        endedAt: 2,
+      };
+    },
+    GenerateCommitMessage: async () => {
+      throw new Error('unused');
+    },
+    OpenFolder: async () => {
+      throw new Error('unused');
+    },
+    OpenTerminal: async () => {
+      throw new Error('unused');
+    },
+    OpenConflicts: async () => {
+      throw new Error('unused');
+    },
+    PickFolder: async () => '',
+  };
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { go: { main: { App: bindings } } },
+  });
+
+  try {
+    const result = await runRepoCommand('/repo/a', 'wails build');
+    assert.equal(result.output, 'build ok');
+    assert.equal(result.exitCode, 0);
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+
+  assert.deepEqual(calls, ['RunRepoCommand:/repo/a:wails build']);
 });

@@ -1,3 +1,4 @@
+import { cloneDefaultCommandCenter, sanitizeCommandCenter } from './command-center';
 import type { AppSettings, ScanRootSetting } from './types';
 
 const STORAGE_KEY = 'git-manager-ui-settings';
@@ -22,6 +23,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     concurrency: 5,
     timeoutSeconds: 60,
   },
+  commandCenter: cloneDefaultCommandCenter(),
 };
 
 function cloneDefaults() {
@@ -89,6 +91,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
     : draft.gitBehavior.pushStrategy;
   draft.gitBehavior.concurrency = sanitizeNumber(gitBehavior.concurrency, draft.gitBehavior.concurrency, [1, 2, 3, 5]);
   draft.gitBehavior.timeoutSeconds = sanitizeNumber(gitBehavior.timeoutSeconds, draft.gitBehavior.timeoutSeconds, [30, 60, 120]);
+  draft.commandCenter = sanitizeCommandCenter(source.commandCenter);
   return draft;
 }
 

@@ -28,6 +28,7 @@ function getWailsBindings() {
         || typeof binding.MutateRepo !== 'function'
         || typeof binding.RunBatch !== 'function'
         || typeof binding.GetRepoLog !== 'function'
+        || typeof binding.RunRepoCommand !== 'function'
         || typeof binding.GenerateCommitMessage !== 'function'
         || typeof binding.OpenFolder !== 'function'
         || typeof binding.OpenTerminal !== 'function'
@@ -52,6 +53,9 @@ export async function runBatch(operation, settings) {
 }
 export async function fetchRepoLog(repoId, settings) {
     return getWailsBindings().GetRepoLog(repoId, buildSnapshotRequest(settings));
+}
+export async function runRepoCommand(repoPath, command, streamId) {
+    return getWailsBindings().RunRepoCommand({ repoPath, command, streamId });
 }
 export async function invokeLocalRepoAction(action, path) {
     const binding = getWailsBindings();

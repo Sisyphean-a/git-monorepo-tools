@@ -19,3 +19,5 @@ export function OpenTerminal(arg1:string):Promise<void>;
 export function PickFolder():Promise<string>;
 
 export function RunBatch(arg1:string,arg2:snapshot.Request):Promise<snapshot.BatchResult>;
+
+export function RunRepoCommand(arg1:snapshot.RepoCommandRequest):Promise<snapshot.RepoCommandResult>;

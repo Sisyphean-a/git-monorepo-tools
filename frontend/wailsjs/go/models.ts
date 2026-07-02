@@ -277,6 +277,44 @@ export namespace snapshot {
 	        this.repoPath = source["repoPath"];
 	    }
 	}
+	export class RepoCommandRequest {
+	    repoPath: string;
+	    command: string;
+	    streamId?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoCommandRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repoPath = source["repoPath"];
+	        this.command = source["command"];
+	        this.streamId = source["streamId"];
+	    }
+	}
+	export class RepoCommandResult {
+	    repoPath: string;
+	    command: string;
+	    output: string;
+	    exitCode: number;
+	    startedAt: number;
+	    endedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoCommandResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repoPath = source["repoPath"];
+	        this.command = source["command"];
+	        this.output = source["output"];
+	        this.exitCode = source["exitCode"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	    }
+	}
 	
 	export class RepoLog {
 	    repoId: string;

@@ -37,3 +37,7 @@ export function PickFolder() {
 export function RunBatch(arg1, arg2) {
   return window['go']['main']['App']['RunBatch'](arg1, arg2);
 }
+
+export function RunRepoCommand(arg1) {
+  return window['go']['main']['App']['RunRepoCommand'](arg1);
+}

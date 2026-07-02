@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fetchRepoLog, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch } from './api';
+import { fetchRepoLog, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch, runRepoCommand } from './api';
 import { C } from './theme';
 import { Sidebar } from './components/sidebar';
 import { Workspace } from './components/workspace';
@@ -240,11 +240,12 @@ export default function App() {
           repoDetails={snapshot.repoDetails}
           settings={settings}
           selectedRepoId={selectedRepoId}
-          onRefresh={() => refreshSnapshot().catch(() => {})}
+          onRefresh={() => refreshSnapshot()}
           onMutateRepo={handleMutateRepo}
           onInvokeLocalRepoAction={handleInvokeLocalRepoAction}
-          onOpenSettings={() => {
-            setSettingsTab('git-behavior');
+          onRunCustomCommand={runRepoCommand}
+          onOpenSettings={(tab = 'git-behavior') => {
+            setSettingsTab(tab);
             setShowSettings(true);
           }}
           onViewLog={handleViewRepoLog}

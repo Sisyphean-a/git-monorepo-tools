@@ -14,6 +14,21 @@ type RepoActionRequest struct {
 	RepoPath string `json:"repoPath"`
 }
 
+type RepoCommandRequest struct {
+	RepoPath string `json:"repoPath"`
+	Command  string `json:"command"`
+	StreamID string `json:"streamId,omitempty"`
+}
+
+type RepoCommandResult struct {
+	RepoPath  string `json:"repoPath"`
+	Command   string `json:"command"`
+	Output    string `json:"output"`
+	ExitCode  int    `json:"exitCode"`
+	StartedAt int64  `json:"startedAt"`
+	EndedAt   int64  `json:"endedAt"`
+}
+
 type AICommitSettings struct {
 	APIKey         string `json:"apiKey"`
 	BaseURL        string `json:"baseUrl"`

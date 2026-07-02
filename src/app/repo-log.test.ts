@@ -23,6 +23,10 @@ const settings: AppSettings = {
     concurrency: 5,
     timeoutSeconds: 60,
   },
+  commandCenter: {
+    combos: [],
+    customCommands: [],
+  },
 };
 
 test('viewRepoLog reports failure instead of swallowing it', async () => {

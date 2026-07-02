@@ -23,6 +23,10 @@ const settings = (concurrency: number): AppSettings => ({
     concurrency,
     timeoutSeconds: 60,
   },
+  commandCenter: {
+    combos: [],
+    customCommands: [],
+  },
 });
 
 const snapshot = (label: string): AppSnapshot => ({

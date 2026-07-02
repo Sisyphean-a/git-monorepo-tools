@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"git-monorepo-tools/snapshot"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -47,4 +48,16 @@ func (a *App) GetRepoLog(repoID string, request snapshot.Request) (snapshot.Repo
 
 func (a *App) GenerateCommitMessage(repoID string, request snapshot.Request, settings snapshot.AICommitSettings) (string, error) {
 	return a.service.GenerateCommitMessage(repoID, request, settings)
+}
+
+func (a *App) RunRepoCommand(request snapshot.RepoCommandRequest) (snapshot.RepoCommandResult, error) {
+	if request.StreamID == "" {
+		return a.service.RunRepoCommand(request)
+	}
+	return a.service.StreamRepoCommand(request, func(chunk string) {
+		wruntime.EventsEmit(a.ctx, "repo-command-output", map[string]string{
+			"streamId": request.StreamID,
+			"chunk":    chunk,
+		})
+	})
 }

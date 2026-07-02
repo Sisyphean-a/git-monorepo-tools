@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, PullResult, RepoLog, RepoMutationAction } from './types.js';
+import type { AppSettings, AppSnapshot, PullResult, RepoCommandResult, RepoLog, RepoMutationAction } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
@@ -23,12 +23,18 @@ type WailsRepoActionRequest = {
 	message?: string;
 	repoPath?: string;
 };
+type WailsRepoCommandRequest = {
+  repoPath: string;
+  command: string;
+  streamId?: string;
+};
 
 type WailsBindings = {
   GetSnapshot: WailsSnapshotBinding;
   MutateRepo: (repoId: string, action: string, request: SnapshotRequest, body: WailsRepoActionRequest) => Promise<AppSnapshot>;
   RunBatch: (operation: 'pull' | 'push', request: SnapshotRequest) => Promise<SnapshotResponse>;
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
+  RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
   GenerateCommitMessage: (
     repoId: string,
     request: SnapshotRequest,
@@ -64,7 +70,7 @@ function getWailsBindings(): WailsBindings {
   if (typeof window === 'undefined') {
     throw new Error('当前环境不支持 Wails 绑定');
   }
-  const binding = window.go?.main?.App;
+  const binding = window.go?.main?.App as Partial<WailsBindings> | undefined;
   if (!binding) {
     throw new Error('Wails 绑定不可用');
   }
@@ -73,6 +79,7 @@ function getWailsBindings(): WailsBindings {
     || typeof binding.MutateRepo !== 'function'
     || typeof binding.RunBatch !== 'function'
     || typeof binding.GetRepoLog !== 'function'
+    || typeof binding.RunRepoCommand !== 'function'
     || typeof binding.GenerateCommitMessage !== 'function'
     || typeof binding.OpenFolder !== 'function'
     || typeof binding.OpenTerminal !== 'function'
@@ -81,7 +88,7 @@ function getWailsBindings(): WailsBindings {
   ) {
     throw new Error('Wails 绑定不完整');
   }
-  return binding;
+  return binding as WailsBindings;
 }
 
 export async function fetchSnapshot(settings?: AppSettings) {
@@ -102,6 +109,10 @@ export async function runBatch(operation: 'pull' | 'push', settings?: AppSetting
 
 export async function fetchRepoLog(repoId: string, settings: AppSettings) {
   return getWailsBindings().GetRepoLog(repoId, buildSnapshotRequest(settings));
+}
+
+export async function runRepoCommand(repoPath: string, command: string, streamId?: string) {
+  return getWailsBindings().RunRepoCommand({ repoPath, command, streamId });
 }
 
 export async function invokeLocalRepoAction(action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) {

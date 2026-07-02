@@ -21,6 +21,10 @@ const settings = (concurrency) => ({
         concurrency,
         timeoutSeconds: 60,
     },
+    commandCenter: {
+        combos: [],
+        customCommands: [],
+    },
 });
 const snapshot = (label) => ({
     scannedAt: label,
