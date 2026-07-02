@@ -72,23 +72,6 @@ export function AiCommitPanel({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
-        {!message && (
-          <div
-            style={{
-              marginBottom: 16,
-              padding: '16px 18px',
-              background: C.panel2,
-              borderRadius: 10,
-              border: `1px dashed ${C.border}`,
-              color: C.textSecondary,
-              fontSize: 12,
-              lineHeight: 1.6,
-            }}
-          >
-            点击生成后会直接写入下方输入框。
-          </div>
-        )}
-
         <div style={{ marginBottom: 10 }}>
           <div style={{ color: C.textSecondary, fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
             提交信息
@@ -97,7 +80,7 @@ export function AiCommitPanel({
           <textarea
             value={message}
             onChange={e => onMessageChange(e.target.value)}
-            placeholder="点击生成或直接输入提交信息…"
+            placeholder="输入提交信息…"
             style={{
               width: '100%',
               background: C.panel2,
