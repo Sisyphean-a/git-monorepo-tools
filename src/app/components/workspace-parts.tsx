@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, Clock, FolderOpen, GitBranch, GitCommit, Settings2, Terminal } from 'lucide-react';
 import { C } from '../theme';
 import type { CommitSummary, FileChange, Repo } from '../types';
@@ -147,6 +147,7 @@ export function ToolbarBtn({
   accent,
   warning,
   dimmed,
+  style,
 }: {
   label: string;
   icon: ReactNode;
@@ -156,6 +157,7 @@ export function ToolbarBtn({
   accent?: boolean;
   warning?: boolean;
   dimmed?: boolean;
+  style?: CSSProperties;
 }) {
   const bg = primary ? C.btnPrimary : accent ? `${C.aiAccent}22` : 'transparent';
   const borderColor = primary ? C.btnPrimary : accent ? `${C.aiAccent}60` : warning ? `${C.modified}60` : C.border;
@@ -165,7 +167,7 @@ export function ToolbarBtn({
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{ background: bg, border: `1px solid ${disabled ? C.border : borderColor}`, color: disabled ? C.textWeak : textColor, borderRadius: 6, padding: '5px 10px', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, opacity: disabled ? 0.45 : dimmed ? 0.6 : 1, fontWeight: primary ? 500 : 400 }}
+      style={{ background: bg, border: `1px solid ${disabled ? C.border : borderColor}`, color: disabled ? C.textWeak : textColor, borderRadius: 6, padding: '5px 10px', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, opacity: disabled ? 0.45 : dimmed ? 0.6 : 1, fontWeight: primary ? 500 : 400, ...style }}
     >
       {icon} {label}
     </button>

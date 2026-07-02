@@ -12,7 +12,7 @@ import { generateCommitMessage } from '../api';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
-import { ConflictBanner, HistoryTab, RepoHeader, ToolbarBtn, summarizeFiles } from './workspace-parts';
+import { ConflictBanner, HistoryTab, RepoHeader, summarizeFiles } from './workspace-parts';
 import type { AppSettings, RepoDetail } from '../types';
 
 type MainTab = 'changes' | 'history';
@@ -135,29 +135,34 @@ export function Workspace({
     { key: 'changes', label: `变更 ${fileSummary.total > 0 ? `(${fileSummary.total})` : ''}` },
     { key: 'history', label: '历史' },
   ];
+  const actionGroups = [
+    {
+      key: 'stage',
+      actions: [
+        { key: 'stage-all', label: '全部暂存', icon: <PlusSquare size={12} />, onClick: handleStageAll, disabled: busyAction !== null || files.length === 0 || stagedIds.size === files.length },
+        { key: 'unstage-all', label: '全部取消暂存', icon: <MinusSquare size={12} />, onClick: handleUnstageAll, disabled: busyAction !== null || stagedIds.size === 0 },
+      ],
+    },
+    {
+      key: 'commit',
+      actions: [
+        { key: 'generate', label: busyAction === 'generate' ? '生成中…' : '生成', icon: <Sparkles size={12} />, onClick: handleGenerateCommit, disabled: busyAction !== null || !hasStaged, accent: true },
+        { key: 'commit', label: busyAction === 'commit' ? '提交中…' : '提交', icon: <GitCommit size={12} />, onClick: handleCommit, disabled: busyAction !== null || !hasStaged || !hasCommitMsg, primary: true },
+      ],
+    },
+    {
+      key: 'sync',
+      actions: [
+        { key: 'pull', label: busyAction === 'pull' ? 'Pull 中…' : 'Pull', icon: <Download size={12} />, onClick: handlePull, disabled: busyAction !== null, warning: hasPull && repo.modified > 0 },
+        { key: 'push', label: busyAction === 'push' ? 'Push 中…' : 'Push', icon: <Upload size={12} />, onClick: handlePush, disabled: busyAction !== null, dimmed: !hasPush },
+        { key: 'refresh', label: '刷新', icon: <RefreshCw size={11} />, onClick: handleRefresh, disabled: busyAction !== null },
+      ],
+    },
+  ];
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: C.appBg }}>
       <RepoHeader repo={repo} fileSummary={fileSummary} onOpenFolder={handleOpenFolder} onOpenTerminal={handleOpenTerminal} onOpenSettings={onOpenSettings} />
-
-      <div style={{ background: C.panel2, borderBottom: `1px solid ${C.border}`, padding: '8px 14px', display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-        <ToolbarBtn label="全部暂存" icon={<PlusSquare size={12} />} onClick={handleStageAll} disabled={busyAction !== null || files.length === 0 || stagedIds.size === files.length} />
-        <ToolbarBtn label="全部取消暂存" icon={<MinusSquare size={12} />} onClick={handleUnstageAll} disabled={busyAction !== null || stagedIds.size === 0} />
-        <div style={{ width: 1, height: 18, background: C.border, margin: '0 2px' }} />
-        <ToolbarBtn label={busyAction === 'generate' ? '生成中…' : '生成 AI 提交信息'} icon={<Sparkles size={12} />} disabled={busyAction !== null || !hasStaged} accent onClick={() => handleGenerateCommit()} />
-        <ToolbarBtn label={busyAction === 'commit' ? '提交中…' : '提交'} icon={<GitCommit size={12} />} disabled={busyAction !== null || !hasStaged || !hasCommitMsg} primary onClick={handleCommit} />
-        <div style={{ width: 1, height: 18, background: C.border, margin: '0 2px' }} />
-        <ToolbarBtn label={busyAction === 'pull' ? 'Pull 中…' : 'Pull'} icon={<Download size={12} />} disabled={busyAction !== null} warning={hasPull && repo.modified > 0} onClick={handlePull} />
-        <ToolbarBtn label={busyAction === 'push' ? 'Push 中…' : 'Push'} icon={<Upload size={12} />} disabled={busyAction !== null} dimmed={!hasPush} onClick={handlePush} />
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={handleRefresh}
-          disabled={busyAction !== null}
-          style={{ background: 'none', border: 'none', color: C.textWeak, cursor: busyAction !== null ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '4px 6px', opacity: busyAction !== null ? 0.5 : 1 }}
-        >
-          <RefreshCw size={11} /> 刷新
-        </button>
-      </div>
 
       {isConflict && <ConflictBanner repo={repo} onOpenConflicts={handleOpenConflicts} onViewLog={handleViewLog} />}
 
@@ -193,13 +198,12 @@ export function Workspace({
             stagedIds={stagedIds}
             onToggleStaged={handleToggleStaged}
           />
-          <div style={{ width: 380, flexShrink: 0, display: 'flex' }}>
+          <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
             <AiCommitPanel
               stagedCount={stagedIds.size}
-              loading={busyAction === 'generate'}
               message={commitMessage}
               error={aiError}
-              onGenerate={() => handleGenerateCommit()}
+              actionGroups={actionGroups}
               onMessageChange={setCommitMessage}
             />
           </div>
