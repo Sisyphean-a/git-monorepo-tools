@@ -236,7 +236,6 @@ export default function App() {
         />
         <Workspace
           repoDetails={snapshot.repoDetails}
-          commitCandidates={snapshot.commitCandidates}
           settings={settings}
           selectedRepoId={selectedRepoId}
           onRefresh={() => refreshSnapshot().catch(() => {})}

@@ -45,6 +45,6 @@ func (a *App) GetRepoLog(repoID string, request snapshot.Request) (snapshot.Repo
 	return a.service.GetRepoLog(repoID, request)
 }
 
-func (a *App) GenerateCommitCandidates(repoID string, request snapshot.Request, settings snapshot.AICommitSettings, styleHint string) ([]snapshot.CommitCandidate, error) {
-	return a.service.GenerateCommitCandidates(repoID, request, settings, styleHint)
+func (a *App) GenerateCommitMessage(repoID string, request snapshot.Request, settings snapshot.AICommitSettings) (string, error) {
+	return a.service.GenerateCommitMessage(repoID, request, settings)
 }

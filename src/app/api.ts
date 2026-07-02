@@ -1,4 +1,4 @@
-import type { AICommitPreview, AppSettings, AppSnapshot, CommitCandidate, PullResult, RepoLog } from './types.js';
+import type { AppSettings, AppSnapshot, PullResult, RepoLog } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
@@ -12,16 +12,16 @@ interface SnapshotResponse {
   results?: PullResult[];
   operation?: 'pullAll' | 'pushAll';
   log?: RepoLog;
-  candidates?: CommitCandidate[];
   path?: string | null;
   error?: string;
 }
 
 type WailsSnapshotBinding = (request: SnapshotRequest) => Promise<AppSnapshot>;
 type WailsRepoActionRequest = {
-  fileId?: string;
-  filePath?: string;
-  message?: string;
+	fileId?: string;
+	filePath?: string;
+	message?: string;
+	repoPath?: string;
 };
 
 type WailsBindings = {
@@ -29,12 +29,11 @@ type WailsBindings = {
   MutateRepo: (repoId: string, action: string, request: SnapshotRequest, body: WailsRepoActionRequest) => Promise<AppSnapshot>;
   RunBatch: (operation: 'pull' | 'push', request: SnapshotRequest) => Promise<SnapshotResponse>;
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
-  GenerateCommitCandidates: (
+  GenerateCommitMessage: (
     repoId: string,
     request: SnapshotRequest,
     aiCommit: AppSettings['aiCommit'],
-    styleHint?: string,
-  ) => Promise<CommitCandidate[]>;
+  ) => Promise<string>;
   OpenFolder: (path: string) => Promise<void>;
   OpenTerminal: (path: string) => Promise<void>;
   OpenConflicts: (path: string) => Promise<void>;
@@ -73,7 +72,7 @@ function getWailsBindings(): WailsBindings {
     || typeof binding.MutateRepo !== 'function'
     || typeof binding.RunBatch !== 'function'
     || typeof binding.GetRepoLog !== 'function'
-    || typeof binding.GenerateCommitCandidates !== 'function'
+    || typeof binding.GenerateCommitMessage !== 'function'
     || typeof binding.OpenFolder !== 'function'
     || typeof binding.OpenTerminal !== 'function'
     || typeof binding.OpenConflicts !== 'function'
@@ -115,10 +114,8 @@ export async function invokeLocalRepoAction(action: 'open-folder' | 'open-termin
   return binding.OpenConflicts(path);
 }
 
-export async function generateCommitCandidates(repoId: string, settings: AppSettings, styleHint?: string): Promise<AICommitPreview> {
-  return {
-    candidates: await getWailsBindings().GenerateCommitCandidates(repoId, buildSnapshotRequest(settings), settings.aiCommit, styleHint),
-  };
+export async function generateCommitMessage(repoId: string, settings: AppSettings) {
+  return getWailsBindings().GenerateCommitMessage(repoId, buildSnapshotRequest(settings), settings.aiCommit);
 }
 
 export async function pickFolder() {

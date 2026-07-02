@@ -11,6 +11,7 @@ type RepoActionRequest struct {
 	FileID   string `json:"fileId"`
 	FilePath string `json:"filePath"`
 	Message  string `json:"message"`
+	RepoPath string `json:"repoPath"`
 }
 
 type AICommitSettings struct {

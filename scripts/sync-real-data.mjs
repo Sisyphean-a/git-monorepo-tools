@@ -391,6 +391,8 @@ function resolveRepoContext(repoId, scanRoots = []) {
   const repoEntries = discoverRepos(buildRoots(selectedRepoPath, scanRoots));
   const scanTime = new Date();
   for (const entry of repoEntries) {
+    const repoPath = normalizePath(entry.repoPath);
+    if (createRepoId(path.basename(repoPath), repoPath) !== repoId) continue;
     const snapshot = buildRepoSnapshot(entry, scanTime);
     if (snapshot.id === repoId) return snapshot;
   }

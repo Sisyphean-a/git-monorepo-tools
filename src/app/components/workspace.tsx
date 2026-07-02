@@ -8,18 +8,17 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-react';
-import { generateCommitCandidates } from '../api';
+import { generateCommitMessage } from '../api';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
 import { ConflictBanner, HistoryTab, RepoHeader, ToolbarBtn, summarizeFiles } from './workspace-parts';
-import type { AppSettings, CommitCandidate, RepoDetail } from '../types';
+import type { AppSettings, RepoDetail } from '../types';
 
 type MainTab = 'changes' | 'history';
 
 interface WorkspaceProps {
   repoDetails: Record<string, RepoDetail>;
-  commitCandidates: Record<string, CommitCandidate[]>;
   settings: AppSettings;
   selectedRepoId: string;
   onRefresh: () => void;
@@ -31,7 +30,6 @@ interface WorkspaceProps {
 
 export function Workspace({
   repoDetails,
-  commitCandidates,
   settings,
   selectedRepoId,
   onRefresh,
@@ -46,16 +44,17 @@ export function Workspace({
   const [commitMessage, setCommitMessage] = useState('');
   const [stagedIds, setStagedIds] = useState<Set<string>>(new Set());
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [aiCandidates, setAiCandidates] = useState<CommitCandidate[]>([]);
   const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     const nextFiles = repo?.files ?? [];
     setStagedIds(new Set(nextFiles.filter(file => file.staged).map(file => file.id)));
-    setCommitMessage('');
-    setAiCandidates([]);
-    setAiError(null);
   }, [repo?.id, repo?.scannedAt]);
+
+  useEffect(() => {
+    setCommitMessage('');
+    setAiError(null);
+  }, [repo?.id]);
 
   if (!repo) {
     return (
@@ -67,7 +66,7 @@ export function Workspace({
 
   const files = repo.files;
   const fileSummary = summarizeFiles(files);
-  const repoCommitCandidates = commitCandidates[repo.id] ?? [];
+  const repoActionBody = (body?: Record<string, unknown>) => ({ repoPath: repo.path, ...(body ?? {}) });
 
   const runAction = async (action: string, handler: () => Promise<void>) => {
     setBusyAction(action);
@@ -84,25 +83,25 @@ export function Workspace({
     const file = files.find(item => item.id === id);
     if (!file) return;
     void runAction('toggle-stage', async () => {
-      await onMutateRepo(repo.id, file.staged ? 'unstage-file' : 'stage-file', { fileId: file.id, filePath: file.path });
+      await onMutateRepo(repo.id, file.staged ? 'unstage-file' : 'stage-file', repoActionBody({ fileId: file.id, filePath: file.path }));
     });
   };
 
   const handleStageAll = () => void runAction('stage-all', async () => {
-    await onMutateRepo(repo.id, 'stage-all');
+    await onMutateRepo(repo.id, 'stage-all', repoActionBody());
   });
   const handleUnstageAll = () => void runAction('unstage-all', async () => {
-    await onMutateRepo(repo.id, 'unstage-all');
+    await onMutateRepo(repo.id, 'unstage-all', repoActionBody());
   });
   const handleCommit = () => void runAction('commit', async () => {
-    await onMutateRepo(repo.id, 'commit', { message: commitMessage });
+    await onMutateRepo(repo.id, 'commit', repoActionBody({ message: commitMessage }));
     setCommitMessage('');
   });
   const handlePull = () => void runAction('pull', async () => {
-    await onMutateRepo(repo.id, 'pull');
+    await onMutateRepo(repo.id, 'pull', repoActionBody());
   });
   const handlePush = () => void runAction('push', async () => {
-    await onMutateRepo(repo.id, 'push');
+    await onMutateRepo(repo.id, 'push', repoActionBody());
   });
   const handleRefresh = () => void runAction('refresh', onRefresh);
   const handleOpenFolder = () => void runAction('open-folder', async () => {
@@ -120,8 +119,7 @@ export function Workspace({
   const handleGenerateCommit = () => void runAction('generate', async () => {
     try {
       setAiError(null);
-      const result = await generateCommitCandidates(repo.id, settings);
-      setAiCandidates(result.candidates);
+      setCommitMessage(await generateCommitMessage(repo.id, settings));
     } catch (error) {
       setAiError(error instanceof Error ? error.message : 'AI 生成失败');
     }
@@ -198,7 +196,6 @@ export function Workspace({
           <div style={{ width: 380, flexShrink: 0, display: 'flex' }}>
             <AiCommitPanel
               stagedCount={stagedIds.size}
-              candidates={aiCandidates.length > 0 ? aiCandidates : repoCommitCandidates}
               loading={busyAction === 'generate'}
               message={commitMessage}
               error={aiError}

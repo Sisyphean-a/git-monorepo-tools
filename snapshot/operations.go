@@ -4,11 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 )
 
 func (s *Service) MutateRepo(repoID, action string, request Request, body RepoActionRequest) (AppSnapshot, error) {
-	repo, err := s.resolveRepo(repoID, request)
+	repo, err := s.resolveRepoForAction(repoID, action, request, body)
 	if err != nil {
 		return AppSnapshot{}, err
 	}
@@ -47,20 +46,6 @@ func (s *Service) GetRepoLog(repoID string, request Request) (RepoLog, error) {
 		content = "暂无日志内容"
 	}
 	return RepoLog{RepoID: repo.ID, RepoName: repo.Name, Path: repo.Path, Content: content}, nil
-}
-
-func (s *Service) resolveRepo(repoID string, request Request) (RepoDetail, error) {
-	scanTime := time.Now()
-	for _, entry := range s.discoverRepos(s.buildRoots(request)) {
-		snapshot, err := buildRepoSnapshot(entry, scanTime)
-		if err != nil {
-			continue
-		}
-		if snapshot.repo.ID == repoID {
-			return snapshot.detail, nil
-		}
-	}
-	return RepoDetail{}, fmt.Errorf("未找到仓库：%s", repoID)
 }
 
 func mutateRepo(repo RepoDetail, action string, request Request, body RepoActionRequest) error {

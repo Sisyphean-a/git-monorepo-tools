@@ -1,37 +1,30 @@
 package snapshot
 
 import (
-	"bytes"
-	"crypto/sha1"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func (s *Service) GenerateCommitCandidates(repoID string, request Request, settings AICommitSettings, styleHint string) ([]CommitCandidate, error) {
+func (s *Service) GenerateCommitMessage(repoID string, request Request, settings AICommitSettings) (string, error) {
 	if err := ensureAISettings(settings); err != nil {
-		return nil, err
+		return "", err
 	}
 	repo, err := s.resolveRepo(repoID, request)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	context, err := buildAIContext(repo, settings)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	prompt := buildAIPrompt(repo, settings, context, styleHint)
-	raw, err := requestAICompletion(settings, prompt)
+	raw, err := requestAICompletion(settings, buildAIRequestContent(repo, settings, context))
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return parseAICandidates(raw, styleHint)
+	return extractCommitMessage(raw)
 }
 
 func ensureAISettings(settings AICommitSettings) error {
@@ -42,8 +35,6 @@ func ensureAISettings(settings AICommitSettings) error {
 		return errors.New("请先在设置中填写 AI 基础 URL")
 	case strings.TrimSpace(settings.Model) == "":
 		return errors.New("请先在设置中填写 AI 模型")
-	case strings.TrimSpace(settings.PromptTemplate) == "":
-		return errors.New("请先在设置中填写 AI 提示词模板")
 	default:
 		return nil
 	}
@@ -168,28 +159,19 @@ func trimDiffLines(lines []string) []string {
 	return trimmed
 }
 
-func buildAIPrompt(repo RepoDetail, settings AICommitSettings, context aiContext, styleHint string) string {
-	requestedCount := 1
-	if styleHint == "" && settings.GenerateThree {
-		requestedCount = 3
-	}
+func buildAIRequestContent(repo RepoDetail, settings AICommitSettings, context aiContext) string {
 	lines := []string{
-		strings.TrimSpace(settings.PromptTemplate),
-		"",
+		"请基于以下仓库变更生成提交信息：",
 		"仓库：" + repo.Name,
 		"分支：" + repo.Branch,
 		"变更来源：" + aiSourceLabel(settings.StagedOnly),
 		fmt.Sprintf("文件数：%d", len(context.paths)),
-		"文件列表：" + strings.Join(context.paths, ", "),
-		fmt.Sprintf("候选数量：%d", requestedCount),
-		aiInstruction(styleHint, requestedCount),
-		"输出必须是 JSON，结构如下：",
-		"{\"candidates\":[{\"style\":\"风格名\",\"icon\":\"单个 emoji\",\"title\":\"提交标题\",\"body\":\"一句中文说明\",\"full\":\"完整提交信息\"}]}",
-		"不要输出 Markdown 代码块，不要输出 JSON 之外的文字。",
-		"",
-		"Diff：",
-		context.diff,
+		"文件列表：",
 	}
+	for _, path := range context.paths {
+		lines = append(lines, "- "+path)
+	}
+	lines = append(lines, "", "Diff：", context.diff)
 	return strings.Join(lines, "\n")
 }
 
@@ -198,154 +180,4 @@ func aiSourceLabel(stagedOnly bool) string {
 		return "仅已暂存变更"
 	}
 	return "全部变更"
-}
-
-func aiInstruction(styleHint string, requestedCount int) string {
-	if styleHint != "" {
-		return fmt.Sprintf("只生成 1 条「%s」风格候选。", styleHint)
-	}
-	if requestedCount == 3 {
-		return "依次返回 3 条候选：表情风格、标准短句、约定式提交。"
-	}
-	return "返回 1 条最合适的约定式提交候选。"
-}
-
-func requestAICompletion(settings AICommitSettings, prompt string) (string, error) {
-	payload := map[string]any{
-		"model":       settings.Model,
-		"temperature": 0.2,
-		"messages": []map[string]string{
-			{"role": "system", "content": "你是 Git 提交信息生成器。请严格按照用户要求输出 JSON。"},
-			{"role": "user", "content": prompt},
-		},
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	response, err := http.DefaultClient.Do(newAIRequest(settings, body))
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	return parseAIResponse(response)
-}
-
-func newAIRequest(settings AICommitSettings, body []byte) *http.Request {
-	request, _ := http.NewRequest(http.MethodPost, strings.TrimRight(settings.BaseURL, "/")+"/chat/completions", bytes.NewReader(body))
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer "+settings.APIKey)
-	return request
-}
-
-func parseAIResponse(response *http.Response) (string, error) {
-	rawBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", err
-	}
-	var payload map[string]any
-	_ = json.Unmarshal(rawBody, &payload)
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		if message := nestedString(payload, "error", "message"); message != "" {
-			return "", errors.New(message)
-		}
-		text := strings.TrimSpace(string(rawBody))
-		if text == "" {
-			text = "AI 服务调用失败"
-		}
-		return "", errors.New(text)
-	}
-	content := nestedString(payload, "choices", "0", "message", "content")
-	if strings.TrimSpace(content) == "" {
-		return "", errors.New("AI 未返回提交候选")
-	}
-	return content, nil
-}
-
-func nestedString(value any, path ...string) string {
-	current := value
-	for _, key := range path {
-		switch typed := current.(type) {
-		case map[string]any:
-			current = typed[key]
-		case []any:
-			if key != "0" || len(typed) == 0 {
-				return ""
-			}
-			current = typed[0]
-		default:
-			return ""
-		}
-	}
-	result, _ := current.(string)
-	return result
-}
-
-func parseAICandidates(raw, styleHint string) ([]CommitCandidate, error) {
-	var payload struct {
-		Candidates []map[string]any `json:"candidates"`
-	}
-	block, err := extractJSONBlock(raw)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal([]byte(block), &payload); err != nil {
-		return nil, err
-	}
-	if len(payload.Candidates) == 0 {
-		return nil, errors.New("AI 返回的候选为空")
-	}
-	candidates := make([]CommitCandidate, 0, len(payload.Candidates))
-	for index, candidate := range payload.Candidates {
-		candidates = append(candidates, normalizeAICandidate(candidate, index, styleHint))
-	}
-	return candidates, nil
-}
-
-func extractJSONBlock(raw string) (string, error) {
-	fencedStart := strings.Index(raw, "```json")
-	if fencedStart >= 0 {
-		after := raw[fencedStart+7:]
-		fencedEnd := strings.Index(after, "```")
-		if fencedEnd >= 0 {
-			return strings.TrimSpace(after[:fencedEnd]), nil
-		}
-	}
-	start := strings.Index(raw, "{")
-	end := strings.LastIndex(raw, "}")
-	if start == -1 || end <= start {
-		return "", errors.New("AI 返回内容不是合法 JSON")
-	}
-	return raw[start : end+1], nil
-}
-
-func normalizeAICandidate(candidate map[string]any, index int, styleHint string) CommitCandidate {
-	style := fallbackString(styleHint, trimmedValue(candidate["style"]), fmt.Sprintf("AI 候选 %d", index+1))
-	title := fallbackString(trimmedValue(candidate["title"]), "chore: 更新变更")
-	full := fallbackString(trimmedValue(candidate["full"]), title)
-	body := fallbackString(trimmedValue(candidate["body"]), "基于真实 Git Diff 生成")
-	icon := fallbackString(trimmedValue(candidate["icon"]), "✨")
-	sum := sha1.Sum([]byte(fmt.Sprintf("%s-%s-%s-%d", style, title, full, index)))
-	return CommitCandidate{
-		ID:    "ai-" + hex.EncodeToString(sum[:])[:8],
-		Style: style,
-		Icon:  icon,
-		Title: title,
-		Body:  body,
-		Full:  full,
-	}
-}
-
-func trimmedValue(value any) string {
-	text, _ := value.(string)
-	return strings.TrimSpace(text)
-}
-
-func fallbackString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }

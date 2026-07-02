@@ -23,6 +23,7 @@ interface Window {
             fileId?: string;
             filePath?: string;
             message?: string;
+            repoPath?: string;
           },
         ) => Promise<import('./app/types').AppSnapshot>;
         RunBatch: (
@@ -47,7 +48,7 @@ interface Window {
             pushStrategy: 'upstream-only' | 'all';
           },
         ) => Promise<import('./app/types').RepoLog>;
-        GenerateCommitCandidates: (
+        GenerateCommitMessage: (
           repoId: string,
           request: {
             scanRoots: Array<{ path: string; category: string }>;
@@ -56,8 +57,7 @@ interface Window {
             pushStrategy: 'upstream-only' | 'all';
           },
           aiCommit: import('./app/types').AICommitSettings,
-          styleHint?: string,
-        ) => Promise<import('./app/types').CommitCandidate[]>;
+        ) => Promise<string>;
         OpenFolder: (path: string) => Promise<void>;
         OpenTerminal: (path: string) => Promise<void>;
         OpenConflicts: (path: string) => Promise<void>;

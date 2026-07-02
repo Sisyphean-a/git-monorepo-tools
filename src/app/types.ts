@@ -86,10 +86,6 @@ export interface RepoLog {
   content: string;
 }
 
-export interface AICommitPreview {
-  candidates: CommitCandidate[];
-}
-
 export interface RepoDetail extends Repo {
   files: FileChange[];
   stagedCount: number;

@@ -27,7 +27,7 @@ function getWailsBindings() {
         || typeof binding.MutateRepo !== 'function'
         || typeof binding.RunBatch !== 'function'
         || typeof binding.GetRepoLog !== 'function'
-        || typeof binding.GenerateCommitCandidates !== 'function'
+        || typeof binding.GenerateCommitMessage !== 'function'
         || typeof binding.OpenFolder !== 'function'
         || typeof binding.OpenTerminal !== 'function'
         || typeof binding.OpenConflicts !== 'function'
@@ -62,10 +62,8 @@ export async function invokeLocalRepoAction(action, path) {
     }
     return binding.OpenConflicts(path);
 }
-export async function generateCommitCandidates(repoId, settings, styleHint) {
-    return {
-        candidates: await getWailsBindings().GenerateCommitCandidates(repoId, buildSnapshotRequest(settings), settings.aiCommit, styleHint),
-    };
+export async function generateCommitMessage(repoId, settings) {
+    return getWailsBindings().GenerateCommitMessage(repoId, buildSnapshotRequest(settings), settings.aiCommit);
 }
 export async function pickFolder() {
     const path = await getWailsBindings().PickFolder();

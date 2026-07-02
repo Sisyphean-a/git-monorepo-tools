@@ -319,27 +319,9 @@ function AICommitTab({
           ]}
         />
       </FormRow>
-      <FormRow label="提示词模板">
-        <textarea
-          value={ai.promptTemplate}
-          onChange={e => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, promptTemplate: e.target.value } }))}
-          style={{
-            width: '100%',
-            background: C.panel1,
-            border: `1px solid ${C.border}`,
-            borderRadius: 6,
-            padding: '8px 10px',
-            color: C.textPrimary,
-            fontSize: 12,
-            outline: 'none',
-            fontFamily: 'JetBrains Mono, monospace',
-            boxSizing: 'border-box',
-            resize: 'vertical',
-            minHeight: 90,
-            lineHeight: 1.6,
-          }}
-        />
-      </FormRow>
+      <div style={{ marginBottom: 16, padding: '10px 12px', background: C.panel1, border: `1px solid ${C.border}`, borderRadius: 6, color: C.textSecondary, fontSize: 11, lineHeight: 1.6 }}>
+        生成逻辑已切换为单条直出，点击后会直接写入提交输入框。
+      </div>
       <FormRow label="Diff 最大字符数">
         <Select
           value={String(ai.maxDiffChars)}
@@ -354,13 +336,6 @@ function AICommitTab({
         />
       </FormRow>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>生成 3 条提交候选</div>
-            <div style={{ color: C.textWeak, fontSize: 11 }}>返回表情、标准短句和约定式提交三种格式</div>
-          </div>
-          <Toggle checked={ai.generateThree} onChange={() => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, generateThree: !current.aiCommit.generateThree } }))} />
-        </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>仅使用已暂存变更</div>

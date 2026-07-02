@@ -10,9 +10,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-chat',
     maxDiffChars: 8000,
-    generateThree: true,
+    generateThree: false,
     stagedOnly: true,
-    promptTemplate: '你是 Git 提交信息生成器。请分析下面已暂存的 Diff，并生成简洁的提交信息。输出 3 条不同风格的候选，包括表情风格、短句风格和约定式提交风格。',
+    promptTemplate: 'You generate a single Git commit message from repository changes.\n\nRequirements:\n- Output JSON only: {"message":"..."}.\n- The message must be Simplified Chinese.\n- The message must be one line.\n- Prefer Conventional Commits style: type(scope): summary.\n- Keep it specific and concise.\n- Do not mention AI, JSON, prompt, or file counts unless they are essential.\n- If the changes span multiple areas, omit scope instead of guessing.\n- If you cannot infer a precise type, use chore.',
   },
   gitBehavior: {
     autoScanEnabled: true,

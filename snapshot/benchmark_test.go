@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func BenchmarkBuildAppSnapshot(b *testing.B) {
@@ -16,6 +17,58 @@ func BenchmarkBuildAppSnapshotConcurrency(b *testing.B) {
 		b.Run(fmt.Sprintf("concurrency_%d", concurrency), func(b *testing.B) {
 			benchmarkBuildAppSnapshot(b, concurrency)
 		})
+	}
+}
+
+func BenchmarkResolveRepo(b *testing.B) {
+	service := benchmarkService(b)
+	request := Request{}
+	snapshot, err := service.BuildAppSnapshot(request)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if len(snapshot.Repos) == 0 {
+		b.Fatal("expected scanned repositories")
+	}
+	targetID := snapshot.Repos[0].ID
+	scanTime := time.Unix(0, 0)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		repo, err := resolveRepoFromEntries(targetID, service.discoverRepos(service.buildRoots(request)), scanTime, buildRepoSnapshot)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if repo.ID != targetID {
+			b.Fatalf("expected repo %q, got %q", targetID, repo.ID)
+		}
+	}
+}
+
+func BenchmarkResolveRepoForCommitWithPathHint(b *testing.B) {
+	service := benchmarkService(b)
+	request := Request{}
+	snapshot, err := service.BuildAppSnapshot(request)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if len(snapshot.Repos) == 0 {
+		b.Fatal("expected scanned repositories")
+	}
+	target := snapshot.Repos[0]
+	body := RepoActionRequest{RepoPath: target.Path}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		repo, err := service.resolveRepoForAction(target.ID, "commit", request, body)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if repo.ID != target.ID {
+			b.Fatalf("expected repo %q, got %q", target.ID, repo.ID)
+		}
 	}
 }
 
