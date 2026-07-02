@@ -200,7 +200,6 @@ export function Workspace({
           />
           <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
             <AiCommitPanel
-              stagedCount={stagedIds.size}
               message={commitMessage}
               error={aiError}
               actionGroups={actionGroups}

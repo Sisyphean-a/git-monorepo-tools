@@ -48,6 +48,7 @@ export default function App() {
   const [drawerOperation, setDrawerOperation] = useState<'pullAll' | 'pushAll'>('pullAll');
   const [drawerResults, setDrawerResults] = useState<PullResult[]>([]);
   const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
+  const [sidebarBatchAction, setSidebarBatchAction] = useState<'pull' | 'push' | null>(null);
 
   const applySnapshot = (nextSnapshot: AppSnapshot) => {
     setSnapshot(nextSnapshot);
@@ -57,6 +58,7 @@ export default function App() {
   const { refreshSnapshot, runSnapshotTask } = useSnapshotRefresh(settings, applySnapshot, setRefreshError);
 
   const handleBatch = async (operation: 'pull' | 'push') => {
+    setSidebarBatchAction(operation);
     try {
       const result = await runSnapshotTask(
         () => runBatch(operation, settings),
@@ -65,7 +67,10 @@ export default function App() {
       setDrawerOperation(result.operation ?? (operation === 'pull' ? 'pullAll' : 'pushAll'));
       setDrawerResults(result.results ?? []);
       setShowPullDrawer(true);
-    } catch {}
+    } catch {
+    } finally {
+      setSidebarBatchAction(null);
+    }
   };
 
   const handleSaveSettings = (nextSettings: AppSettings) => {
@@ -221,16 +226,13 @@ export default function App() {
           categories={[...snapshot.categories, ...settings.customCategories.filter(category => !snapshot.categories.includes(category))]}
           scannedAt={snapshot.scannedAt}
           settings={settings}
+          batchAction={sidebarBatchAction}
           recentError={visibleError}
           selectedRepoId={selectedRepoId}
           onSelectRepo={id => setSelectedRepoId(id)}
           onPullAll={() => void handleBatch('pull')}
           onPushAll={() => void handleBatch('push')}
           onRefresh={() => void refreshSnapshot().catch(() => {})}
-          onOpenSettings={() => {
-            setSettingsTab('git-behavior');
-            setShowSettings(true);
-          }}
           onOpenAddMenu={() => setShowAddMenu(true)}
           onToggleAutoScan={handleToggleAutoScan}
         />

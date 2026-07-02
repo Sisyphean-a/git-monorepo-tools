@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { Sparkles } from 'lucide-react';
 import { C } from '../theme';
 import { ToolbarBtn } from './workspace-parts';
 
@@ -21,40 +20,48 @@ interface PanelActionGroup {
 }
 
 interface AiCommitPanelProps {
-  stagedCount: number;
   message: string;
   error: string | null;
   actionGroups: PanelActionGroup[];
   onMessageChange: (message: string) => void;
 }
 
-function PanelHeader({ stagedCount, error }: Pick<AiCommitPanelProps, 'stagedCount' | 'error'>) {
+function MessageEditor({ message, error, onMessageChange }: Pick<AiCommitPanelProps, 'message' | 'error' | 'onMessageChange'>) {
   return (
-    <div style={{ padding: '10px 14px', background: C.panel2, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: 6,
-            background: 'linear-gradient(135deg, #7C3AED, #3B82F6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <Sparkles size={12} color="white" />
-        </div>
-        <span style={{ color: C.textPrimary, fontSize: 13, fontWeight: 600 }}>AI 提交信息</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ color: C.textSecondary, fontSize: 11, fontWeight: 600 }}>
+        提交信息
+        {message && <span style={{ color: C.textWeak, fontWeight: 400, marginLeft: 6 }}>(可编辑)</span>}
       </div>
-      {stagedCount === 0 && (
-        <div style={{ color: C.modified, fontSize: 11, marginTop: 6 }}>
-          至少先暂存一个文件才能生成
-        </div>
-      )}
+      <textarea
+        rows={3}
+        value={message}
+        onChange={e => onMessageChange(e.target.value)}
+        placeholder="输入提交信息…"
+        style={{
+          width: '100%',
+          height: 84,
+          background: C.panel2,
+          border: `1px solid ${C.border}`,
+          borderRadius: 7,
+          padding: '10px 12px',
+          color: message ? C.textPrimary : C.textWeak,
+          fontSize: 12,
+          fontFamily: 'JetBrains Mono, monospace',
+          outline: 'none',
+          resize: 'none',
+          boxSizing: 'border-box',
+          lineHeight: 1.6,
+        }}
+        onFocus={e => {
+          e.target.style.borderColor = C.btnPrimary;
+        }}
+        onBlur={e => {
+          e.target.style.borderColor = C.border;
+        }}
+      />
       {error && (
-        <div style={{ color: C.conflict, fontSize: 11, marginTop: 6, lineHeight: 1.5 }}>
+        <div style={{ color: C.conflict, fontSize: 11, lineHeight: 1.5 }}>
           {error}
         </div>
       )}
@@ -87,51 +94,13 @@ function ActionCluster({ actionGroups }: Pick<AiCommitPanelProps, 'actionGroups'
   );
 }
 
-function MessageEditor({ message, onMessageChange }: Pick<AiCommitPanelProps, 'message' | 'onMessageChange'>) {
-  return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ color: C.textSecondary, fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
-        提交信息
-        {message && <span style={{ color: C.textWeak, fontWeight: 400, marginLeft: 6 }}>(可编辑)</span>}
-      </div>
-      <textarea
-        value={message}
-        onChange={e => onMessageChange(e.target.value)}
-        placeholder="输入提交信息…"
-        style={{
-          width: '100%',
-          flex: 1,
-          background: C.panel2,
-          border: `1px solid ${C.border}`,
-          borderRadius: 7,
-          padding: '10px 12px',
-          color: message ? C.textPrimary : C.textWeak,
-          fontSize: 12,
-          fontFamily: 'JetBrains Mono, monospace',
-          outline: 'none',
-          resize: 'vertical',
-          minHeight: 180,
-          boxSizing: 'border-box',
-          lineHeight: 1.6,
-        }}
-        onFocus={e => {
-          e.target.style.borderColor = C.btnPrimary;
-        }}
-        onBlur={e => {
-          e.target.style.borderColor = C.border;
-        }}
-      />
-    </div>
-  );
-}
-
-export function AiCommitPanel({ stagedCount, message, error, actionGroups, onMessageChange }: AiCommitPanelProps) {
+export function AiCommitPanel({ message, error, actionGroups, onMessageChange }: AiCommitPanelProps) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.appBg, overflow: 'hidden' }}>
-      <PanelHeader stagedCount={stagedCount} error={error} />
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <MessageEditor message={message} error={error} onMessageChange={onMessageChange} />
         <ActionCluster actionGroups={actionGroups} />
-        <MessageEditor message={message} onMessageChange={onMessageChange} />
+        <div style={{ flex: 1, minHeight: 0 }} />
       </div>
     </div>
   );

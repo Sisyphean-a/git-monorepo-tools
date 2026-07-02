@@ -159,15 +159,15 @@ export function ToolbarBtn({
   dimmed?: boolean;
   style?: CSSProperties;
 }) {
-  const bg = primary ? C.btnPrimary : accent ? `${C.aiAccent}22` : 'transparent';
-  const borderColor = primary ? C.btnPrimary : accent ? `${C.aiAccent}60` : warning ? `${C.modified}60` : C.border;
-  const textColor = primary ? 'white' : accent ? C.aiAccent : warning ? C.modified : dimmed ? C.textWeak : C.textSecondary;
+  const bg = disabled ? C.panel3 : primary ? C.btnPrimary : accent ? `${C.aiAccent}22` : 'transparent';
+  const borderColor = disabled ? C.border : primary ? C.btnPrimary : accent ? `${C.aiAccent}60` : warning ? `${C.modified}60` : C.border;
+  const textColor = disabled ? C.textWeak : primary ? 'white' : accent ? C.aiAccent : warning ? C.modified : dimmed ? C.textWeak : C.textSecondary;
 
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{ background: bg, border: `1px solid ${disabled ? C.border : borderColor}`, color: disabled ? C.textWeak : textColor, borderRadius: 6, padding: '5px 10px', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, opacity: disabled ? 0.45 : dimmed ? 0.6 : 1, fontWeight: primary ? 500 : 400, ...style }}
+      style={{ background: bg, border: `1px solid ${borderColor}`, color: textColor, borderRadius: 6, padding: '5px 10px', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, opacity: disabled ? 0.72 : dimmed ? 0.6 : 1, fontWeight: primary ? 500 : 400, ...style }}
     >
       {icon} {label}
     </button>

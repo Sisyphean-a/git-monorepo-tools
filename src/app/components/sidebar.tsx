@@ -12,7 +12,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Settings,
   Upload,
 } from 'lucide-react';
 import { C } from '../theme';
@@ -26,46 +25,42 @@ interface SidebarProps {
   categories: string[];
   scannedAt: string;
   settings: AppSettings;
+  batchAction: 'pull' | 'push' | null;
   recentError: string | null;
   selectedRepoId: string;
   onSelectRepo: (id: string) => void;
   onPullAll: () => void;
   onPushAll: () => void;
   onRefresh: () => void;
-  onOpenSettings: () => void;
   onOpenAddMenu: () => void;
   onToggleAutoScan: () => void;
 }
 
 function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; onClick: () => void }) {
-  const leftBarColor =
-    repo.status === 'error' ? C.conflict :
-    repo.conflicts > 0 ? C.conflict :
-    repo.modified > 0 ? C.modified :
-    repo.ahead > 0 ? C.needPush :
-    repo.behind > 0 ? C.needPull :
-    'transparent';
+  const hasCriticalState = repo.status === 'error' || repo.conflicts > 0;
+  const itemBackground = selected ? C.selectedBg : 'transparent';
 
   return (
     <div
       onClick={onClick}
       style={{
-        background: selected ? C.selectedBg : 'transparent',
-        borderLeft: `3px solid ${leftBarColor}`,
-        borderRadius: 6,
-        padding: '7px 10px 7px 8px',
+        background: itemBackground,
+        border: `1px solid ${selected ? C.borderLight : 'transparent'}`,
+        borderRadius: 8,
+        padding: '8px 10px 8px 12px',
         cursor: 'pointer',
-        transition: 'background 0.1s',
-        margin: '1px 6px',
+        transition: 'background 0.15s, border-color 0.15s',
       }}
       onMouseEnter={e => {
         if (!selected) {
           (e.currentTarget as HTMLDivElement).style.background = C.hoverBg;
+          (e.currentTarget as HTMLDivElement).style.borderColor = `${C.border}55`;
         }
       }}
       onMouseLeave={e => {
         if (!selected) {
           (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+          (e.currentTarget as HTMLDivElement).style.borderColor = 'transparent';
         }
       }}
     >
@@ -80,15 +75,15 @@ function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; 
           ) : (
             <FolderGit2
               size={12}
-              color={repo.modified > 0 ? C.modified : repo.ahead > 0 ? C.needPush : repo.behind > 0 ? C.needPull : C.clean}
+              color={selected ? C.textPrimary : C.textWeak}
               style={{ flexShrink: 0 }}
             />
           )}
           <span
             style={{
-              color: repo.status === 'error' || repo.modified > 0 || repo.ahead > 0 || repo.behind > 0 || repo.conflicts > 0 ? C.textPrimary : C.textSecondary,
+              color: selected || hasCriticalState ? C.textPrimary : C.textSecondary,
               fontSize: 13,
-              fontWeight: 500,
+              fontWeight: selected ? 600 : 500,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -124,21 +119,17 @@ function CategoryGroup({
   onSelectRepo: (id: string) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const totalModified = repos.reduce((sum, repo) => sum + repo.modified, 0);
-  const totalPush = repos.reduce((sum, repo) => sum + (repo.ahead > 0 ? 1 : 0), 0);
-  const totalPull = repos.reduce((sum, repo) => sum + (repo.behind > 0 ? 1 : 0), 0);
-  const totalConflict = repos.reduce((sum, repo) => sum + repo.conflicts, 0);
-  const totalErrors = repos.filter(repo => repo.status === 'error').length;
 
   return (
-    <div style={{ marginBottom: 2 }}>
+    <div style={{ margin: '0 8px 10px' }}>
       <div
         onClick={() => setOpen(value => !value)}
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 4,
-          padding: '5px 10px',
+          padding: '6px 10px',
+          borderRadius: 8,
           cursor: 'pointer',
           userSelect: 'none',
         }}
@@ -162,22 +153,30 @@ function CategoryGroup({
         >
           {name}
         </span>
-        <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-          {totalErrors > 0 && <StatusPill color={C.conflict}>ERR {totalErrors}</StatusPill>}
-          {totalModified > 0 && <StatusPill color={C.modified}>{totalModified}</StatusPill>}
-          {totalPush > 0 && <StatusPill color={C.needPush}>↑{totalPush}</StatusPill>}
-          {totalPull > 0 && <StatusPill color={C.needPull}>↓{totalPull}</StatusPill>}
-          {totalConflict > 0 && <StatusPill color={C.conflict}>⚠</StatusPill>}
-        </div>
       </div>
-      {open && repos.map(repo => (
-        <RepoItem
-          key={repo.id}
-          repo={repo}
-          selected={repo.id === selectedRepoId}
-          onClick={() => onSelectRepo(repo.id)}
-        />
-      ))}
+      {open && (
+        <div
+          style={{
+            marginTop: 4,
+            marginLeft: 18,
+            paddingLeft: 10,
+            paddingRight: 2,
+            borderLeft: `1px solid ${C.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 3,
+          }}
+        >
+          {repos.map(repo => (
+            <RepoItem
+              key={repo.id}
+              repo={repo}
+              selected={repo.id === selectedRepoId}
+              onClick={() => onSelectRepo(repo.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -187,23 +186,17 @@ export function Sidebar({
   categories,
   scannedAt,
   settings,
+  batchAction,
   recentError,
   selectedRepoId,
   onSelectRepo,
   onPullAll,
   onPushAll,
   onRefresh,
-  onOpenSettings,
   onOpenAddMenu,
   onToggleAutoScan,
 }: SidebarProps) {
   const [search, setSearch] = useState('');
-
-  const totalChanged = repos.filter(repo => repo.modified > 0 || repo.conflicts > 0).length;
-  const totalErrors = repos.filter(repo => repo.status === 'error').length;
-  const totalPush = repos.filter(repo => repo.ahead > 0).length;
-  const totalClean = repos.filter(repo => repo.status === 'clean').length;
-  const totalConflicts = repos.reduce((sum, repo) => sum + repo.conflicts, 0);
 
   const filteredRepos = search
     ? repos.filter(repo =>
@@ -265,7 +258,7 @@ export function Sidebar({
           </button>
         </div>
         <div style={{ color: C.textWeak, fontSize: 11, marginBottom: 10 }}>
-          {repos.length} 个仓库 · {totalChanged} 个有变更 · {totalErrors} 个扫描失败 · {totalPush} 个待 Push
+          {repos.length} 个仓库
         </div>
         <div style={{ position: 'relative' }}>
           <Search size={12} color={C.textWeak} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }} />
@@ -323,7 +316,7 @@ export function Sidebar({
 
       <div style={{ borderTop: `1px solid ${C.border}`, padding: '10px 12px', flexShrink: 0 }}>
         <div style={{ color: C.textWeak, fontSize: 10, marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
-          上次扫描 {scannedAt.split(' ').at(-1) ?? scannedAt} · {totalClean} 个干净 · {totalChanged} 个有变更 · {totalErrors} 个扫描失败 · {totalConflicts} 个冲突
+          上次扫描 {scannedAt.split(' ').at(-1) ?? scannedAt}
         </div>
         {recentError && (
           <div style={{ color: C.conflict, fontSize: 10, marginBottom: 8 }}>
@@ -333,43 +326,49 @@ export function Sidebar({
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <button
             onClick={onPullAll}
+            disabled={batchAction !== null}
             style={{
               flex: 1,
-              background: C.btnPrimary,
-              color: 'white',
-              border: 'none',
+              background: batchAction !== null ? C.panel3 : C.btnPrimary,
+              color: batchAction !== null ? C.textWeak : 'white',
+              border: `1px solid ${batchAction !== null ? C.border : C.btnPrimary}`,
               borderRadius: 6,
               padding: '7px 0',
-              cursor: 'pointer',
+              cursor: batchAction !== null ? 'not-allowed' : 'pointer',
               fontSize: 12,
               fontWeight: 500,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 5,
+              opacity: batchAction !== null ? 0.72 : 1,
             }}
           >
-            <Download size={12} /> 全部 Pull
+            {batchAction === 'pull' ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Download size={12} />}
+            {batchAction === 'pull' ? 'Pull 中…' : '全部 Pull'}
           </button>
           <button
             onClick={onPushAll}
+            disabled={batchAction !== null}
             style={{
               flex: 1,
-              background: C.panel2,
-              color: C.textSecondary,
-              border: `1px solid ${C.border}`,
+              background: batchAction === 'push' ? C.btnPrimary : C.panel2,
+              color: batchAction === 'push' ? 'white' : batchAction !== null ? C.textWeak : C.textSecondary,
+              border: `1px solid ${batchAction === 'push' ? C.btnPrimary : C.border}`,
               borderRadius: 6,
               padding: '7px 0',
-              cursor: 'pointer',
+              cursor: batchAction !== null ? 'not-allowed' : 'pointer',
               fontSize: 12,
               fontWeight: 500,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 5,
+              opacity: batchAction !== null && batchAction !== 'push' ? 0.72 : 1,
             }}
           >
-            <Upload size={12} /> 全部 Push
+            {batchAction === 'push' ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={12} />}
+            {batchAction === 'push' ? 'Push 中…' : '全部 Push'}
           </button>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -420,9 +419,6 @@ export function Sidebar({
             </div>
             <span style={{ color: C.textWeak, fontSize: 11 }}>{formatAutoScanLabel(settings)}</span>
           </div>
-          <button onClick={onOpenSettings} style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', display: 'flex' }}>
-            <Settings size={14} />
-          </button>
         </div>
       </div>
     </div>
