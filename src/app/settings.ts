@@ -19,7 +19,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoScanIntervalSeconds: 60,
     pullStrategy: 'ff-only',
     pushStrategy: 'upstream-only',
-    concurrency: 3,
+    concurrency: 5,
     timeoutSeconds: 60,
   },
 };

@@ -2,6 +2,7 @@ package snapshot
 
 type Request struct {
 	ScanRoots    []ScanRoot `json:"scanRoots"`
+	Concurrency  int        `json:"concurrency"`
 	PullStrategy string     `json:"pullStrategy"`
 	PushStrategy string     `json:"pushStrategy"`
 }
@@ -49,6 +50,7 @@ type Repo struct {
 	Behind    int    `json:"behind"`
 	Conflicts int    `json:"conflicts"`
 	Status    string `json:"status"`
+	ScanError string `json:"scanError,omitempty"`
 	LastScan  string `json:"lastScan"`
 }
 

@@ -1,10 +1,8 @@
 package snapshot
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 )
@@ -130,6 +128,9 @@ func runBatch(snapshot AppSnapshot, operation string, request Request) ([]PullRe
 }
 
 func executePullAll(repo RepoDetail, strategy string) PullResult {
+	if repo.ScanError != "" {
+		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: "仓库扫描失败：" + repo.ScanError}
+	}
 	if repo.Remote == "—" {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：当前分支没有 upstream"}
 	}
@@ -168,23 +169,7 @@ func executePushAll(repo RepoDetail, strategy string) PullResult {
 }
 
 func runGitStrict(repoPath string, args []string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", repoPath}, args...)...)
-	applyBackgroundProcessAttrs(cmd)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = strings.TrimSpace(stdout.String())
-		}
-		if message == "" {
-			return "", fmt.Errorf("git %s 失败", strings.Join(args, " "))
-		}
-		return "", errors.New(message)
-	}
-	return strings.TrimSpace(stdout.String()), nil
+	return runGit(repoPath, args)
 }
 
 func parseFilePath(body RepoActionRequest) (string, error) {
@@ -206,6 +191,9 @@ func ensureCommitMessage(message string) error {
 }
 
 func ensurePullReady(repo RepoDetail) error {
+	if strings.TrimSpace(repo.ScanError) != "" {
+		return errors.New("当前仓库扫描失败，请先刷新或排查后再拉取")
+	}
 	if repo.Conflicts > 0 {
 		return errors.New("当前仓库存在冲突，不能执行 pull")
 	}

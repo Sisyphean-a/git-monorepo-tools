@@ -106,6 +106,7 @@ export namespace snapshot {
 	    behind: number;
 	    conflicts: number;
 	    status: string;
+	    scanError?: string;
 	    lastScan: string;
 	    files: FileChange[];
 	    stagedCount: number;
@@ -130,6 +131,7 @@ export namespace snapshot {
 	        this.behind = source["behind"];
 	        this.conflicts = source["conflicts"];
 	        this.status = source["status"];
+	        this.scanError = source["scanError"];
 	        this.lastScan = source["lastScan"];
 	        this.files = this.convertValues(source["files"], FileChange);
 	        this.stagedCount = source["stagedCount"];
@@ -308,6 +310,7 @@ export namespace snapshot {
 	}
 	export class Request {
 	    scanRoots: ScanRoot[];
+	    concurrency: number;
 	    pullStrategy: string;
 	    pushStrategy: string;
 	
@@ -318,6 +321,7 @@ export namespace snapshot {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scanRoots = this.convertValues(source["scanRoots"], ScanRoot);
+	        this.concurrency = source["concurrency"];
 	        this.pullStrategy = source["pullStrategy"];
 	        this.pushStrategy = source["pushStrategy"];
 	    }

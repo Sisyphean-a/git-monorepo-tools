@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { fetchRepoLog, fetchSnapshot, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch } from './api';
+import { useState } from 'react';
+import { fetchRepoLog, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch } from './api';
 import { C } from './theme';
 import { Sidebar } from './components/sidebar';
 import { Workspace } from './components/workspace';
@@ -8,7 +8,9 @@ import { SettingsModal } from './components/settings-modal';
 import { AddRepoMenu } from './components/add-repo-menu';
 import { LogViewerModal } from './components/log-viewer-modal';
 import { loadSettings, saveSettings, sanitizeSettings } from './settings';
+import { viewRepoLog } from './repo-log';
 import type { AppSettings, AppSnapshot, PullResult, RepoLog, SettingsTab } from './types';
+import { useSnapshotRefresh } from './use-snapshot-refresh';
 
 function AppFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -29,10 +31,16 @@ function AppFrame({ children }: { children: React.ReactNode }) {
   );
 }
 
+function formatActionError(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [selectedRepoId, setSelectedRepoId] = useState('');
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showPullDrawer, setShowPullDrawer] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai-commit');
@@ -40,23 +48,24 @@ export default function App() {
   const [drawerOperation, setDrawerOperation] = useState<'pullAll' | 'pushAll'>('pullAll');
   const [drawerResults, setDrawerResults] = useState<PullResult[]>([]);
   const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
-  const autoScanRunning = useRef(false);
 
   const applySnapshot = (nextSnapshot: AppSnapshot) => {
     setSnapshot(nextSnapshot);
     setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
   };
 
-  const refreshSnapshot = async (nextSettings = settings) => {
-    applySnapshot(await fetchSnapshot(nextSettings));
-  };
+  const { refreshSnapshot, runSnapshotTask } = useSnapshotRefresh(settings, applySnapshot, setRefreshError);
 
   const handleBatch = async (operation: 'pull' | 'push') => {
-    const result = await runBatch(operation, settings);
-    applySnapshot(result.snapshot);
-    setDrawerOperation(result.operation ?? (operation === 'pull' ? 'pullAll' : 'pushAll'));
-    setDrawerResults(result.results ?? []);
-    setShowPullDrawer(true);
+    try {
+      const result = await runSnapshotTask(
+        () => runBatch(operation, settings),
+        response => response.snapshot,
+      );
+      setDrawerOperation(result.operation ?? (operation === 'pull' ? 'pullAll' : 'pushAll'));
+      setDrawerResults(result.results ?? []);
+      setShowPullDrawer(true);
+    } catch {}
   };
 
   const handleSaveSettings = (nextSettings: AppSettings) => {
@@ -64,7 +73,7 @@ export default function App() {
     setSettings(sanitized);
     saveSettings(sanitized);
     setShowSettings(false);
-    void refreshSnapshot(sanitized);
+    void refreshSnapshot(sanitized).catch(() => {});
   };
 
   const handleToggleAutoScan = () => {
@@ -91,7 +100,7 @@ export default function App() {
     });
     setSettings(nextSettings);
     saveSettings(nextSettings);
-    await refreshSnapshot(nextSettings);
+    await refreshSnapshot(nextSettings).catch(() => {});
     setShowAddMenu(false);
   };
 
@@ -114,13 +123,15 @@ export default function App() {
     });
     setSettings(nextSettings);
     saveSettings(nextSettings);
-    void refreshSnapshot(nextSettings);
+    void refreshSnapshot(nextSettings).catch(() => {});
   };
 
   const handleRetryRepo = async (repoId: string, operation: 'pullAll' | 'pushAll') => {
     try {
-      const snapshotAfterRetry = await mutateRepo(repoId, operation === 'pullAll' ? 'pull' : 'push', settings);
-      applySnapshot(snapshotAfterRetry);
+      await runSnapshotTask(
+        () => mutateRepo(repoId, operation === 'pullAll' ? 'pull' : 'push', settings),
+        snapshotAfterRetry => snapshotAfterRetry,
+      );
       setDrawerResults(current => current.map(result => (
         result.id === repoId
           ? {
@@ -144,40 +155,59 @@ export default function App() {
   };
 
   const handleOpenRepoFromDrawer = async (path: string) => {
-    if (!snapshot) return;
-    const repo = snapshot.repos.find(item => item.path === path);
-    if (!repo) return;
-    await invokeLocalRepoAction(repo.id, 'open-folder', settings, path);
+    try {
+      await invokeLocalRepoAction('open-folder', path);
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatActionError(error, '打开目录失败'));
+    }
   };
+
+  const handleMutateRepo = (repoId: string, action: 'stage-all' | 'unstage-all' | 'stage-file' | 'unstage-file' | 'commit' | 'pull' | 'push', body?: Record<string, unknown>) => (
+    runSnapshotTask(
+      () => mutateRepo(repoId, action, settings, body),
+      nextSnapshot => nextSnapshot,
+    )
+  );
+
+  const handleInvokeLocalRepoAction = async (action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) => {
+    try {
+      await invokeLocalRepoAction(action, path);
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatActionError(error, '本地操作失败'));
+      throw error;
+    }
+  };
+
+  const visibleError = actionError ?? refreshError;
 
   const handleViewRepoLog = async (repoId: string) => {
-    const log = await fetchRepoLog(repoId, settings);
-    if (log) setRepoLog(log);
+    await viewRepoLog(repoId, settings, {
+      onSuccess: log => setRepoLog(log),
+      onError: setActionError,
+      fetchLog: fetchRepoLog,
+    });
   };
 
-  useEffect(() => {
-    void refreshSnapshot();
-  }, []);
-
-  useEffect(() => {
-    if (!settings.gitBehavior.autoScanEnabled) return;
-    const timer = window.setInterval(async () => {
-      if (autoScanRunning.current) return;
-      autoScanRunning.current = true;
-      try {
-        await refreshSnapshot();
-      } finally {
-        autoScanRunning.current = false;
-      }
-    }, settings.gitBehavior.autoScanIntervalSeconds * 1000);
-    return () => window.clearInterval(timer);
-  }, [settings]);
+  const handleViewRepoLogFromDrawer = (repoId: string) => {
+    // Drawer actions already surface failures via actionError; avoid an extra unhandled rejection.
+    void handleViewRepoLog(repoId).catch(() => {});
+  };
 
   if (!snapshot) {
     return (
       <AppFrame>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>
-          正在扫描仓库...
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12, gap: 10 }}>
+          <div>{refreshError ? `扫描失败：${refreshError}` : '正在扫描仓库...'}</div>
+          {refreshError && (
+            <button
+              onClick={() => void refreshSnapshot().catch(() => {})}
+              style={{ background: C.panel2, color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12 }}
+            >
+              重试扫描
+            </button>
+          )}
         </div>
       </AppFrame>
     );
@@ -191,11 +221,12 @@ export default function App() {
           categories={[...snapshot.categories, ...settings.customCategories.filter(category => !snapshot.categories.includes(category))]}
           scannedAt={snapshot.scannedAt}
           settings={settings}
+          recentError={visibleError}
           selectedRepoId={selectedRepoId}
           onSelectRepo={id => setSelectedRepoId(id)}
           onPullAll={() => void handleBatch('pull')}
           onPushAll={() => void handleBatch('push')}
-          onRefresh={() => void refreshSnapshot()}
+          onRefresh={() => void refreshSnapshot().catch(() => {})}
           onOpenSettings={() => {
             setSettingsTab('git-behavior');
             setShowSettings(true);
@@ -208,12 +239,14 @@ export default function App() {
           commitCandidates={snapshot.commitCandidates}
           settings={settings}
           selectedRepoId={selectedRepoId}
-          onRefresh={() => void refreshSnapshot()}
+          onRefresh={() => refreshSnapshot().catch(() => {})}
+          onMutateRepo={handleMutateRepo}
+          onInvokeLocalRepoAction={handleInvokeLocalRepoAction}
           onOpenSettings={() => {
             setSettingsTab('git-behavior');
             setShowSettings(true);
           }}
-          onShowLog={log => setRepoLog(log)}
+          onViewLog={handleViewRepoLog}
         />
       </div>
       <AddRepoMenu
@@ -229,7 +262,7 @@ export default function App() {
         scannedAt={snapshot.scannedAt}
         onClose={() => setShowPullDrawer(false)}
         onOpenRepo={path => void handleOpenRepoFromDrawer(path)}
-        onViewLog={repoId => void handleViewRepoLog(repoId)}
+        onViewLog={handleViewRepoLogFromDrawer}
         onRetry={(repoId, operation) => void handleRetryRepo(repoId, operation)}
       />
       <SettingsModal

@@ -8,12 +8,12 @@ import {
   Sparkles,
   Upload,
 } from 'lucide-react';
-import { fetchRepoLog, generateCommitCandidates, invokeLocalRepoAction, mutateRepo } from '../api';
+import { generateCommitCandidates } from '../api';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
 import { ConflictBanner, HistoryTab, RepoHeader, ToolbarBtn, summarizeFiles } from './workspace-parts';
-import type { AppSettings, CommitCandidate, RepoDetail, RepoLog } from '../types';
+import type { AppSettings, CommitCandidate, RepoDetail } from '../types';
 
 type MainTab = 'changes' | 'history';
 
@@ -23,8 +23,10 @@ interface WorkspaceProps {
   settings: AppSettings;
   selectedRepoId: string;
   onRefresh: () => void;
+  onMutateRepo: (repoId: string, action: 'stage-all' | 'unstage-all' | 'stage-file' | 'unstage-file' | 'commit' | 'pull' | 'push', body?: Record<string, unknown>) => Promise<void>;
+  onInvokeLocalRepoAction: (action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) => Promise<void>;
   onOpenSettings: () => void;
-  onShowLog: (log: RepoLog) => void;
+  onViewLog: (repoId: string) => Promise<void>;
 }
 
 export function Workspace({
@@ -33,8 +35,10 @@ export function Workspace({
   settings,
   selectedRepoId,
   onRefresh,
+  onMutateRepo,
+  onInvokeLocalRepoAction,
   onOpenSettings,
-  onShowLog,
+  onViewLog,
 }: WorkspaceProps) {
   const repoIds = Object.keys(repoDetails);
   const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
@@ -69,58 +73,49 @@ export function Workspace({
     setBusyAction(action);
     try {
       await handler();
+    } catch {
+      // Snapshot errors are surfaced by the shared refresh error banner in App.
     } finally {
       setBusyAction(null);
     }
-  };
-
-  const refreshAndSync = async () => {
-    await onRefresh();
   };
 
   const handleToggleStaged = (id: string) => {
     const file = files.find(item => item.id === id);
     if (!file) return;
     void runAction('toggle-stage', async () => {
-      await mutateRepo(repo.id, file.staged ? 'unstage-file' : 'stage-file', settings, { fileId: file.id, filePath: file.path });
-      await refreshAndSync();
+      await onMutateRepo(repo.id, file.staged ? 'unstage-file' : 'stage-file', { fileId: file.id, filePath: file.path });
     });
   };
 
   const handleStageAll = () => void runAction('stage-all', async () => {
-    await mutateRepo(repo.id, 'stage-all', settings);
-    await refreshAndSync();
+    await onMutateRepo(repo.id, 'stage-all');
   });
   const handleUnstageAll = () => void runAction('unstage-all', async () => {
-    await mutateRepo(repo.id, 'unstage-all', settings);
-    await refreshAndSync();
+    await onMutateRepo(repo.id, 'unstage-all');
   });
   const handleCommit = () => void runAction('commit', async () => {
-    await mutateRepo(repo.id, 'commit', settings, { message: commitMessage });
+    await onMutateRepo(repo.id, 'commit', { message: commitMessage });
     setCommitMessage('');
-    await refreshAndSync();
   });
   const handlePull = () => void runAction('pull', async () => {
-    await mutateRepo(repo.id, 'pull', settings);
-    await refreshAndSync();
+    await onMutateRepo(repo.id, 'pull');
   });
   const handlePush = () => void runAction('push', async () => {
-    await mutateRepo(repo.id, 'push', settings);
-    await refreshAndSync();
+    await onMutateRepo(repo.id, 'push');
   });
-  const handleRefresh = () => void runAction('refresh', refreshAndSync);
+  const handleRefresh = () => void runAction('refresh', onRefresh);
   const handleOpenFolder = () => void runAction('open-folder', async () => {
-    await invokeLocalRepoAction(repo.id, 'open-folder', settings, repo.path);
+    await onInvokeLocalRepoAction('open-folder', repo.path);
   });
   const handleOpenTerminal = () => void runAction('open-terminal', async () => {
-    await invokeLocalRepoAction(repo.id, 'open-terminal', settings, repo.path);
+    await onInvokeLocalRepoAction('open-terminal', repo.path);
   });
   const handleOpenConflicts = () => void runAction('open-conflicts', async () => {
-    await invokeLocalRepoAction(repo.id, 'open-conflicts', settings, repo.path);
+    await onInvokeLocalRepoAction('open-conflicts', repo.path);
   });
   const handleViewLog = () => void runAction('log', async () => {
-    const log = await fetchRepoLog(repo.id, settings);
-    if (log) onShowLog(log);
+    await onViewLog(repo.id);
   });
   const handleGenerateCommit = () => void runAction('generate', async () => {
     try {

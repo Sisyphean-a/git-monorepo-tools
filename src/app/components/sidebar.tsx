@@ -16,6 +16,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { C } from '../theme';
+import { shouldShowCleanIndicator } from '../repo-status';
 import { formatAutoScanLabel } from '../settings';
 import type { AppSettings, Repo } from '../types';
 import { StatusPill } from './common';
@@ -25,6 +26,7 @@ interface SidebarProps {
   categories: string[];
   scannedAt: string;
   settings: AppSettings;
+  recentError: string | null;
   selectedRepoId: string;
   onSelectRepo: (id: string) => void;
   onPullAll: () => void;
@@ -37,6 +39,7 @@ interface SidebarProps {
 
 function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; onClick: () => void }) {
   const leftBarColor =
+    repo.status === 'error' ? C.conflict :
     repo.conflicts > 0 ? C.conflict :
     repo.modified > 0 ? C.modified :
     repo.ahead > 0 ? C.needPush :
@@ -70,6 +73,8 @@ function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
           {repo.status === 'checking' ? (
             <Loader2 size={12} color={C.textWeak} style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+          ) : repo.status === 'error' ? (
+            <AlertTriangle size={12} color={C.conflict} style={{ flexShrink: 0 }} />
           ) : repo.conflicts > 0 ? (
             <AlertTriangle size={12} color={C.conflict} style={{ flexShrink: 0 }} />
           ) : (
@@ -81,7 +86,7 @@ function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; 
           )}
           <span
             style={{
-              color: repo.modified > 0 || repo.ahead > 0 || repo.behind > 0 || repo.conflicts > 0 ? C.textPrimary : C.textSecondary,
+              color: repo.status === 'error' || repo.modified > 0 || repo.ahead > 0 || repo.behind > 0 || repo.conflicts > 0 ? C.textPrimary : C.textSecondary,
               fontSize: 13,
               fontWeight: 500,
               overflow: 'hidden',
@@ -93,11 +98,12 @@ function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; 
           </span>
         </div>
         <div style={{ display: 'flex', gap: 3, flexShrink: 0, alignItems: 'center' }}>
+          {repo.status === 'error' && <StatusPill color={C.conflict}>ERR</StatusPill>}
           {repo.conflicts > 0 && <StatusPill color={C.conflict}>⚠</StatusPill>}
           {repo.modified > 0 && <StatusPill color={C.modified}>M {repo.modified}</StatusPill>}
           {repo.ahead > 0 && <StatusPill color={C.needPush}>↑{repo.ahead}</StatusPill>}
           {repo.behind > 0 && <StatusPill color={C.needPull}>↓{repo.behind}</StatusPill>}
-          {!repo.modified && !repo.ahead && !repo.behind && !repo.conflicts && repo.status !== 'checking' && (
+          {shouldShowCleanIndicator(repo) && (
             <CheckCircle2 size={11} color={C.clean} />
           )}
         </div>
@@ -122,6 +128,7 @@ function CategoryGroup({
   const totalPush = repos.reduce((sum, repo) => sum + (repo.ahead > 0 ? 1 : 0), 0);
   const totalPull = repos.reduce((sum, repo) => sum + (repo.behind > 0 ? 1 : 0), 0);
   const totalConflict = repos.reduce((sum, repo) => sum + repo.conflicts, 0);
+  const totalErrors = repos.filter(repo => repo.status === 'error').length;
 
   return (
     <div style={{ marginBottom: 2 }}>
@@ -156,6 +163,7 @@ function CategoryGroup({
           {name}
         </span>
         <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+          {totalErrors > 0 && <StatusPill color={C.conflict}>ERR {totalErrors}</StatusPill>}
           {totalModified > 0 && <StatusPill color={C.modified}>{totalModified}</StatusPill>}
           {totalPush > 0 && <StatusPill color={C.needPush}>↑{totalPush}</StatusPill>}
           {totalPull > 0 && <StatusPill color={C.needPull}>↓{totalPull}</StatusPill>}
@@ -179,6 +187,7 @@ export function Sidebar({
   categories,
   scannedAt,
   settings,
+  recentError,
   selectedRepoId,
   onSelectRepo,
   onPullAll,
@@ -191,6 +200,7 @@ export function Sidebar({
   const [search, setSearch] = useState('');
 
   const totalChanged = repos.filter(repo => repo.modified > 0 || repo.conflicts > 0).length;
+  const totalErrors = repos.filter(repo => repo.status === 'error').length;
   const totalPush = repos.filter(repo => repo.ahead > 0).length;
   const totalClean = repos.filter(repo => repo.status === 'clean').length;
   const totalConflicts = repos.reduce((sum, repo) => sum + repo.conflicts, 0);
@@ -255,7 +265,7 @@ export function Sidebar({
           </button>
         </div>
         <div style={{ color: C.textWeak, fontSize: 11, marginBottom: 10 }}>
-          {repos.length} 个仓库 · {totalChanged} 个有变更 · {totalPush} 个待 Push
+          {repos.length} 个仓库 · {totalChanged} 个有变更 · {totalErrors} 个扫描失败 · {totalPush} 个待 Push
         </div>
         <div style={{ position: 'relative' }}>
           <Search size={12} color={C.textWeak} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }} />
@@ -313,8 +323,13 @@ export function Sidebar({
 
       <div style={{ borderTop: `1px solid ${C.border}`, padding: '10px 12px', flexShrink: 0 }}>
         <div style={{ color: C.textWeak, fontSize: 10, marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
-          上次扫描 {scannedAt.split(' ').at(-1) ?? scannedAt} · {totalClean} 个干净 · {totalChanged} 个有变更 · {totalConflicts} 个冲突
+          上次扫描 {scannedAt.split(' ').at(-1) ?? scannedAt} · {totalClean} 个干净 · {totalChanged} 个有变更 · {totalErrors} 个扫描失败 · {totalConflicts} 个冲突
         </div>
+        {recentError && (
+          <div style={{ color: C.conflict, fontSize: 10, marginBottom: 8 }}>
+            最近错误：{recentError}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <button
             onClick={onPullAll}

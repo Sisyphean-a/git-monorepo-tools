@@ -1,4 +1,4 @@
-export type RepoStatus = 'clean' | 'changed' | 'conflict' | 'checking';
+export type RepoStatus = 'clean' | 'changed' | 'conflict' | 'checking' | 'error';
 export type FileStatus = 'A' | 'M' | 'D' | 'R';
 
 export interface Repo {
@@ -13,6 +13,7 @@ export interface Repo {
   behind: number;
   conflicts: number;
   status: RepoStatus;
+  scanError?: string;
   lastScan: string;
 }
 

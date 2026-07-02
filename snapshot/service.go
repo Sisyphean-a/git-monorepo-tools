@@ -43,7 +43,7 @@ func (s *Service) BuildAppSnapshot(request Request) (AppSnapshot, error) {
 func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppSnapshot, error) {
 	scanTime := time.Now()
 	repoEntries := s.discoverRepos(s.buildRoots(request))
-	snapshots := s.buildSnapshots(repoEntries, scanTime)
+	snapshots := s.buildSnapshots(repoEntries, scanTime, request.Concurrency)
 	ordered := s.sortSnapshots(snapshots)
 	selectedID := s.selectedRepoID(ordered)
 	results := orderedPullResults(ordered)
@@ -103,16 +103,8 @@ func (s *Service) discoverRepos(roots []ScanRoot) []repoEntry {
 	return entries
 }
 
-func (s *Service) buildSnapshots(entries []repoEntry, scanTime time.Time) []repoSnapshot {
-	snapshots := make([]repoSnapshot, 0, len(entries))
-	for _, entry := range entries {
-		snapshot, err := buildRepoSnapshot(entry, scanTime)
-		if err != nil {
-			continue
-		}
-		snapshots = append(snapshots, snapshot)
-	}
-	return snapshots
+func (s *Service) buildSnapshots(entries []repoEntry, scanTime time.Time, concurrency int) []repoSnapshot {
+	return buildSnapshots(entries, scanTime, concurrency)
 }
 
 func (s *Service) sortSnapshots(items []repoSnapshot) []repoSnapshot {
@@ -127,7 +119,10 @@ func (s *Service) sortSnapshots(items []repoSnapshot) []repoSnapshot {
 		if left.repo.Modified != right.repo.Modified {
 			return right.repo.Modified - left.repo.Modified
 		}
-		return strings.Compare(left.repo.Name, right.repo.Name)
+		if nameDiff := strings.Compare(left.repo.Name, right.repo.Name); nameDiff != 0 {
+			return nameDiff
+		}
+		return strings.Compare(left.repo.Path, right.repo.Path)
 	})
 	return sorted
 }
@@ -147,10 +142,14 @@ func (s *Service) selectedRepoID(items []repoSnapshot) string {
 func buildRepoSnapshot(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
 	repoPath := normalizePath(entry.repoPath)
 	repoName := filepath.Base(repoPath)
-	statusOutput := runGit(repoPath, []string{"status", "--porcelain=v1", "-b"})
+	statusOutput, statusErr := runGit(repoPath, []string{"status", "--porcelain=v1", "-b"})
 	parsed := parseStatus(statusOutput)
-	files := buildFileChanges(repoPath, parsed.entries)
-	history := buildHistory(repoPath)
+	files, filesErr := buildFileChanges(repoPath, parsed.entries)
+	history, historyErr := buildHistory(repoPath)
+	scanError := ""
+	if err := firstGitError(statusErr, filesErr, historyErr); err != nil {
+		scanError = err.Error()
+	}
 	modified := uniquePathCount(files)
 
 	repo := Repo{
@@ -164,7 +163,8 @@ func buildRepoSnapshot(entry repoEntry, scanTime time.Time) (repoSnapshot, error
 		Ahead:     parsed.ahead,
 		Behind:    parsed.behind,
 		Conflicts: parsed.conflicts,
-		Status:    repoStatus(parsed.conflicts, modified),
+		Status:    repoStatus(scanError, parsed.conflicts, modified),
+		ScanError: scanError,
 		LastScan:  formatTime(scanTime),
 	}
 

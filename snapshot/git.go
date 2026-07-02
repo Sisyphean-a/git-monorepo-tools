@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,15 +24,17 @@ type parsedStatus struct {
 	entries   []string
 }
 
-func runGit(repoPath string, args []string) string {
+func runGit(repoPath string, args []string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", repoPath}, args...)...)
 	applyBackgroundProcessAttrs(cmd)
 	var stdout bytes.Buffer
+	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return ""
+		return "", buildGitError(args, stdout.String(), stderr.String())
 	}
-	return strings.TrimSpace(stdout.String())
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 func parseStatus(output string) parsedStatus {
@@ -54,20 +57,28 @@ func parseStatus(output string) parsedStatus {
 	}
 }
 
-func buildFileChanges(repoPath string, entries []string) []FileChange {
-	stagedStats := parseNumstat(runGit(repoPath, []string{"diff", "--cached", "--numstat", "--no-renames"}))
-	unstagedStats := parseNumstat(runGit(repoPath, []string{"diff", "--numstat", "--no-renames"}))
+func buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
+	stagedOutput, stagedErr := runGit(repoPath, []string{"diff", "--cached", "--numstat", "--no-renames"})
+	unstagedOutput, unstagedErr := runGit(repoPath, []string{"diff", "--numstat", "--no-renames"})
+	stagedStats := parseNumstat(stagedOutput)
+	unstagedStats := parseNumstat(unstagedOutput)
 	changes := buildTrackedChanges(repoPath, stagedStats, true)
 	changes = append(changes, buildTrackedChanges(repoPath, unstagedStats, false)...)
 	changes = append(changes, buildUntrackedChanges(repoPath, entries, changes)...)
 	slices.SortFunc(changes, compareFileChanges)
-	return changes
+	return changes, firstGitError(stagedErr, unstagedErr)
 }
 
-func buildHistory(repoPath string) []CommitSummary {
-	output := runGit(repoPath, []string{"log", "-5", "--numstat", "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s"})
+func buildHistory(repoPath string) ([]CommitSummary, error) {
+	output, err := runGit(repoPath, []string{"log", "-5", "--numstat", "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s"})
+	if isNoCommitHistoryError(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(output) == "" {
-		return nil
+		return nil, nil
 	}
 	lines := filterNonEmpty(strings.Split(output, "\n"))
 	history := make([]CommitSummary, 0, len(lines))
@@ -98,7 +109,7 @@ func buildHistory(repoPath string) []CommitSummary {
 	if currentCommit != nil {
 		history = append(history, *currentCommit)
 	}
-	return history
+	return history, nil
 }
 
 func parseHistoryCommit(line string) (CommitSummary, bool) {
@@ -124,6 +135,9 @@ func parseNumstatLine(line string) (int, int, bool) {
 }
 
 func buildPullResult(repo Repo, repoPath string) PullResult {
+	if repo.ScanError != "" {
+		return PullResult{ID: repo.ID, Name: repo.Name, Path: repoPath, Result: "failed", Detail: "仓库扫描失败：" + repo.ScanError}
+	}
 	if repo.Conflicts > 0 {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repoPath, Result: "failed", Detail: "检测到冲突，需先人工处理"}
 	}
@@ -364,7 +378,10 @@ func uniquePathCount(files []FileChange) int {
 	return len(seen)
 }
 
-func repoStatus(conflicts, modified int) string {
+func repoStatus(scanError string, conflicts, modified int) string {
+	if scanError != "" {
+		return "error"
+	}
 	if conflicts > 0 {
 		return "conflict"
 	}
@@ -372,6 +389,30 @@ func repoStatus(conflicts, modified int) string {
 		return "changed"
 	}
 	return "clean"
+}
+
+func firstGitError(errors ...error) error {
+	for _, err := range errors {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func buildGitError(args []string, stdout, stderr string) error {
+	message := strings.TrimSpace(stderr)
+	if message == "" {
+		message = strings.TrimSpace(stdout)
+	}
+	if message == "" {
+		message = "git " + strings.Join(args, " ") + " 失败"
+	}
+	return errors.New(message)
+}
+
+func isNoCommitHistoryError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "does not have any commits yet")
 }
 
 func countStaged(files []FileChange, staged bool) int {

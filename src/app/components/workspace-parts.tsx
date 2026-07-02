@@ -61,12 +61,14 @@ export function RepoHeader({
             <span style={{ color: C.textWeak, fontSize: 11 }}>{repo.remote}</span>
             {repo.ahead > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.needPush, fontSize: 11 }}><ArrowUp size={11} /> {repo.ahead} 待 Push</span>}
             {repo.behind > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.needPull, fontSize: 11 }}><ArrowDown size={11} /> {repo.behind} 待 Pull</span>}
+            {repo.scanError && <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.conflict, fontSize: 11 }}><AlertTriangle size={11} /> 扫描失败</span>}
             {repo.conflicts > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.conflict, fontSize: 11 }}><AlertTriangle size={11} /> {repo.conflicts} 个冲突</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
             <span style={{ color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>{repo.path}</span>
             {fileSummary.total > 0 && <span style={{ color: C.textSecondary, fontSize: 10 }}>{fileSummary.total} 处变更 ·<span style={{ color: C.added }}> +{fileSummary.added} 新增</span> ·<span style={{ color: C.modified }}> ~{fileSummary.modified} 修改</span> ·<span style={{ color: C.deleted }}> -{fileSummary.deleted} 删除</span></span>}
             <span style={{ color: C.textWeak, fontSize: 10 }}>更新于 {repo.lastScan}</span>
+            {repo.scanError && <span style={{ color: C.conflict, fontSize: 10 }}>{repo.scanError}</span>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>

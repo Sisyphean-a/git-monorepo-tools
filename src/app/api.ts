@@ -1,7 +1,8 @@
-import type { AICommitPreview, AppSettings, AppSnapshot, CommitCandidate, PullResult, RepoLog } from './types';
+import type { AICommitPreview, AppSettings, AppSnapshot, CommitCandidate, PullResult, RepoLog } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
+  concurrency: AppSettings['gitBehavior']['concurrency'];
   pullStrategy: AppSettings['gitBehavior']['pullStrategy'];
   pushStrategy: AppSettings['gitBehavior']['pushStrategy'];
 }
@@ -53,6 +54,7 @@ const WAILS_REPO_ACTIONS = new Set([
 function buildSnapshotRequest(settings?: AppSettings): SnapshotRequest {
   return {
     scanRoots: settings?.scanRoots ?? [],
+    concurrency: settings?.gitBehavior.concurrency ?? 5,
     pullStrategy: settings?.gitBehavior.pullStrategy ?? 'ff-only',
     pushStrategy: settings?.gitBehavior.pushStrategy ?? 'upstream-only',
   };
@@ -102,18 +104,15 @@ export async function fetchRepoLog(repoId: string, settings: AppSettings) {
   return getWailsBindings().GetRepoLog(repoId, buildSnapshotRequest(settings));
 }
 
-export async function invokeLocalRepoAction(repoId: string, action: 'open-folder' | 'open-terminal' | 'open-conflicts', settings: AppSettings, path: string) {
+export async function invokeLocalRepoAction(action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) {
   const binding = getWailsBindings();
   if (action === 'open-folder') {
-    await binding.OpenFolder(path);
-    return fetchSnapshot(settings);
+    return binding.OpenFolder(path);
   }
   if (action === 'open-terminal') {
-    await binding.OpenTerminal(path);
-    return fetchSnapshot(settings);
+    return binding.OpenTerminal(path);
   }
-  await binding.OpenConflicts(path);
-  return fetchSnapshot(settings);
+  return binding.OpenConflicts(path);
 }
 
 export async function generateCommitCandidates(repoId: string, settings: AppSettings, styleHint?: string): Promise<AICommitPreview> {

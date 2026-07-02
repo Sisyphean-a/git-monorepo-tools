@@ -6,6 +6,7 @@ interface Window {
       App?: {
         GetSnapshot: (request: {
           scanRoots: Array<{ path: string; category: string }>;
+          concurrency: number;
           pullStrategy: 'ff-only' | 'rebase' | 'merge';
           pushStrategy: 'upstream-only' | 'all';
         }) => Promise<import('./app/types').AppSnapshot>;
@@ -14,6 +15,7 @@ interface Window {
           action: string,
           request: {
             scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
             pullStrategy: 'ff-only' | 'rebase' | 'merge';
             pushStrategy: 'upstream-only' | 'all';
           },
@@ -27,6 +29,7 @@ interface Window {
           operation: 'pull' | 'push',
           request: {
             scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
             pullStrategy: 'ff-only' | 'rebase' | 'merge';
             pushStrategy: 'upstream-only' | 'all';
           },
@@ -39,6 +42,7 @@ interface Window {
           repoId: string,
           request: {
             scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
             pullStrategy: 'ff-only' | 'rebase' | 'merge';
             pushStrategy: 'upstream-only' | 'all';
           },
@@ -47,6 +51,7 @@ interface Window {
           repoId: string,
           request: {
             scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
             pullStrategy: 'ff-only' | 'rebase' | 'merge';
             pushStrategy: 'upstream-only' | 'all';
           },

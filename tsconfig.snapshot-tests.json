@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": ".tmp/snapshot-tests",
+    "rootDir": "src/app",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/vite-env.d.ts",
+    "src/app/api.ts",
+    "src/app/api.test.ts",
+    "src/app/repo-log.ts",
+    "src/app/repo-log.test.ts",
+    "src/app/repo-status.ts",
+    "src/app/repo-status.test.ts",
+    "src/app/snapshot-coordinator.ts",
+    "src/app/snapshot-coordinator.test.ts",
+    "src/app/types.ts"
+  ]
+}
