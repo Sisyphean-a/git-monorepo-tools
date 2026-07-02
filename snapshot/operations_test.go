@@ -1,6 +1,10 @@
 package snapshot
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -196,5 +200,52 @@ func TestResolveRepoForActionWithLoadSkipsDiscoveryWhenCommitHintValid(t *testin
 	}
 	if repo.Path != targetPath {
 		t.Fatalf("expected commit hint path %q, got %q", targetPath, repo.Path)
+	}
+}
+
+func TestMutateRepoDiscardAllClearsTrackedAndUntrackedChanges(t *testing.T) {
+	repoPath := t.TempDir()
+	trackedPath := filepath.Join(repoPath, "tracked.txt")
+	untrackedPath := filepath.Join(repoPath, "generated.txt")
+	if _, err := runGitStrict(repoPath, []string{"init"}); err != nil {
+		t.Fatalf("init repo: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"config", "user.email", "test@example.com"}); err != nil {
+		t.Fatalf("config email: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"config", "user.name", "Test User"}); err != nil {
+		t.Fatalf("config name: %v", err)
+	}
+	if err := os.WriteFile(trackedPath, []byte("base\n"), 0o644); err != nil {
+		t.Fatalf("write tracked file: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"add", "tracked.txt"}); err != nil {
+		t.Fatalf("stage tracked file: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"commit", "-m", "init"}); err != nil {
+		t.Fatalf("commit seed file: %v", err)
+	}
+	if err := os.WriteFile(trackedPath, []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("modify tracked file: %v", err)
+	}
+	if err := os.WriteFile(untrackedPath, []byte("temp\n"), 0o644); err != nil {
+		t.Fatalf("write untracked file: %v", err)
+	}
+	if err := mutateRepo(RepoDetail{Repo: Repo{Path: normalizePath(repoPath)}}, "discard-all", Request{}, RepoActionRequest{}); err != nil {
+		t.Fatalf("discard all changes: %v", err)
+	}
+	content, err := os.ReadFile(trackedPath)
+	if err != nil || strings.TrimSpace(string(content)) != "base" {
+		t.Fatalf("expected tracked file restored to HEAD, got %q, err=%v", string(content), err)
+	}
+	if _, err := os.Stat(untrackedPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected untracked file removed, got err=%v", err)
+	}
+	status, err := runGitStrict(repoPath, []string{"status", "--porcelain"})
+	if err != nil {
+		t.Fatalf("read final status: %v", err)
+	}
+	if status != "" {
+		t.Fatalf("expected clean worktree after discard, got %q", status)
 	}
 }

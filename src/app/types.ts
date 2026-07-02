@@ -1,5 +1,6 @@
 export type RepoStatus = 'clean' | 'changed' | 'conflict' | 'checking' | 'error';
 export type FileStatus = 'A' | 'M' | 'D' | 'R';
+export type RepoMutationAction = 'stage-all' | 'unstage-all' | 'stage-file' | 'unstage-file' | 'commit' | 'pull' | 'push' | 'discard-all';
 
 export interface Repo {
   id: string;

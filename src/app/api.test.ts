@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateCommitMessage, invokeLocalRepoAction } from './api.js';
+import { generateCommitMessage, invokeLocalRepoAction, mutateRepo } from './api.js';
 
 test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
   const calls: string[] = [];
@@ -128,4 +128,62 @@ test('generateCommitMessage uses dedicated binding', async () => {
   }
 
   assert.deepEqual(calls, ['GenerateCommitMessage:repo-1']);
+});
+
+test('mutateRepo accepts discard-all action', async () => {
+  const calls: string[] = [];
+  const originalWindow = globalThis.window;
+
+  const bindings = {
+    GetSnapshot: async () => {
+      throw new Error('unused');
+    },
+    MutateRepo: async (_repoId: string, action: string) => {
+      calls.push(`MutateRepo:${action}`);
+      return {
+        scannedAt: '',
+        categories: [],
+        repos: [],
+        repoDetails: {},
+        selectedRepoId: '',
+        pullResults: [],
+        commitCandidates: {},
+      };
+    },
+    RunBatch: async () => {
+      throw new Error('unused');
+    },
+    GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GenerateCommitMessage: async () => {
+      throw new Error('unused');
+    },
+    OpenFolder: async () => {
+      throw new Error('unused');
+    },
+    OpenTerminal: async () => {
+      throw new Error('unused');
+    },
+    OpenConflicts: async () => {
+      throw new Error('unused');
+    },
+    PickFolder: async () => '',
+  };
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { go: { main: { App: bindings } } },
+  });
+
+  try {
+    await mutateRepo('repo-1', 'discard-all', undefined, { repoPath: '/repo/a' });
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+
+  assert.deepEqual(calls, ['MutateRepo:discard-all']);
 });

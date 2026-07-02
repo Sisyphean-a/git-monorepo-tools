@@ -5,6 +5,7 @@ import {
   MinusSquare,
   PlusSquare,
   RefreshCw,
+  RotateCcw,
   Sparkles,
   Upload,
 } from 'lucide-react';
@@ -13,7 +14,7 @@ import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
 import { ConflictBanner, HistoryTab, RepoHeader, summarizeFiles } from './workspace-parts';
-import type { AppSettings, RepoDetail } from '../types';
+import type { AppSettings, RepoDetail, RepoMutationAction } from '../types';
 
 type MainTab = 'changes' | 'history';
 
@@ -22,7 +23,7 @@ interface WorkspaceProps {
   settings: AppSettings;
   selectedRepoId: string;
   onRefresh: () => void;
-  onMutateRepo: (repoId: string, action: 'stage-all' | 'unstage-all' | 'stage-file' | 'unstage-file' | 'commit' | 'pull' | 'push', body?: Record<string, unknown>) => Promise<void>;
+  onMutateRepo: (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => Promise<void>;
   onInvokeLocalRepoAction: (action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) => Promise<void>;
   onOpenSettings: () => void;
   onViewLog: (repoId: string) => Promise<void>;
@@ -103,6 +104,15 @@ export function Workspace({
   const handlePush = () => void runAction('push', async () => {
     await onMutateRepo(repo.id, 'push', repoActionBody());
   });
+  const handleDiscardAll = () => {
+    const confirmed = window.confirm('这会放弃当前仓库的全部本地改动，包括已暂存、未暂存和未跟踪文件，且无法恢复。确认继续？');
+    if (!confirmed) return;
+    void runAction('discard-all', async () => {
+      await onMutateRepo(repo.id, 'discard-all', repoActionBody());
+      setCommitMessage('');
+      setAiError(null);
+    });
+  };
   const handleRefresh = () => void runAction('refresh', onRefresh);
   const handleOpenFolder = () => void runAction('open-folder', async () => {
     await onInvokeLocalRepoAction('open-folder', repo.path);
@@ -126,10 +136,19 @@ export function Workspace({
   });
 
   const isConflict = repo.conflicts > 0;
+  const hasChanges = files.length > 0;
   const hasStaged = stagedIds.size > 0;
   const hasCommitMsg = commitMessage.trim().length > 0;
   const hasPull = repo.behind > 0;
   const hasPush = repo.ahead > 0;
+  const discardAction = {
+    key: 'discard-all',
+    label: busyAction === 'discard-all' ? '放弃中…' : '放弃更改',
+    icon: <RotateCcw size={12} />,
+    onClick: handleDiscardAll,
+    disabled: busyAction !== null || !hasChanges,
+    warning: true,
+  };
 
   const mainTabs: { key: MainTab; label: string }[] = [
     { key: 'changes', label: `变更 ${fileSummary.total > 0 ? `(${fileSummary.total})` : ''}` },
@@ -139,7 +158,7 @@ export function Workspace({
     {
       key: 'stage',
       actions: [
-        { key: 'stage-all', label: '全部暂存', icon: <PlusSquare size={12} />, onClick: handleStageAll, disabled: busyAction !== null || files.length === 0 || stagedIds.size === files.length },
+        { key: 'stage-all', label: '全部暂存', icon: <PlusSquare size={12} />, onClick: handleStageAll, disabled: busyAction !== null || !hasChanges || stagedIds.size === files.length },
         { key: 'unstage-all', label: '全部取消暂存', icon: <MinusSquare size={12} />, onClick: handleUnstageAll, disabled: busyAction !== null || stagedIds.size === 0 },
       ],
     },
@@ -200,6 +219,7 @@ export function Workspace({
           />
           <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
             <AiCommitPanel
+              topAction={discardAction}
               message={commitMessage}
               error={aiError}
               actionGroups={actionGroups}

@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, PullResult, RepoLog } from './types.js';
+import type { AppSettings, AppSnapshot, PullResult, RepoLog, RepoMutationAction } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
@@ -40,7 +40,7 @@ type WailsBindings = {
   PickFolder: () => Promise<string>;
 };
 
-const WAILS_REPO_ACTIONS = new Set([
+const WAILS_REPO_ACTIONS = new Set<RepoMutationAction>([
   'stage-all',
   'unstage-all',
   'stage-file',
@@ -48,6 +48,7 @@ const WAILS_REPO_ACTIONS = new Set([
   'commit',
   'pull',
   'push',
+  'discard-all',
 ]);
 
 function buildSnapshotRequest(settings?: AppSettings): SnapshotRequest {
@@ -87,7 +88,7 @@ export async function fetchSnapshot(settings?: AppSettings) {
   return getWailsBindings().GetSnapshot(buildSnapshotRequest(settings));
 }
 
-export async function mutateRepo(repoId: string, action: string, settings?: AppSettings, body?: Record<string, unknown>) {
+export async function mutateRepo(repoId: string, action: RepoMutationAction, settings?: AppSettings, body?: Record<string, unknown>) {
   const binding = getWailsBindings();
   if (!WAILS_REPO_ACTIONS.has(action)) {
     throw new Error(`未迁移的仓库动作：${action}`);

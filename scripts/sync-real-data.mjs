@@ -17,7 +17,7 @@ function main() {
 
 export function buildAppSnapshot(selectedRepoPath = PROJECT_ROOT, pullResultsOverride, scanRoots = []) {
   const scanTime = new Date();
-  const repoEntries = discoverRepos(buildRoots(selectedRepoPath, scanRoots));
+  const repoEntries = discoverRepos(buildRoots(scanRoots));
   const snapshots = repoEntries.map(entry => buildRepoSnapshot(entry, scanTime));
   const ordered = sortSnapshots(snapshots, selectedRepoPath);
   const selected = ordered.find(item => item.path === selectedRepoPath) ?? ordered[0];
@@ -38,13 +38,8 @@ export function writeDataModule(snapshot, targetPath = path.join(PROJECT_ROOT, '
   return targetPath;
 }
 
-function buildRoots(selectedRepoPath, scanRoots = []) {
-  const workspaceRoot = normalizePath(path.dirname(selectedRepoPath));
-  const driveRoot = normalizePath(path.parse(selectedRepoPath).root);
-  const roots = [
-    { path: workspaceRoot, category: classifyWorkspaceRoot(workspaceRoot), scanChildren: true },
-    { path: driveRoot, category: '本地项目', scanChildren: true },
-  ];
+function buildRoots(scanRoots = []) {
+  const roots = [];
   const extraRoots = (process.env.GIT_MANAGER_SCAN_ROOTS ?? '')
     .split(';')
     .map(item => normalizePath(item.trim()))
@@ -61,12 +56,6 @@ function buildRoots(selectedRepoPath, scanRoots = []) {
     });
   }
   return dedupeRoots(roots);
-}
-
-function classifyWorkspaceRoot(rootPath) {
-  const name = path.basename(rootPath).toLowerCase();
-  if (name === 'github') return 'GitHub 工作区';
-  return `${path.basename(rootPath) || '工作区'} 工作区`;
 }
 
 function classifyCustomRoot(rootPath) {

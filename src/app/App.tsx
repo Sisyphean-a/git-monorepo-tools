@@ -9,7 +9,7 @@ import { AddRepoMenu } from './components/add-repo-menu';
 import { LogViewerModal } from './components/log-viewer-modal';
 import { loadSettings, saveSettings, sanitizeSettings } from './settings';
 import { viewRepoLog } from './repo-log';
-import type { AppSettings, AppSnapshot, PullResult, RepoLog, SettingsTab } from './types';
+import type { AppSettings, AppSnapshot, PullResult, RepoLog, RepoMutationAction, SettingsTab } from './types';
 import { useSnapshotRefresh } from './use-snapshot-refresh';
 
 function AppFrame({ children }: { children: React.ReactNode }) {
@@ -168,7 +168,7 @@ export default function App() {
     }
   };
 
-  const handleMutateRepo = (repoId: string, action: 'stage-all' | 'unstage-all' | 'stage-file' | 'unstage-file' | 'commit' | 'pull' | 'push', body?: Record<string, unknown>) => (
+  const handleMutateRepo = (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => (
     runSnapshotTask(
       () => mutateRepo(repoId, action, settings, body),
       nextSnapshot => nextSnapshot,

@@ -88,6 +88,12 @@ func mutateRepo(repo RepoDetail, action string, request Request, body RepoAction
 		}
 		_, err := runGitStrict(repo.Path, []string{"push"})
 		return err
+	case "discard-all":
+		if _, err := runGitStrict(repo.Path, []string{"reset", "--hard", "HEAD"}); err != nil {
+			return err
+		}
+		_, err := runGitStrict(repo.Path, []string{"clean", "-fd"})
+		return err
 	default:
 		return fmt.Errorf("未找到操作：%s", action)
 	}

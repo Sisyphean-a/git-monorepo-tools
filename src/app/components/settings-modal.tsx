@@ -178,7 +178,7 @@ function RepositoriesTab({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {settings.scanRoots.length === 0 && (
             <div style={{ color: C.textWeak, fontSize: 11, background: C.panel1, border: `1px dashed ${C.border}`, borderRadius: 6, padding: '10px 12px' }}>
-              当前仅扫描默认工作区。可添加本地目录补充仓库来源。
+              当前未配置扫描目录。添加本地目录后才会扫描并显示仓库。
             </div>
           )}
           {settings.scanRoots.map(root => (

@@ -114,7 +114,7 @@ func validateRepoPathHint(repoID, repoPath string) (string, bool, error) {
 
 func actionUsesRepoPathOnly(action string) bool {
 	switch action {
-	case "stage-all", "unstage-all", "stage-file", "unstage-file", "commit":
+	case "stage-all", "unstage-all", "stage-file", "unstage-file", "commit", "discard-all":
 		return true
 	default:
 		return false

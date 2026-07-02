@@ -6,6 +6,7 @@ const WAILS_REPO_ACTIONS = new Set([
     'commit',
     'pull',
     'push',
+    'discard-all',
 ]);
 function buildSnapshotRequest(settings) {
     return {

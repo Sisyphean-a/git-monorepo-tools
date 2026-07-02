@@ -63,12 +63,7 @@ func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppS
 }
 
 func (s *Service) buildRoots(request Request) []ScanRoot {
-	workspaceRoot := normalizePath(filepath.Dir(s.projectRoot))
-	driveRoot := normalizePath(filepath.VolumeName(s.projectRoot) + "\\")
-	roots := []ScanRoot{
-		{Path: workspaceRoot, Category: classifyWorkspaceRoot(workspaceRoot)},
-		{Path: driveRoot, Category: "本地项目"},
-	}
+	roots := make([]ScanRoot, 0, len(request.ScanRoots))
 
 	for _, root := range request.ScanRoots {
 		if strings.TrimSpace(root.Path) == "" {
@@ -224,18 +219,6 @@ func dedupeRoots(roots []ScanRoot) []ScanRoot {
 		result = append(result, root)
 	}
 	return result
-}
-
-func classifyWorkspaceRoot(rootPath string) string {
-	name := strings.ToLower(filepath.Base(rootPath))
-	if name == "github" {
-		return "GitHub 工作区"
-	}
-	base := filepath.Base(rootPath)
-	if base == "." || base == "" {
-		base = "工作区"
-	}
-	return fmt.Sprintf("%s 工作区", base)
 }
 
 func classifyCustomRoot(rootPath string) string {

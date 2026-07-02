@@ -20,6 +20,7 @@ interface PanelActionGroup {
 }
 
 interface AiCommitPanelProps {
+  topAction?: PanelAction;
   message: string;
   error: string | null;
   actionGroups: PanelActionGroup[];
@@ -94,10 +95,23 @@ function ActionCluster({ actionGroups }: Pick<AiCommitPanelProps, 'actionGroups'
   );
 }
 
-export function AiCommitPanel({ message, error, actionGroups, onMessageChange }: AiCommitPanelProps) {
+export function AiCommitPanel({ topAction, message, error, actionGroups, onMessageChange }: AiCommitPanelProps) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.appBg, overflow: 'hidden' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {topAction && (
+          <ToolbarBtn
+            label={topAction.label}
+            icon={topAction.icon}
+            onClick={topAction.onClick}
+            disabled={topAction.disabled}
+            primary={topAction.primary}
+            accent={topAction.accent}
+            warning={topAction.warning}
+            dimmed={topAction.dimmed}
+            style={{ width: '100%', justifyContent: 'center', padding: '8px 10px' }}
+          />
+        )}
         <MessageEditor message={message} error={error} onMessageChange={onMessageChange} />
         <ActionCluster actionGroups={actionGroups} />
         <div style={{ flex: 1, minHeight: 0 }} />
