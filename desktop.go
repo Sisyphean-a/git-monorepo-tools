@@ -32,7 +32,11 @@ func (a *App) OpenTerminal(targetPath string) error {
 	if err != nil {
 		return err
 	}
-	return startInteractivePowerShell(toWindowsPath(path), "-NoLogo", "-NoExit")
+	workingDir := toWindowsPath(path)
+	return startFirstAvailableCommand(
+		newWorkingDirCommand("wt.exe", workingDir, "-d", workingDir),
+		newInteractiveCmdCommand(workingDir),
+	)
 }
 
 func (a *App) OpenConflicts(targetPath string) error {
@@ -48,6 +52,24 @@ func startDetached(command string, args ...string) error {
 	return startCommand(cmd)
 }
 
+func startFirstAvailableCommand(commands ...*exec.Cmd) error {
+	var lastErr error
+	for _, cmd := range commands {
+		if cmd == nil {
+			continue
+		}
+		if err := startCommand(cmd); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("没有可用的终端启动方式")
+}
+
 func startInteractivePowerShell(workingDir string, args ...string) error {
 	return startCommand(newInteractivePowerShellCommand(workingDir, args...))
 }
@@ -60,9 +82,20 @@ func startCommand(cmd *exec.Cmd) error {
 }
 
 func newInteractivePowerShellCommand(workingDir string, args ...string) *exec.Cmd {
-	cmd := exec.Command("powershell.exe", args...)
-	cmd.Dir = workingDir
+	cmd := newWorkingDirCommand("powershell.exe", workingDir, args...)
 	applyInteractiveProcessAttrs(cmd)
+	return cmd
+}
+
+func newInteractiveCmdCommand(workingDir string) *exec.Cmd {
+	cmd := newWorkingDirCommand("cmd.exe", workingDir, "/D", "/K", `cd /d "`+workingDir+`"`)
+	applyInteractiveProcessAttrs(cmd)
+	return cmd
+}
+
+func newWorkingDirCommand(command string, workingDir string, args ...string) *exec.Cmd {
+	cmd := exec.Command(command, args...)
+	cmd.Dir = workingDir
 	return cmd
 }
 
