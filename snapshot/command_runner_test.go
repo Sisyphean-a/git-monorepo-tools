@@ -46,6 +46,84 @@ func TestRunRepoCommandCapturesExitCode(t *testing.T) {
 	}
 }
 
+func TestRunRepoCommandStripsANSISequences(t *testing.T) {
+	service := NewService(t.TempDir())
+
+	result, err := service.RunRepoCommand(RepoCommandRequest{
+		RepoPath: t.TempDir(),
+		Command:  ansiShellCommand(),
+	})
+	if err != nil {
+		t.Fatalf("expected ansi command to run, got %v", err)
+	}
+	if result.Output != "Build Options" {
+		t.Fatalf("expected cleaned output, got %q", result.Output)
+	}
+	if strings.Contains(result.Output, "\x1b") || strings.Contains(result.Output, "[1;33m") {
+		t.Fatalf("expected ansi control codes to be removed, got %q", result.Output)
+	}
+}
+
+func TestRunRepoCommandStripsControlStrings(t *testing.T) {
+	service := NewService(t.TempDir())
+
+	result, err := service.RunRepoCommand(RepoCommandRequest{
+		RepoPath: t.TempDir(),
+		Command:  controlStringShellCommand(),
+	})
+	if err != nil {
+		t.Fatalf("expected control string command to run, got %v", err)
+	}
+	if result.Output != "AB" {
+		t.Fatalf("expected control string payload to be removed, got %q", result.Output)
+	}
+}
+
+func TestStreamRepoCommandStripsANSISequences(t *testing.T) {
+	service := NewService(t.TempDir())
+	var output strings.Builder
+
+	result, err := service.StreamRepoCommand(RepoCommandRequest{
+		RepoPath: t.TempDir(),
+		Command:  ansiShellCommand(),
+	}, func(chunk string) {
+		output.WriteString(chunk)
+	})
+	if err != nil {
+		t.Fatalf("expected ansi command to stream, got %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit code 0, got %#v", result)
+	}
+	if strings.TrimRight(output.String(), "\r\n") != "Build Options" {
+		t.Fatalf("expected cleaned streamed output, got %q", output.String())
+	}
+}
+
+func TestAnsiStripperHandlesSplitSequences(t *testing.T) {
+	stripper := ansiStripper{}
+	chunks := []string{"\x1b[1;", "33mBuild", " Options\x1b", "[0m"}
+	var output strings.Builder
+	for _, chunk := range chunks {
+		output.WriteString(stripper.Write(chunk))
+	}
+	if output.String() != "Build Options" {
+		t.Fatalf("expected split ansi sequence to be removed, got %q", output.String())
+	}
+}
+
+func TestAnsiStripperHandlesSplitControlStrings(t *testing.T) {
+	stripper := ansiStripper{}
+	chunks := []string{"A\x1bPse", "cret\x1b", "\\B"}
+	var output strings.Builder
+	for _, chunk := range chunks {
+		output.WriteString(stripper.Write(chunk))
+	}
+	if output.String() != "AB" {
+		t.Fatalf("expected split control string to be removed, got %q", output.String())
+	}
+}
+
 func TestRunRepoCommandRejectsMissingPath(t *testing.T) {
 	service := NewService(t.TempDir())
 
@@ -70,4 +148,18 @@ func failingShellCommand() string {
 		return "Write-Output 'boom'; exit 7"
 	}
 	return "printf 'boom\\n'; exit 7"
+}
+
+func ansiShellCommand() string {
+	if runtime.GOOS == "windows" {
+		return "Write-Output \"$([char]27)[1;33mBuild Options$([char]27)[0m\""
+	}
+	return "printf '\\033[1;33mBuild Options\\033[0m\\n'"
+}
+
+func controlStringShellCommand() string {
+	if runtime.GOOS == "windows" {
+		return "Write-Output \"A$([char]27)Psecret$([char]27)\\B\""
+	}
+	return "printf 'A\\033Psecret\\033\\\\B\\n'"
 }

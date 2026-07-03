@@ -10,6 +10,95 @@ import (
 	"time"
 )
 
+type ansiStripperState uint8
+
+const (
+	ansiText ansiStripperState = iota
+	ansiEscape
+	ansiCSI
+	ansiOSC
+	ansiOSCEscape
+	ansiControlString
+	ansiControlStringEscape
+	ansiEscapeIntermediate
+)
+
+type ansiStripper struct {
+	state ansiStripperState
+}
+
+func (s *ansiStripper) Write(chunk string) string {
+	if chunk == "" {
+		return ""
+	}
+
+	var output strings.Builder
+	output.Grow(len(chunk))
+	for index := 0; index < len(chunk); index++ {
+		current := chunk[index]
+		switch s.state {
+		case ansiText:
+			if current == 0x1b {
+				s.state = ansiEscape
+				continue
+			}
+			output.WriteByte(current)
+		case ansiEscape:
+			switch {
+			case current == '[':
+				s.state = ansiCSI
+			case current == ']':
+				s.state = ansiOSC
+			case current == 'P' || current == 'X' || current == '^' || current == '_':
+				s.state = ansiControlString
+			case current >= 0x20 && current <= 0x2f:
+				s.state = ansiEscapeIntermediate
+			default:
+				s.state = ansiText
+			}
+		case ansiCSI:
+			if current >= 0x40 && current <= 0x7e {
+				s.state = ansiText
+			}
+		case ansiOSC:
+			if current == 0x07 {
+				s.state = ansiText
+				continue
+			}
+			if current == 0x1b {
+				s.state = ansiOSCEscape
+			}
+		case ansiOSCEscape:
+			if current == '\\' {
+				s.state = ansiText
+				continue
+			}
+			if current != 0x1b {
+				s.state = ansiOSC
+			}
+		case ansiControlString:
+			if current == 0x1b {
+				s.state = ansiControlStringEscape
+				continue
+			}
+			if current == 0x07 {
+				s.state = ansiText
+			}
+		case ansiControlStringEscape:
+			if current == '\\' || current == 0x07 {
+				s.state = ansiText
+				continue
+			}
+			s.state = ansiControlString
+		case ansiEscapeIntermediate:
+			if current >= 0x30 && current <= 0x7e {
+				s.state = ansiText
+			}
+		}
+	}
+	return output.String()
+}
+
 func (s *Service) RunRepoCommand(request RepoCommandRequest) (RepoCommandResult, error) {
 	return s.runRepoCommand(request, nil, true)
 }
@@ -91,18 +180,21 @@ func runShellCommand(repoPath, commandText string, onChunk func(string), capture
 func streamCommand(reader io.Reader, onChunk func(string), builder *strings.Builder, lock *sync.Mutex, streamGroup *sync.WaitGroup) {
 	defer streamGroup.Done()
 	buffer := make([]byte, 4096)
+	stripper := ansiStripper{}
 	for {
 		readBytes, err := reader.Read(buffer)
 		if readBytes > 0 {
-			chunk := string(buffer[:readBytes])
-			lock.Lock()
-			if builder != nil {
-				builder.WriteString(chunk)
+			chunk := stripper.Write(string(buffer[:readBytes]))
+			if chunk != "" {
+				lock.Lock()
+				if builder != nil {
+					builder.WriteString(chunk)
+				}
+				if onChunk != nil {
+					onChunk(chunk)
+				}
+				lock.Unlock()
 			}
-			if onChunk != nil {
-				onChunk(chunk)
-			}
-			lock.Unlock()
 		}
 		if errors.Is(err, io.EOF) {
 			return

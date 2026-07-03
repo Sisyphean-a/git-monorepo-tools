@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, Copy, Settings2 } from 'lucide-react';
 import { C } from '../theme';
 import { ToolbarBtn } from './workspace-parts';
@@ -155,10 +155,22 @@ function CommandConsole({
   onClear: () => void;
 }) {
   const [expanded, setExpanded] = useState(Boolean(commandConsole));
+  const outputRef = useRef<HTMLPreElement | null>(null);
 
   useEffect(() => {
     if (commandConsole) setExpanded(true);
   }, [commandConsole?.startedAt]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const frame = requestAnimationFrame(() => {
+      const element = outputRef.current;
+      if (element) {
+        element.scrollTop = element.scrollHeight;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [expanded, commandConsole?.startedAt, commandConsole?.output]);
 
   const handleCopy = () => {
     if (!commandConsole) return;
@@ -200,6 +212,7 @@ function CommandConsole({
       </div>
       {expanded && (
         <pre
+          ref={outputRef}
           style={{
             margin: 0,
             minHeight: 120,
