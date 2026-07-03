@@ -16,6 +16,8 @@
     "src/app/api.test.ts",
     "src/app/repo-log.ts",
     "src/app/repo-log.test.ts",
+    "src/app/pull-results.ts",
+    "src/app/pull-results.test.ts",
     "src/app/repo-status.ts",
     "src/app/repo-status.test.ts",
     "src/app/snapshot-coordinator.ts",

@@ -26,6 +26,7 @@ interface SidebarProps {
   scannedAt: string;
   settings: AppSettings;
   batchAction: 'pull' | 'push' | null;
+  isRefreshing: boolean;
   recentError: string | null;
   selectedRepoId: string;
   onSelectRepo: (id: string) => void;
@@ -187,6 +188,7 @@ export function Sidebar({
   scannedAt,
   settings,
   batchAction,
+  isRefreshing,
   recentError,
   selectedRepoId,
   onSelectRepo,
@@ -374,20 +376,23 @@ export function Sidebar({
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button
             onClick={onRefresh}
+            disabled={isRefreshing}
             style={{
-              background: C.panel2,
-              color: C.textSecondary,
+              background: isRefreshing ? C.panel3 : C.panel2,
+              color: isRefreshing ? C.textWeak : C.textSecondary,
               border: `1px solid ${C.border}`,
               borderRadius: 6,
               padding: '5px 10px',
-              cursor: 'pointer',
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
               fontSize: 11,
               display: 'flex',
               alignItems: 'center',
               gap: 4,
+              opacity: isRefreshing ? 0.78 : 1,
             }}
           >
-            <RefreshCw size={11} /> 扫描
+            {isRefreshing ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={11} />}
+            {isRefreshing ? '扫描中…' : '扫描'}
           </button>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
             <div

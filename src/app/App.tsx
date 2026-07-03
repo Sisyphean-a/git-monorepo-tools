@@ -49,6 +49,7 @@ export default function App() {
   const [drawerResults, setDrawerResults] = useState<PullResult[]>([]);
   const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
   const [sidebarBatchAction, setSidebarBatchAction] = useState<'pull' | 'push' | null>(null);
+  const [sidebarRefreshing, setSidebarRefreshing] = useState(false);
 
   const applySnapshot = (nextSnapshot: AppSnapshot) => {
     setSnapshot(nextSnapshot);
@@ -56,6 +57,17 @@ export default function App() {
   };
 
   const { refreshSnapshot, runSnapshotTask } = useSnapshotRefresh(settings, applySnapshot, setRefreshError);
+
+  const handleSidebarRefresh = async () => {
+    if (sidebarRefreshing) return;
+    setSidebarRefreshing(true);
+    try {
+      await refreshSnapshot();
+    } catch {
+    } finally {
+      setSidebarRefreshing(false);
+    }
+  };
 
   const handleBatch = async (operation: 'pull' | 'push') => {
     setSidebarBatchAction(operation);
@@ -227,12 +239,13 @@ export default function App() {
           scannedAt={snapshot.scannedAt}
           settings={settings}
           batchAction={sidebarBatchAction}
+          isRefreshing={sidebarRefreshing}
           recentError={visibleError}
           selectedRepoId={selectedRepoId}
           onSelectRepo={id => setSelectedRepoId(id)}
           onPullAll={() => void handleBatch('pull')}
           onPushAll={() => void handleBatch('push')}
-          onRefresh={() => void refreshSnapshot().catch(() => {})}
+          onRefresh={() => void handleSidebarRefresh()}
           onOpenAddMenu={() => setShowAddMenu(true)}
           onToggleAutoScan={handleToggleAutoScan}
         />

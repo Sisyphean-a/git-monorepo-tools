@@ -1,5 +1,6 @@
 import { X, CheckCircle2, SkipForward, XCircle, Minus, FolderOpen, ScrollText, RefreshCw } from 'lucide-react';
 import { C } from '../theme';
+import { sortPullResults } from '../pull-results';
 import type { PullResult } from '../types';
 
 interface PullAllDrawerProps {
@@ -55,6 +56,7 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose, on
   const skipped = results.filter(result => result.result === 'skipped').length;
   const failed = results.filter(result => result.result === 'failed').length;
   const uptodate = results.filter(result => result.result === 'uptodate').length;
+  const sortedResults = sortPullResults(results);
 
   return (
     <>
@@ -125,7 +127,7 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose, on
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-          {results.map(result => (
+          {sortedResults.map(result => (
             <div
               key={result.id}
               style={{
@@ -177,7 +179,7 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose, on
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={() => {
-                const report = results.map(result => `${result.name} [${result.result}] ${result.detail}`).join('\n');
+                const report = sortedResults.map(result => `${result.name} [${result.result}] ${result.detail}`).join('\n');
                 navigator.clipboard.writeText(report).catch(() => {});
               }}
               style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 12 }}

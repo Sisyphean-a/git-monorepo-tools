@@ -32,8 +32,7 @@ func (a *App) OpenTerminal(targetPath string) error {
 	if err != nil {
 		return err
 	}
-	command := "Set-Location -LiteralPath '" + escapePowerShell(toWindowsPath(path)) + "'"
-	return startDetached("powershell.exe", "-NoExit", "-Command", command)
+	return startInteractivePowerShell(toWindowsPath(path), "-NoLogo", "-NoExit")
 }
 
 func (a *App) OpenConflicts(targetPath string) error {
@@ -41,16 +40,30 @@ func (a *App) OpenConflicts(targetPath string) error {
 	if err != nil {
 		return err
 	}
-	command := "Set-Location -LiteralPath '" + escapePowerShell(toWindowsPath(path)) + "'; git mergetool"
-	return startDetached("powershell.exe", "-NoExit", "-Command", command)
+	return startInteractivePowerShell(toWindowsPath(path), "-NoLogo", "-NoExit", "-Command", "git mergetool")
 }
 
 func startDetached(command string, args ...string) error {
 	cmd := exec.Command(command, args...)
+	return startCommand(cmd)
+}
+
+func startInteractivePowerShell(workingDir string, args ...string) error {
+	return startCommand(newInteractivePowerShellCommand(workingDir, args...))
+}
+
+func startCommand(cmd *exec.Cmd) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+func newInteractivePowerShellCommand(workingDir string, args ...string) *exec.Cmd {
+	cmd := exec.Command("powershell.exe", args...)
+	cmd.Dir = workingDir
+	applyInteractiveProcessAttrs(cmd)
+	return cmd
 }
 
 func ensureDesktopPath(targetPath string) (string, error) {
@@ -67,8 +80,4 @@ func toWindowsPath(targetPath string) string {
 
 func normalizeDesktopPath(targetPath string) string {
 	return strings.ReplaceAll(targetPath, "\\", "/")
-}
-
-func escapePowerShell(value string) string {
-	return strings.ReplaceAll(value, "'", "''")
 }
