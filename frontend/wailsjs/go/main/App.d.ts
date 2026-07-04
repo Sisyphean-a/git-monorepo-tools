@@ -23,6 +23,8 @@ export function PickFolder():Promise<string>;
 
 export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
+export function RestartTerminalSession(arg1:string,arg2:number,arg3:number):Promise<main.TerminalSessionInfo>;
+
 export function RunBatch(arg1:string,arg2:snapshot.Request):Promise<snapshot.BatchResult>;
 
 export function RunRepoCommand(arg1:snapshot.RepoCommandRequest):Promise<snapshot.RepoCommandResult>;

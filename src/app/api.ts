@@ -42,6 +42,7 @@ type WailsBindings = {
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
   EnsureTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
+  RestartTerminalSession: (sessionId: string, cols: number, rows: number) => Promise<TerminalSessionInfo>;
   WriteTerminalInput: (sessionId: string, data: string) => Promise<void>;
   ResizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>;
   GenerateCommitMessage: (
@@ -90,6 +91,7 @@ function getWailsBindings(): WailsBindings {
     || typeof binding.GetRepoLog !== 'function'
     || typeof binding.RunRepoCommand !== 'function'
     || typeof binding.EnsureTerminalSession !== 'function'
+    || typeof binding.RestartTerminalSession !== 'function'
     || typeof binding.WriteTerminalInput !== 'function'
     || typeof binding.ResizeTerminal !== 'function'
     || typeof binding.GenerateCommitMessage !== 'function'
@@ -129,6 +131,10 @@ export async function runRepoCommand(repoPath: string, command: string, streamId
 
 export async function ensureTerminalSession(repoId: string, repoPath: string, cols?: number, rows?: number) {
   return getWailsBindings().EnsureTerminalSession({ repoId, repoPath, cols, rows });
+}
+
+export async function restartTerminalSession(sessionId: string, cols: number, rows: number) {
+  return getWailsBindings().RestartTerminalSession(sessionId, cols, rows);
 }
 
 export async function writeTerminalInput(sessionId: string, data: string) {

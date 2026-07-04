@@ -71,30 +71,47 @@ func (m *terminalManager) EnsureSession(request TerminalSessionRequest) (Termina
 		return existing.info(), nil
 	}
 
-	host, shell, err := newTerminalHost(repoPath, cols, rows)
+	session, err := m.newSessionLocked(repoID, repoPath, repoInfo, cols, rows)
 	if err != nil {
 		m.mu.Unlock()
 		return TerminalSessionInfo{}, err
 	}
-
-	session := &terminalSession{
-		id:        fmt.Sprintf("term-%d", time.Now().UnixNano()),
-		repoID:    repoID,
-		repoPath:  repoPath,
-		repoInfo:  repoInfo,
-		shell:     shell,
-		startedAt: time.Now().UnixMilli(),
-		host:      host,
-		emit:      m.emit,
-		waitDone:  make(chan struct{}),
-	}
-	session.onExit = m.handleExit
 
 	m.sessionsByID[session.id] = session
 	m.mu.Unlock()
 
 	session.start()
 	return session.info(), nil
+}
+
+func (m *terminalManager) RestartSession(sessionID string, cols, rows int) (TerminalSessionInfo, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return TerminalSessionInfo{}, errors.New("缺少终端会话 ID")
+	}
+
+	cols, rows = normalizeTerminalSize(cols, rows)
+
+	m.mu.Lock()
+	existing := m.sessionsByID[sessionID]
+	if existing == nil {
+		m.mu.Unlock()
+		return TerminalSessionInfo{}, errors.New("终端会话不存在")
+	}
+
+	replacement, err := m.newSessionLocked(existing.repoID, existing.repoPath, existing.repoInfo, cols, rows)
+	if err != nil {
+		m.mu.Unlock()
+		return TerminalSessionInfo{}, err
+	}
+
+	m.sessionsByID[replacement.id] = replacement
+	delete(m.sessionsByID, existing.id)
+	m.mu.Unlock()
+
+	existing.Stop()
+	replacement.start()
+	return replacement.info(), nil
 }
 
 func (m *terminalManager) WriteInput(sessionID, data string) error {
@@ -154,6 +171,33 @@ func (m *terminalManager) sessionForRepoLocked(repoPath string, repoInfo os.File
 		}
 	}
 	return nil
+}
+
+func (m *terminalManager) newSessionLocked(
+	repoID string,
+	repoPath string,
+	repoInfo os.FileInfo,
+	cols int,
+	rows int,
+) (*terminalSession, error) {
+	host, shell, err := newTerminalHost(repoPath, cols, rows)
+	if err != nil {
+		return nil, err
+	}
+
+	session := &terminalSession{
+		id:        fmt.Sprintf("term-%d", time.Now().UnixNano()),
+		repoID:    repoID,
+		repoPath:  repoPath,
+		repoInfo:  repoInfo,
+		shell:     shell,
+		startedAt: time.Now().UnixMilli(),
+		host:      host,
+		emit:      m.emit,
+		waitDone:  make(chan struct{}),
+	}
+	session.onExit = m.handleExit
+	return session, nil
 }
 
 func (s *terminalSession) info() TerminalSessionInfo {

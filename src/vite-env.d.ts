@@ -54,6 +54,7 @@ interface Window {
           cols?: number;
           rows?: number;
         }) => Promise<import('./app/types').TerminalSessionInfo>;
+        RestartTerminalSession: (sessionId: string, cols: number, rows: number) => Promise<import('./app/types').TerminalSessionInfo>;
         WriteTerminalInput: (sessionId: string, data: string) => Promise<void>;
         ResizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>;
         GenerateCommitMessage: (

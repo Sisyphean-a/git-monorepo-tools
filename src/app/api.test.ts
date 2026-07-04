@@ -6,6 +6,7 @@ import {
   invokeLocalRepoAction,
   mutateRepo,
   resizeTerminal,
+  restartTerminalSession,
   runRepoCommand,
   writeTerminalInput,
 } from './api.js';
@@ -32,6 +33,9 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
       throw new Error('unused');
     },
     EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    RestartTerminalSession: async () => {
       throw new Error('unused');
     },
     WriteTerminalInput: async () => {
@@ -100,6 +104,9 @@ test('generateCommitMessage uses dedicated binding', async () => {
       throw new Error('unused');
     },
     EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    RestartTerminalSession: async () => {
       throw new Error('unused');
     },
     WriteTerminalInput: async () => {
@@ -198,6 +205,9 @@ test('mutateRepo accepts discard-all action', async () => {
     EnsureTerminalSession: async () => {
       throw new Error('unused');
     },
+    RestartTerminalSession: async () => {
+      throw new Error('unused');
+    },
     WriteTerminalInput: async () => {
       throw new Error('unused');
     },
@@ -265,6 +275,9 @@ test('runRepoCommand uses dedicated binding', async () => {
       };
     },
     EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    RestartTerminalSession: async () => {
       throw new Error('unused');
     },
     WriteTerminalInput: async () => {
@@ -337,6 +350,16 @@ test('terminal bindings use dedicated Wails bridge', async () => {
         startedAt: 1,
       };
     },
+    RestartTerminalSession: async (sessionId: string, cols: number, rows: number) => {
+      calls.push(`RestartTerminalSession:${sessionId}:${cols}:${rows}`);
+      return {
+        sessionId: 'term-2',
+        repoId: 'repo-1',
+        repoPath: '/repo/a',
+        shell: 'pwsh',
+        startedAt: 2,
+      };
+    },
     WriteTerminalInput: async (sessionId: string, data: string) => {
       calls.push(`WriteTerminalInput:${sessionId}:${data}`);
     },
@@ -366,8 +389,10 @@ test('terminal bindings use dedicated Wails bridge', async () => {
   try {
     const session = await ensureTerminalSession('repo-1', '/repo/a', 120, 40);
     assert.equal(session.sessionId, 'term-1');
-    await writeTerminalInput('term-1', 'git status\r');
-    await resizeTerminal('term-1', 140, 50);
+    const restarted = await restartTerminalSession('term-1', 132, 44);
+    assert.equal(restarted.sessionId, 'term-2');
+    await writeTerminalInput('term-2', 'git status\r');
+    await resizeTerminal('term-2', 140, 50);
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -377,7 +402,8 @@ test('terminal bindings use dedicated Wails bridge', async () => {
 
   assert.deepEqual(calls, [
     'EnsureTerminalSession:repo-1:/repo/a:120:40',
-    'WriteTerminalInput:term-1:git status\r',
-    'ResizeTerminal:term-1:140:50',
+    'RestartTerminalSession:term-1:132:44',
+    'WriteTerminalInput:term-2:git status\r',
+    'ResizeTerminal:term-2:140:50',
   ]);
 });

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { RotateCcw } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { ensureTerminalSession, resizeTerminal, writeTerminalInput } from '../api';
+import { ensureTerminalSession, resizeTerminal, restartTerminalSession, writeTerminalInput } from '../api';
 import { terminalEventBus } from '../terminal-runtime-event-bus';
 import { TerminalOutputWriter } from '../terminal-output-writer';
 import { C } from '../theme';
@@ -26,6 +27,20 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   const [shellLabel, setShellLabel] = useState('终端');
   const [error, setError] = useState<string | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
+
+  const measureTerminalSize = () => {
+    const terminal = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!terminal || !fitAddon) {
+      return null;
+    }
+    fitAddon.fit();
+    const nextSize = fitAddon.proposeDimensions();
+    return {
+      cols: nextSize?.cols ?? terminal.cols,
+      rows: nextSize?.rows ?? terminal.rows,
+    };
+  };
 
   const scheduleResize = () => {
     if (!active) return;
@@ -59,11 +74,11 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     setStatus('connecting');
     setError(null);
     setExitCode(null);
-    fitAddon.fit();
-    const nextSize = fitAddon.proposeDimensions();
+    const nextSize = measureTerminalSize();
+    if (!nextSize) return;
 
     try {
-      const session = await ensureTerminalSession(repo.id, repo.path, nextSize?.cols, nextSize?.rows);
+      const session = await ensureTerminalSession(repo.id, repo.path, nextSize.cols, nextSize.rows);
       sessionRef.current = session;
       setSessionId(session.sessionId);
       sessionBindingRef.current?.bindSession(session.sessionId);
@@ -74,6 +89,36 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       sessionRef.current = null;
       setStatus('failed');
       setError(sessionError instanceof Error ? sessionError.message : '终端启动失败');
+    }
+  };
+
+  const clearSession = async () => {
+    const terminal = terminalRef.current;
+    const session = sessionRef.current;
+    if (!terminal || !session) return;
+
+    const nextSize = measureTerminalSize();
+    if (!nextSize) return;
+
+    outputWriterRef.current?.reset();
+    terminal.reset();
+    setStatus('connecting');
+    setError(null);
+    setExitCode(null);
+    sessionBindingRef.current?.bindSession('');
+
+    try {
+      const replacement = await restartTerminalSession(session.sessionId, nextSize.cols, nextSize.rows);
+      sessionRef.current = replacement;
+      setSessionId(replacement.sessionId);
+      sessionBindingRef.current?.bindSession(replacement.sessionId);
+      setShellLabel(replacement.shell);
+      setStatus('running');
+      scheduleResize();
+    } catch (sessionError) {
+      sessionBindingRef.current?.bindSession(session.sessionId);
+      setStatus('failed');
+      setError(sessionError instanceof Error ? sessionError.message : '终端重启失败');
     }
   };
 
@@ -225,14 +270,25 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
           <span style={{ color: C.textPrimary, fontSize: 12, fontWeight: 600 }}>{shellLabel}</span>
           <span style={{ color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repo.path}</span>
         </div>
-        {status !== 'running' && (
-          <button
-            onClick={() => void startSession(true)}
-            style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}
-          >
-            重新打开
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {status === 'running' && (
+            <button
+              onClick={() => void clearSession()}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontSize: 11 }}
+            >
+              <RotateCcw size={12} />
+              清空
+            </button>
+          )}
+          {status !== 'running' && (
+            <button
+              onClick={() => void startSession(true)}
+              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}
+            >
+              重新打开
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#0b1220' }}>

@@ -93,3 +93,10 @@ func (a *App) ResizeTerminal(sessionID string, cols, rows int) error {
 	}
 	return a.terminals.Resize(sessionID, cols, rows)
 }
+
+func (a *App) RestartTerminalSession(sessionID string, cols, rows int) (TerminalSessionInfo, error) {
+	if a.terminals == nil {
+		return TerminalSessionInfo{}, errors.New("终端管理器尚未初始化")
+	}
+	return a.terminals.RestartSession(sessionID, cols, rows)
+}
