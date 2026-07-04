@@ -23,15 +23,15 @@ type terminalHost interface {
 type terminalManager struct {
 	emit terminalEmitter
 
-	mu             sync.RWMutex
-	sessionsByID   map[string]*terminalSession
-	sessionsByRepo map[string]*terminalSession
+	mu           sync.RWMutex
+	sessionsByID map[string]*terminalSession
 }
 
 type terminalSession struct {
 	id        string
 	repoID    string
 	repoPath  string
+	repoInfo  os.FileInfo
 	shell     string
 	startedAt int64
 	host      terminalHost
@@ -49,14 +49,13 @@ type terminalSession struct {
 
 func newTerminalManager(emit terminalEmitter) *terminalManager {
 	return &terminalManager{
-		emit:           emit,
-		sessionsByID:   map[string]*terminalSession{},
-		sessionsByRepo: map[string]*terminalSession{},
+		emit:         emit,
+		sessionsByID: map[string]*terminalSession{},
 	}
 }
 
 func (m *terminalManager) EnsureSession(request TerminalSessionRequest) (TerminalSessionInfo, error) {
-	repoPath, repoKey, err := validateTerminalRepoPath(request.RepoPath)
+	repoPath, repoInfo, err := validateTerminalRepoPath(request.RepoPath)
 	if err != nil {
 		return TerminalSessionInfo{}, err
 	}
@@ -65,7 +64,7 @@ func (m *terminalManager) EnsureSession(request TerminalSessionRequest) (Termina
 	repoID := strings.TrimSpace(request.RepoID)
 
 	m.mu.Lock()
-	existing := m.sessionsByRepo[repoKey]
+	existing := m.sessionForRepoLocked(repoPath, repoInfo)
 	if existing != nil {
 		m.mu.Unlock()
 		_ = existing.Resize(cols, rows)
@@ -82,6 +81,7 @@ func (m *terminalManager) EnsureSession(request TerminalSessionRequest) (Termina
 		id:        fmt.Sprintf("term-%d", time.Now().UnixNano()),
 		repoID:    repoID,
 		repoPath:  repoPath,
+		repoInfo:  repoInfo,
 		shell:     shell,
 		startedAt: time.Now().UnixMilli(),
 		host:      host,
@@ -91,7 +91,6 @@ func (m *terminalManager) EnsureSession(request TerminalSessionRequest) (Termina
 	session.onExit = m.handleExit
 
 	m.sessionsByID[session.id] = session
-	m.sessionsByRepo[repoKey] = session
 	m.mu.Unlock()
 
 	session.start()
@@ -145,8 +144,16 @@ func (m *terminalManager) sessionByID(sessionID string) (*terminalSession, error
 func (m *terminalManager) handleExit(session *terminalSession) {
 	m.mu.Lock()
 	delete(m.sessionsByID, session.id)
-	delete(m.sessionsByRepo, repoSessionKey(session.repoPath))
 	m.mu.Unlock()
+}
+
+func (m *terminalManager) sessionForRepoLocked(repoPath string, repoInfo os.FileInfo) *terminalSession {
+	for _, session := range m.sessionsByID {
+		if sameTerminalRepo(session.repoPath, session.repoInfo, repoPath, repoInfo) {
+			return session
+		}
+	}
+	return nil
 }
 
 func (s *terminalSession) info() TerminalSessionInfo {
@@ -249,26 +256,22 @@ func (s *terminalSession) waitResult() (int, error) {
 	return s.waitExitCode, s.waitErr
 }
 
-func validateTerminalRepoPath(repoPath string) (string, string, error) {
+func validateTerminalRepoPath(repoPath string) (string, os.FileInfo, error) {
 	trimmed := strings.TrimSpace(repoPath)
 	if trimmed == "" {
-		return "", "", errors.New("缺少仓库路径")
+		return "", nil, errors.New("缺少仓库路径")
 	}
 
 	absolute, err := filepath.Abs(trimmed)
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 	info, err := os.Stat(absolute)
 	if err != nil {
-		return "", "", err
+		return "", nil, err
 	}
 	if !info.IsDir() {
-		return "", "", errors.New("终端目标不是目录")
+		return "", nil, errors.New("终端目标不是目录")
 	}
-	return absolute, repoSessionKey(absolute), nil
-}
-
-func repoSessionKey(repoPath string) string {
-	return strings.ToLower(filepath.Clean(repoPath))
+	return absolute, info, nil
 }
