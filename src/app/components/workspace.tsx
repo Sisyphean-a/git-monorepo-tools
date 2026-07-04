@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
@@ -12,7 +12,8 @@ import type {
   SettingsTab,
 } from '../types';
 
-type MainTab = 'changes' | 'history';
+type MainTab = 'changes' | 'history' | 'terminal';
+const RepoTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).RepoTerminalTab }));
 
 interface WorkspaceProps {
   repoDetails: Record<string, RepoDetail>;
@@ -40,6 +41,13 @@ export function Workspace({
   const repoIds = Object.keys(repoDetails);
   const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
   const [mainTab, setMainTab] = useState<MainTab>('changes');
+  const [terminalEnabled, setTerminalEnabled] = useState(false);
+
+  useEffect(() => {
+    if (mainTab === 'terminal') {
+      setTerminalEnabled(true);
+    }
+  }, [mainTab]);
 
   if (!repo) {
     return (
@@ -72,7 +80,7 @@ export function Workspace({
   });
 
   const handleOpenFolder = () => void onInvokeLocalRepoAction('open-folder', repo.path).catch(() => {});
-  const handleOpenTerminal = () => void onInvokeLocalRepoAction('open-terminal', repo.path).catch(() => {});
+  const handleOpenTerminal = () => setMainTab('terminal');
   const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(() => {});
   const handleViewLog = () => void onViewLog(repo.id).catch(() => {});
   const isConflict = repo.conflicts > 0;
@@ -80,6 +88,7 @@ export function Workspace({
   const mainTabs: { key: MainTab; label: string }[] = [
     { key: 'changes', label: `变更 ${fileSummary.total > 0 ? `(${fileSummary.total})` : ''}` },
     { key: 'history', label: '历史' },
+    { key: 'terminal', label: '终端' },
   ];
 
   return (
@@ -117,15 +126,17 @@ export function Workspace({
         ))}
       </div>
 
-      {mainTab === 'history' ? (
-        <HistoryTab commits={repo.history} />
-      ) : (
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          <DiffList
-            files={repo.files}
-            stagedIds={stagedIds}
-            onToggleStaged={handleToggleStaged}
-          />
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            visibility: mainTab === 'changes' ? 'visible' : 'hidden',
+            pointerEvents: mainTab === 'changes' ? 'auto' : 'none',
+          }}
+        >
+          <DiffList files={repo.files} stagedIds={stagedIds} onToggleStaged={handleToggleStaged} />
           <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
             <AiCommitPanel
               topAction={topAction}
@@ -139,7 +150,23 @@ export function Workspace({
             />
           </div>
         </div>
-      )}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            visibility: mainTab === 'history' ? 'visible' : 'hidden',
+            pointerEvents: mainTab === 'history' ? 'auto' : 'none',
+          }}
+        >
+          <HistoryTab commits={repo.history} />
+        </div>
+        {terminalEnabled && (
+          <Suspense fallback={null}>
+            <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={mainTab === 'terminal'} />
+          </Suspense>
+        )}
+      </div>
     </div>
   );
 }

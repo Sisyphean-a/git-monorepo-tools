@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateCommitMessage, invokeLocalRepoAction, mutateRepo, runRepoCommand } from './api.js';
+import {
+  ensureTerminalSession,
+  generateCommitMessage,
+  invokeLocalRepoAction,
+  mutateRepo,
+  resizeTerminal,
+  runRepoCommand,
+  writeTerminalInput,
+} from './api.js';
 
 test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
   const calls: string[] = [];
@@ -21,6 +29,15 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    WriteTerminalInput: async () => {
+      throw new Error('unused');
+    },
+    ResizeTerminal: async () => {
       throw new Error('unused');
     },
     GenerateCommitMessage: async () => {
@@ -80,6 +97,15 @@ test('generateCommitMessage uses dedicated binding', async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    WriteTerminalInput: async () => {
+      throw new Error('unused');
+    },
+    ResizeTerminal: async () => {
       throw new Error('unused');
     },
     GenerateCommitMessage: async (repoId: string) => {
@@ -169,6 +195,15 @@ test('mutateRepo accepts discard-all action', async () => {
     RunRepoCommand: async () => {
       throw new Error('unused');
     },
+    EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    WriteTerminalInput: async () => {
+      throw new Error('unused');
+    },
+    ResizeTerminal: async () => {
+      throw new Error('unused');
+    },
     GenerateCommitMessage: async () => {
       throw new Error('unused');
     },
@@ -229,6 +264,15 @@ test('runRepoCommand uses dedicated binding', async () => {
         endedAt: 2,
       };
     },
+    EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    WriteTerminalInput: async () => {
+      throw new Error('unused');
+    },
+    ResizeTerminal: async () => {
+      throw new Error('unused');
+    },
     GenerateCommitMessage: async () => {
       throw new Error('unused');
     },
@@ -261,4 +305,79 @@ test('runRepoCommand uses dedicated binding', async () => {
   }
 
   assert.deepEqual(calls, ['RunRepoCommand:/repo/a:wails build']);
+});
+
+test('terminal bindings use dedicated Wails bridge', async () => {
+  const calls: string[] = [];
+  const originalWindow = globalThis.window;
+
+  const bindings = {
+    GetSnapshot: async () => {
+      throw new Error('unused');
+    },
+    MutateRepo: async () => {
+      throw new Error('unused');
+    },
+    RunBatch: async () => {
+      throw new Error('unused');
+    },
+    GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    EnsureTerminalSession: async ({ repoId, repoPath, cols, rows }: { repoId: string; repoPath: string; cols?: number; rows?: number }) => {
+      calls.push(`EnsureTerminalSession:${repoId}:${repoPath}:${cols}:${rows}`);
+      return {
+        sessionId: 'term-1',
+        repoId,
+        repoPath,
+        shell: 'pwsh',
+        startedAt: 1,
+      };
+    },
+    WriteTerminalInput: async (sessionId: string, data: string) => {
+      calls.push(`WriteTerminalInput:${sessionId}:${data}`);
+    },
+    ResizeTerminal: async (sessionId: string, cols: number, rows: number) => {
+      calls.push(`ResizeTerminal:${sessionId}:${cols}:${rows}`);
+    },
+    GenerateCommitMessage: async () => {
+      throw new Error('unused');
+    },
+    OpenFolder: async () => {
+      throw new Error('unused');
+    },
+    OpenTerminal: async () => {
+      throw new Error('unused');
+    },
+    OpenConflicts: async () => {
+      throw new Error('unused');
+    },
+    PickFolder: async () => '',
+  };
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { go: { main: { App: bindings } } },
+  });
+
+  try {
+    const session = await ensureTerminalSession('repo-1', '/repo/a', 120, 40);
+    assert.equal(session.sessionId, 'term-1');
+    await writeTerminalInput('term-1', 'git status\r');
+    await resizeTerminal('term-1', 140, 50);
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+
+  assert.deepEqual(calls, [
+    'EnsureTerminalSession:repo-1:/repo/a:120:40',
+    'WriteTerminalInput:term-1:git status\r',
+    'ResizeTerminal:term-1:140:50',
+  ]);
 });

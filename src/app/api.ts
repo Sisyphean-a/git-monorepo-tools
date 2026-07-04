@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, PullResult, RepoCommandResult, RepoLog, RepoMutationAction } from './types.js';
+import type { AppSettings, AppSnapshot, PullResult, RepoCommandResult, RepoLog, RepoMutationAction, TerminalSessionInfo } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
@@ -28,6 +28,12 @@ type WailsRepoCommandRequest = {
   command: string;
   streamId?: string;
 };
+type WailsTerminalSessionRequest = {
+  repoId: string;
+  repoPath: string;
+  cols?: number;
+  rows?: number;
+};
 
 type WailsBindings = {
   GetSnapshot: WailsSnapshotBinding;
@@ -35,6 +41,9 @@ type WailsBindings = {
   RunBatch: (operation: 'pull' | 'push', request: SnapshotRequest) => Promise<SnapshotResponse>;
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
+  EnsureTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
+  WriteTerminalInput: (sessionId: string, data: string) => Promise<void>;
+  ResizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>;
   GenerateCommitMessage: (
     repoId: string,
     request: SnapshotRequest,
@@ -80,6 +89,9 @@ function getWailsBindings(): WailsBindings {
     || typeof binding.RunBatch !== 'function'
     || typeof binding.GetRepoLog !== 'function'
     || typeof binding.RunRepoCommand !== 'function'
+    || typeof binding.EnsureTerminalSession !== 'function'
+    || typeof binding.WriteTerminalInput !== 'function'
+    || typeof binding.ResizeTerminal !== 'function'
     || typeof binding.GenerateCommitMessage !== 'function'
     || typeof binding.OpenFolder !== 'function'
     || typeof binding.OpenTerminal !== 'function'
@@ -113,6 +125,18 @@ export async function fetchRepoLog(repoId: string, settings: AppSettings) {
 
 export async function runRepoCommand(repoPath: string, command: string, streamId?: string) {
   return getWailsBindings().RunRepoCommand({ repoPath, command, streamId });
+}
+
+export async function ensureTerminalSession(repoId: string, repoPath: string, cols?: number, rows?: number) {
+  return getWailsBindings().EnsureTerminalSession({ repoId, repoPath, cols, rows });
+}
+
+export async function writeTerminalInput(sessionId: string, data: string) {
+  return getWailsBindings().WriteTerminalInput(sessionId, data);
+}
+
+export async function resizeTerminal(sessionId: string, cols: number, rows: number) {
+  return getWailsBindings().ResizeTerminal(sessionId, cols, rows);
 }
 
 export async function invokeLocalRepoAction(action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) {

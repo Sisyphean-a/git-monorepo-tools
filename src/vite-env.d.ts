@@ -48,6 +48,14 @@ interface Window {
             pushStrategy: 'upstream-only' | 'all';
           },
         ) => Promise<import('./app/types').RepoLog>;
+        EnsureTerminalSession: (request: {
+          repoId: string;
+          repoPath: string;
+          cols?: number;
+          rows?: number;
+        }) => Promise<import('./app/types').TerminalSessionInfo>;
+        WriteTerminalInput: (sessionId: string, data: string) => Promise<void>;
+        ResizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>;
         GenerateCommitMessage: (
           repoId: string,
           request: {

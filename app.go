@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 
 	"git-monorepo-tools/snapshot"
@@ -12,6 +13,7 @@ type App struct {
 	ctx         context.Context
 	projectRoot string
 	service     *snapshot.Service
+	terminals   *terminalManager
 }
 
 func NewApp() (*App, error) {
@@ -28,6 +30,15 @@ func NewApp() (*App, error) {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.terminals = newTerminalManager(func(name string, payload any) {
+		wruntime.EventsEmit(a.ctx, name, payload)
+	})
+}
+
+func (a *App) shutdown(context.Context) {
+	if a.terminals != nil {
+		a.terminals.CloseAll()
+	}
 }
 
 func (a *App) GetSnapshot(request snapshot.Request) (snapshot.AppSnapshot, error) {
@@ -60,4 +71,25 @@ func (a *App) RunRepoCommand(request snapshot.RepoCommandRequest) (snapshot.Repo
 			"chunk":    chunk,
 		})
 	})
+}
+
+func (a *App) EnsureTerminalSession(request TerminalSessionRequest) (TerminalSessionInfo, error) {
+	if a.terminals == nil {
+		return TerminalSessionInfo{}, errors.New("终端管理器尚未初始化")
+	}
+	return a.terminals.EnsureSession(request)
+}
+
+func (a *App) WriteTerminalInput(sessionID, data string) error {
+	if a.terminals == nil {
+		return errors.New("终端管理器尚未初始化")
+	}
+	return a.terminals.WriteInput(sessionID, data)
+}
+
+func (a *App) ResizeTerminal(sessionID string, cols, rows int) error {
+	if a.terminals == nil {
+		return errors.New("终端管理器尚未初始化")
+	}
+	return a.terminals.Resize(sessionID, cols, rows)
 }

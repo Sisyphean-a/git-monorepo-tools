@@ -147,6 +147,14 @@ export interface RepoCommandResult {
   endedAt: number;
 }
 
+export interface TerminalSessionInfo {
+  sessionId: string;
+  repoId: string;
+  repoPath: string;
+  shell: string;
+  startedAt: number;
+}
+
 export interface WorkspaceBootstrap {
   repos: Repo[];
   selectedRepoId: string;
