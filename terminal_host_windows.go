@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -108,19 +107,50 @@ func (h *conptyHost) Close() error {
 	return closeErr
 }
 
+func buildPowerShellTerminalBootstrapCommand() string {
+	return `Import-Module PSReadLine -ErrorAction SilentlyContinue; ` +
+		`$__codexCtrlLHandler = $null; ` +
+		`if (Get-Command Get-PSReadLineKeyHandler -ErrorAction SilentlyContinue) { ` +
+		`$__codexCtrlLHandler = Get-PSReadLineKeyHandler | Where-Object { $_.Key -eq 'Ctrl+l' } | Select-Object -First 1; ` +
+		`if ($__codexCtrlLHandler -and $__codexCtrlLHandler.Function -eq 'ClearScreen') { ` +
+		`Set-PSReadLineKeyHandler -Chord Ctrl+l -BriefDescription 'Clear Screen' -Description 'Clear the screen and preserve terminal scrollback' -ScriptBlock { ` +
+		`$__codexRows = [Math]::Max([Console]::WindowHeight, 1); ` +
+		`[Console]::Write(("` + "`n" + `" * $__codexRows)); ` +
+		`[Microsoft.PowerShell.PSConsoleReadLine]::ClearScreen($null, $null) ` +
+		`}; ` +
+		`}; ` +
+		`}; ` +
+		`Remove-Variable __codexCtrlLHandler, __codexRows -ErrorAction SilentlyContinue`
+}
+
 func resolveWindowsTerminalShell() (string, []string, string, error) {
+	return resolveWindowsTerminalShellWithLookPath(exec.LookPath)
+}
+
+func resolveWindowsTerminalShellWithLookPath(
+	lookPath func(string) (string, error),
+) (string, []string, string, error) {
 	candidates := []struct {
 		command string
 		args    []string
+		label   string
 	}{
-		{command: "pwsh.exe", args: []string{"-NoLogo", "-NoProfile"}},
-		{command: "powershell.exe", args: []string{"-NoLogo", "-NoProfile"}},
+		{
+			command: "pwsh.exe",
+			args:    []string{"-NoLogo", "-NoExit", "-Command", buildPowerShellTerminalBootstrapCommand()},
+			label:   "pwsh",
+		},
+		{
+			command: "powershell.exe",
+			args:    []string{"-NoLogo", "-NoExit", "-Command", buildPowerShellTerminalBootstrapCommand()},
+			label:   "powershell",
+		},
 	}
 
 	for _, candidate := range candidates {
-		path, err := exec.LookPath(candidate.command)
+		path, err := lookPath(candidate.command)
 		if err == nil {
-			return path, candidate.args, strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), nil
+			return path, candidate.args, candidate.label, nil
 		}
 	}
 

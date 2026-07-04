@@ -80,12 +80,24 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   useEffect(() => {
     if (!viewportRef.current || terminalRef.current) return;
 
+    const copySelection = async (terminal: Terminal) => {
+      const selection = terminal.getSelection();
+      if (!selection) {
+        return false;
+      }
+      await navigator.clipboard.writeText(selection);
+      terminal.clearSelection();
+      terminal.focus();
+      return true;
+    };
+
     const terminal = new Terminal({
       allowTransparency: true,
       cursorBlink: true,
       fontFamily: 'JetBrains Mono, Consolas, monospace',
       fontSize: 12,
       scrollback: 2000,
+      scrollOnEraseInDisplay: true,
       theme: {
         background: '#0b1220',
         foreground: '#dbe7f5',
@@ -117,6 +129,15 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     outputWriterRef.current = new TerminalOutputWriter(terminal);
     outputWriterRef.current.setEnabled(active);
 
+    const contextMenuHandler = (event: MouseEvent) => {
+      if (!terminal.hasSelection()) {
+        return;
+      }
+      event.preventDefault();
+      void copySelection(terminal).catch(() => {});
+    };
+    viewportRef.current.addEventListener('contextmenu', contextMenuHandler);
+
     const inputDisposable = terminal.onData(data => {
       const session = sessionRef.current;
       if (!session) return;
@@ -126,6 +147,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     });
 
     return () => {
+      viewportRef.current?.removeEventListener('contextmenu', contextMenuHandler);
       inputDisposable.dispose();
       sessionBindingRef.current?.dispose();
       sessionBindingRef.current = null;
