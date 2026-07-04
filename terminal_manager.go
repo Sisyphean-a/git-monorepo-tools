@@ -204,13 +204,13 @@ func (s *terminalSession) Resize(cols, rows int) error {
 
 func (s *terminalSession) streamOutput() {
 	buffer := make([]byte, 32*1024)
+	outputs := newTerminalOutputBatcher(s.id, s.emit)
+	defer outputs.Close()
+
 	for {
 		readBytes, err := s.host.Read(buffer)
 		if readBytes > 0 {
-			s.emit(terminalOutputEventName, terminalOutputEvent{
-				SessionID: s.id,
-				Chunk:     string(buffer[:readBytes]),
-			})
+			outputs.Add(string(buffer[:readBytes]))
 		}
 		if errors.Is(err, io.EOF) {
 			break

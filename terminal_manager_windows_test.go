@@ -126,6 +126,64 @@ func TestTerminalManagerSupportsCtrlC(t *testing.T) {
 	}
 }
 
+func TestTerminalManagerHighVolumeOutputBatchesEvents(t *testing.T) {
+	outputs := make(chan string, 2048)
+	exits := make(chan int, 4)
+	manager := newTerminalManager(func(name string, payload any) {
+		switch value := payload.(type) {
+		case terminalOutputEvent:
+			if name == terminalOutputEventName {
+				outputs <- value.Chunk
+			}
+		case terminalExitEvent:
+			if name == terminalExitEventName {
+				exits <- value.ExitCode
+			}
+		}
+	})
+	defer func() {
+		manager.CloseAll()
+		select {
+		case <-exits:
+		case <-time.After(5 * time.Second):
+			t.Fatal("terminal session did not exit during cleanup")
+		}
+	}()
+
+	session, err := manager.EnsureSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: t.TempDir()})
+	if err != nil {
+		t.Fatalf("ensure session: %v", err)
+	}
+
+	command := "1..5000 | ForEach-Object { Write-Output \"line-$($_)\" }; Write-Output ('__terminal_' + 'perf_done__')\r"
+	if err := manager.WriteInput(session.SessionID, command); err != nil {
+		t.Fatalf("write pressure command: %v", err)
+	}
+
+	eventCount := 0
+	var combined strings.Builder
+	deadline := time.After(15 * time.Second)
+	for {
+		select {
+		case chunk := <-outputs:
+			eventCount++
+			combined.WriteString(chunk)
+			text := combined.String()
+			if strings.Contains(text, "__terminal_perf_done__") {
+				if !strings.Contains(text, "line-5000") {
+					t.Fatal("terminal pressure output missing expected tail marker")
+				}
+				if eventCount >= 512 {
+					t.Fatalf("expected batched terminal events under heavy output, got %d", eventCount)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for terminal pressure output after %d events", eventCount)
+		}
+	}
+}
+
 func waitForChunk(ch <-chan string, timeout time.Duration, match func(chunk string) bool) bool {
 	deadline := time.After(timeout)
 	for {

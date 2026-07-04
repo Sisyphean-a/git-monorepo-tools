@@ -1,10 +1,14 @@
 package main
 
+import "time"
+
 const (
-	terminalOutputEventName = "repo-terminal-output"
-	terminalExitEventName   = "repo-terminal-exit"
-	defaultTerminalCols     = 120
-	defaultTerminalRows     = 32
+	terminalOutputEventName            = "repo-terminal-output"
+	terminalExitEventName              = "repo-terminal-exit"
+	defaultTerminalCols                = 120
+	defaultTerminalRows                = 32
+	defaultTerminalOutputFlushInterval = 16 * time.Millisecond
+	defaultTerminalOutputBatchBytes    = 64 * 1024
 )
 
 type TerminalSessionRequest struct {

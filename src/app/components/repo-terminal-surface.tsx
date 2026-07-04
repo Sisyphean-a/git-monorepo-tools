@@ -2,13 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { EventsOn } from '../../../frontend/wailsjs/runtime/runtime';
 import { ensureTerminalSession, resizeTerminal, writeTerminalInput } from '../api';
+import { terminalEventBus } from '../terminal-runtime-event-bus';
+import { TerminalOutputWriter } from '../terminal-output-writer';
 import { C } from '../theme';
 import type { RepoDetail, TerminalSessionInfo } from '../types';
-
-const TERMINAL_OUTPUT_EVENT = 'repo-terminal-output';
-const TERMINAL_EXIT_EVENT = 'repo-terminal-exit';
 
 type TerminalStatus = 'idle' | 'connecting' | 'running' | 'failed' | 'exited';
 
@@ -18,6 +16,9 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const sessionRef = useRef<TerminalSessionInfo | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const sessionBindingRef = useRef<{ bindSession: (sessionId: string) => void; dispose: () => void } | null>(null);
+  const outputWriterRef = useRef<TerminalOutputWriter | null>(null);
   const inputQueueRef = useRef(Promise.resolve());
   const resizeFrameRef = useRef<number | null>(null);
 
@@ -51,6 +52,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     if (!terminal || !fitAddon) return;
 
     if (resetTerminal) {
+      outputWriterRef.current?.reset();
       terminal.reset();
     }
 
@@ -63,6 +65,8 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     try {
       const session = await ensureTerminalSession(repo.id, repo.path, nextSize?.cols, nextSize?.rows);
       sessionRef.current = session;
+      setSessionId(session.sessionId);
+      sessionBindingRef.current?.bindSession(session.sessionId);
       setShellLabel(session.shell);
       setStatus('running');
       scheduleResize();
@@ -81,7 +85,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       cursorBlink: true,
       fontFamily: 'JetBrains Mono, Consolas, monospace',
       fontSize: 12,
-      scrollback: 8000,
+      scrollback: 2000,
       theme: {
         background: '#0b1220',
         foreground: '#dbe7f5',
@@ -110,6 +114,8 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     terminal.open(viewportRef.current);
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
+    outputWriterRef.current = new TerminalOutputWriter(terminal);
+    outputWriterRef.current.setEnabled(active);
 
     const inputDisposable = terminal.onData(data => {
       const session = sessionRef.current;
@@ -121,6 +127,10 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
 
     return () => {
       inputDisposable.dispose();
+      sessionBindingRef.current?.dispose();
+      sessionBindingRef.current = null;
+      outputWriterRef.current?.dispose();
+      outputWriterRef.current = null;
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -128,24 +138,35 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   }, []);
 
   useEffect(() => {
-    const stopOutput = EventsOn(TERMINAL_OUTPUT_EVENT, payload => {
-      if (!payload || payload.sessionId !== sessionRef.current?.sessionId) return;
-      terminalRef.current?.write(typeof payload.chunk === 'string' ? payload.chunk : '');
+    sessionBindingRef.current?.dispose();
+    sessionBindingRef.current = null;
+    if (!sessionId) {
+      return;
+    }
+
+    sessionBindingRef.current = terminalEventBus.createSubscription({
+      onOutput: chunk => {
+        outputWriterRef.current?.enqueue(chunk);
+      },
+      onExit: exitCode => {
+        sessionRef.current = null;
+        setSessionId(null);
+        setStatus('exited');
+        setExitCode(exitCode);
+        outputWriterRef.current?.enqueue(`\r\n\x1b[90m[process exited ${exitCode}]\x1b[0m\r\n`);
+      },
     });
-    const stopExit = EventsOn(TERMINAL_EXIT_EVENT, payload => {
-      if (!payload || payload.sessionId !== sessionRef.current?.sessionId) return;
-      const nextExitCode = typeof payload.exitCode === 'number' ? payload.exitCode : -1;
-      sessionRef.current = null;
-      setStatus('exited');
-      setExitCode(nextExitCode);
-      terminalRef.current?.write(`\r\n\x1b[90m[process exited ${nextExitCode}]\x1b[0m\r\n`);
-    });
+    sessionBindingRef.current.bindSession(sessionId);
 
     return () => {
-      stopOutput();
-      stopExit();
+      sessionBindingRef.current?.dispose();
+      sessionBindingRef.current = null;
     };
-  }, []);
+  }, [sessionId]);
+
+  useEffect(() => {
+    outputWriterRef.current?.setEnabled(active);
+  }, [active]);
 
   useEffect(() => {
     if (!active) return;
