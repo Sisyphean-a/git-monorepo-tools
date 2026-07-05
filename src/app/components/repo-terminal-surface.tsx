@@ -28,6 +28,13 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   const [error, setError] = useState<string | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
 
+  const resetViewportScroll = () => {
+    const viewport = viewportRef.current?.querySelector('.xterm-viewport');
+    if (viewport instanceof HTMLDivElement && viewport.scrollLeft !== 0) {
+      viewport.scrollLeft = 0;
+    }
+  };
+
   const measureTerminalSize = () => {
     const terminal = terminalRef.current;
     const fitAddon = fitAddonRef.current;
@@ -53,6 +60,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       const session = sessionRef.current;
       if (!fitAddon) return;
       fitAddon.fit();
+      resetViewportScroll();
       const nextSize = fitAddon.proposeDimensions();
       if (session && nextSize) {
         void resizeTerminal(session.sessionId, nextSize.cols, nextSize.rows).catch(() => {});
@@ -169,10 +177,12 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(viewportRef.current);
+    resetViewportScroll();
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     outputWriterRef.current = new TerminalOutputWriter(terminal);
     outputWriterRef.current.setEnabled(active);
+    const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');
 
     const contextMenuHandler = (event: MouseEvent) => {
       if (!terminal.hasSelection()) {
@@ -181,7 +191,9 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       event.preventDefault();
       void copySelection(terminal).catch(() => {});
     };
+    const scrollGuard = () => resetViewportScroll();
     viewportRef.current.addEventListener('contextmenu', contextMenuHandler);
+    xtermViewport?.addEventListener('scroll', scrollGuard, { passive: true });
 
     const inputDisposable = terminal.onData(data => {
       const session = sessionRef.current;
@@ -193,6 +205,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
 
     return () => {
       viewportRef.current?.removeEventListener('contextmenu', contextMenuHandler);
+      xtermViewport?.removeEventListener('scroll', scrollGuard);
       inputDisposable.dispose();
       sessionBindingRef.current?.dispose();
       sessionBindingRef.current = null;
@@ -292,7 +305,11 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       </div>
 
       <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#0b1220' }}>
-        <div ref={viewportRef} style={{ position: 'absolute', inset: 0, padding: '10px 12px' }} />
+        <div
+          ref={viewportRef}
+          className="repo-terminal-viewport"
+          style={{ position: 'absolute', inset: 0, padding: '10px 12px', overflow: 'hidden' }}
+        />
         {status === 'connecting' && (
           <StatusOverlay text="正在启动终端..." />
         )}

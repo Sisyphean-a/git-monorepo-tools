@@ -38,6 +38,10 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+.repo-terminal-viewport .xterm-viewport {
+  overflow-x: hidden !important;
+}
+
 input::placeholder,
 textarea::placeholder {
   color: #5f7084;
