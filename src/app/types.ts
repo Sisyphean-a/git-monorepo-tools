@@ -114,6 +114,12 @@ export interface RepoDetail extends Repo {
   history: CommitSummary[];
 }
 
+export interface RepoSnapshotUpdate {
+  repo: RepoDetail;
+  commitCandidates: CommitCandidate[];
+  scannedAt: string;
+}
+
 export type GitOperationStatus = 'success' | 'skipped' | 'failed' | 'noop';
 
 export interface GitOperationResult {

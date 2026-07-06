@@ -25,6 +25,8 @@ type SnapshotCoordinatorOptions = {
   reportError?: ErrorReporter;
 };
 
+type TaskSuccessHandler<T> = (result: T, options: SnapshotCoordinatorOptions) => void;
+
 export type SnapshotCoordinator = ReturnType<typeof createSnapshotCoordinator>;
 
 export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
@@ -45,7 +47,15 @@ export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
       return enqueueRefresh(queue, settings, fetchOptions, processQueue);
     },
     runSnapshotTask<T>(task: () => Promise<T>, readSnapshot: (result: T) => AppSnapshot | null | undefined) {
-      return enqueueTask(queue, task, readSnapshot, options, processQueue);
+      return enqueueTask(queue, task, (result, nextOptions) => {
+        const snapshot = readSnapshot(result);
+        if (snapshot) nextOptions.applySnapshot(snapshot);
+      }, options, processQueue);
+    },
+    runTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
+      return enqueueTask(queue, task, result => {
+        onSuccess?.(result);
+      }, options, processQueue);
     },
   };
 }
@@ -90,7 +100,7 @@ function enqueueRefresh(
 function enqueueTask<T>(
   queue: QueueEntry[],
   task: () => Promise<T>,
-  readSnapshot: (result: T) => AppSnapshot | null | undefined,
+  onSuccess: TaskSuccessHandler<T>,
   options: SnapshotCoordinatorOptions,
   processQueue: () => Promise<void>,
 ) {
@@ -100,8 +110,7 @@ function enqueueTask<T>(
       kind: 'task',
       run: async () => {
         resolvedValue = await task();
-        const snapshot = readSnapshot(resolvedValue);
-        if (snapshot) options.applySnapshot(snapshot);
+        onSuccess(resolvedValue, options);
         options.reportError?.(null);
       },
       resolve: () => resolve(resolvedValue as T),

@@ -377,6 +377,40 @@ export namespace snapshot {
 	        this.content = source["content"];
 	    }
 	}
+	export class RepoSnapshotUpdate {
+	    repo: RepoDetail;
+	    commitCandidates: CommitCandidate[];
+	    scannedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoSnapshotUpdate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo = this.convertValues(source["repo"], RepoDetail);
+	        this.commitCandidates = this.convertValues(source["commitCandidates"], CommitCandidate);
+	        this.scannedAt = source["scannedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ScanRoot {
 	    path: string;
 	    category: string;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fetchRepoLog, invokeLocalRepoAction, mutateRepo, pickFolder, runBatch, runRepoCommand } from './api';
+import { fetchRepoLog, invokeLocalRepoAction, mutateRepo, pickFolder, refreshRepo, runBatch, runRepoCommand } from './api';
 import { C } from './theme';
 import { Sidebar } from './components/sidebar';
 import { Workspace } from './components/workspace';
@@ -9,7 +9,8 @@ import { AddRepoMenu } from './components/add-repo-menu';
 import { LogViewerModal } from './components/log-viewer-modal';
 import { loadSettings, saveSettings, sanitizeSettings } from './settings';
 import { viewRepoLog } from './repo-log';
-import type { AppSettings, AppSnapshot, PullResult, RepoLog, RepoMutationAction, SettingsTab } from './types';
+import type { AppSettings, AppSnapshot, PullResult, RepoLog, RepoMutationAction, RepoSnapshotUpdate, SettingsTab } from './types';
+import { mergeRepoSnapshotUpdate } from './repo-snapshot-merge';
 import { useSnapshotRefresh } from './use-snapshot-refresh';
 
 function AppFrame({ children }: { children: React.ReactNode }) {
@@ -56,7 +57,12 @@ export default function App() {
     setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
   };
 
-  const { refreshSnapshot, runSnapshotTask } = useSnapshotRefresh(settings, applySnapshot, setRefreshError);
+  const { refreshSnapshot, runQueuedTask, runSnapshotTask } = useSnapshotRefresh(settings, applySnapshot, setRefreshError);
+
+  const applyRepoUpdate = (update: RepoSnapshotUpdate) => {
+    setSnapshot(current => (current ? mergeRepoSnapshotUpdate(current, update) : current));
+    setSelectedRepoId(current => current || update.repo.id);
+  };
 
   const handleSidebarRefresh = async () => {
     if (sidebarRefreshing) return;
@@ -145,9 +151,9 @@ export default function App() {
 
   const handleRetryRepo = async (repoId: string, operation: 'pullAll' | 'pushAll') => {
     try {
-      await runSnapshotTask(
+      await runQueuedTask(
         () => mutateRepo(repoId, operation === 'pullAll' ? 'pull' : 'push', settings),
-        snapshotAfterRetry => snapshotAfterRetry,
+        applyRepoUpdate,
       );
       setDrawerResults(current => current.map(result => (
         result.id === repoId
@@ -181,9 +187,16 @@ export default function App() {
   };
 
   const handleMutateRepo = (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => (
-    runSnapshotTask(
+    runQueuedTask(
       () => mutateRepo(repoId, action, settings, body),
-      nextSnapshot => nextSnapshot,
+      applyRepoUpdate,
+    )
+  );
+
+  const handleWorkspaceRefresh = (repoId: string) => (
+    runQueuedTask(
+      () => refreshRepo(repoId, settings, { refreshRemotes: false }),
+      applyRepoUpdate,
     )
   );
 
@@ -253,7 +266,7 @@ export default function App() {
           repoDetails={snapshot.repoDetails}
           settings={settings}
           selectedRepoId={selectedRepoId}
-          onRefresh={() => refreshSnapshot()}
+          onRefresh={handleWorkspaceRefresh}
           onMutateRepo={handleMutateRepo}
           onInvokeLocalRepoAction={handleInvokeLocalRepoAction}
           onRunCustomCommand={runRepoCommand}

@@ -45,7 +45,11 @@ func (a *App) GetSnapshot(request snapshot.Request) (snapshot.AppSnapshot, error
 	return a.service.BuildAppSnapshot(request)
 }
 
-func (a *App) MutateRepo(repoID, action string, request snapshot.Request, body snapshot.RepoActionRequest) (snapshot.AppSnapshot, error) {
+func (a *App) RefreshRepo(repoID string, request snapshot.Request) (snapshot.RepoSnapshotUpdate, error) {
+	return a.service.RefreshRepo(repoID, request)
+}
+
+func (a *App) MutateRepo(repoID, action string, request snapshot.Request, body snapshot.RepoActionRequest) (snapshot.RepoSnapshotUpdate, error) {
 	return a.service.MutateRepo(repoID, action, request, body)
 }
 

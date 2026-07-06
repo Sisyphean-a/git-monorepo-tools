@@ -9,7 +9,18 @@ interface Window {
           concurrency: number;
           pullStrategy: 'ff-only' | 'rebase' | 'merge';
           pushStrategy: 'upstream-only' | 'all';
+          refreshRemotes: boolean;
         }) => Promise<import('./app/types').AppSnapshot>;
+        RefreshRepo: (
+          repoId: string,
+          request: {
+            scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
+            pullStrategy: 'ff-only' | 'rebase' | 'merge';
+            pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
+          },
+        ) => Promise<import('./app/types').RepoSnapshotUpdate>;
         MutateRepo: (
           repoId: string,
           action: string,
@@ -18,6 +29,7 @@ interface Window {
             concurrency: number;
             pullStrategy: 'ff-only' | 'rebase' | 'merge';
             pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
           },
           body: {
             fileId?: string;
@@ -33,6 +45,7 @@ interface Window {
             concurrency: number;
             pullStrategy: 'ff-only' | 'rebase' | 'merge';
             pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
           },
         ) => Promise<{
           snapshot: import('./app/types').AppSnapshot;
@@ -46,6 +59,7 @@ interface Window {
             concurrency: number;
             pullStrategy: 'ff-only' | 'rebase' | 'merge';
             pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
           },
         ) => Promise<import('./app/types').RepoLog>;
         EnsureTerminalSession: (request: {
@@ -64,6 +78,7 @@ interface Window {
             concurrency: number;
             pullStrategy: 'ff-only' | 'rebase' | 'merge';
             pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
           },
           aiCommit: import('./app/types').AICommitSettings,
         ) => Promise<string>;

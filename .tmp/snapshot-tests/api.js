@@ -26,6 +26,7 @@ function getWailsBindings() {
         throw new Error('Wails 绑定不可用');
     }
     if (typeof binding.GetSnapshot !== 'function'
+        || typeof binding.RefreshRepo !== 'function'
         || typeof binding.MutateRepo !== 'function'
         || typeof binding.RunBatch !== 'function'
         || typeof binding.GetRepoLog !== 'function'
@@ -45,6 +46,9 @@ function getWailsBindings() {
 }
 export async function fetchSnapshot(settings, options) {
     return getWailsBindings().GetSnapshot(buildSnapshotRequest(settings, options));
+}
+export async function refreshRepo(repoId, settings, options) {
+    return getWailsBindings().RefreshRepo(repoId, buildSnapshotRequest(settings, options));
 }
 export async function mutateRepo(repoId, action, settings, body) {
     const binding = getWailsBindings();

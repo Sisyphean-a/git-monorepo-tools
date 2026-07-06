@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, PullResult, RepoCommandResult, RepoLog, RepoMutationAction, TerminalSessionInfo } from './types.js';
+import type { AppSettings, AppSnapshot, PullResult, RepoCommandResult, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
@@ -41,7 +41,8 @@ type WailsTerminalSessionRequest = {
 
 type WailsBindings = {
   GetSnapshot: WailsSnapshotBinding;
-  MutateRepo: (repoId: string, action: string, request: SnapshotRequest, body: WailsRepoActionRequest) => Promise<AppSnapshot>;
+  RefreshRepo: (repoId: string, request: SnapshotRequest) => Promise<RepoSnapshotUpdate>;
+  MutateRepo: (repoId: string, action: string, request: SnapshotRequest, body: WailsRepoActionRequest) => Promise<RepoSnapshotUpdate>;
   RunBatch: (operation: 'pull' | 'push', request: SnapshotRequest) => Promise<SnapshotResponse>;
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
@@ -91,6 +92,7 @@ function getWailsBindings(): WailsBindings {
   }
   if (
     typeof binding.GetSnapshot !== 'function'
+    || typeof binding.RefreshRepo !== 'function'
     || typeof binding.MutateRepo !== 'function'
     || typeof binding.RunBatch !== 'function'
     || typeof binding.GetRepoLog !== 'function'
@@ -112,6 +114,10 @@ function getWailsBindings(): WailsBindings {
 
 export async function fetchSnapshot(settings?: AppSettings, options?: SnapshotFetchOptions) {
   return getWailsBindings().GetSnapshot(buildSnapshotRequest(settings, options));
+}
+
+export async function refreshRepo(repoId: string, settings?: AppSettings, options?: SnapshotFetchOptions) {
+  return getWailsBindings().RefreshRepo(repoId, buildSnapshotRequest(settings, options));
 }
 
 export async function mutateRepo(repoId: string, action: RepoMutationAction, settings?: AppSettings, body?: Record<string, unknown>) {

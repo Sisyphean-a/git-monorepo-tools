@@ -19,7 +19,7 @@ interface WorkspaceProps {
   repoDetails: Record<string, RepoDetail>;
   settings: AppSettings;
   selectedRepoId: string;
-  onRefresh: () => Promise<void>;
+  onRefresh: (repoId: string) => Promise<void>;
   onMutateRepo: (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => Promise<void>;
   onInvokeLocalRepoAction: (action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) => Promise<void>;
   onRunCustomCommand: (repoPath: string, command: string, streamId?: string) => Promise<RepoCommandResult>;
@@ -73,7 +73,7 @@ export function Workspace({
   } = useRepoCommandPanel({
     repo,
     settings,
-    onRefresh,
+    onRefresh: () => onRefresh(repo.id),
     onMutateRepo,
     onRunCustomCommand,
     onOpenCommandsSettings: () => onOpenSettings('commands'),

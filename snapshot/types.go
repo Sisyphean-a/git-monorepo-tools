@@ -55,6 +55,12 @@ type AppSnapshot struct {
 	CommitCandidates map[string][]CommitCandidate `json:"commitCandidates"`
 }
 
+type RepoSnapshotUpdate struct {
+	Repo             RepoDetail         `json:"repo"`
+	CommitCandidates []CommitCandidate  `json:"commitCandidates"`
+	ScannedAt        string             `json:"scannedAt"`
+}
+
 type Repo struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

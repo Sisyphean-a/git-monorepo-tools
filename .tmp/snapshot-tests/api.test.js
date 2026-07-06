@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureTerminalSession, fetchSnapshot, generateCommitMessage, invokeLocalRepoAction, mutateRepo, resizeTerminal, restartTerminalSession, runRepoCommand, writeTerminalInput, } from './api.js';
+import { ensureTerminalSession, fetchSnapshot, generateCommitMessage, invokeLocalRepoAction, mutateRepo, refreshRepo, resizeTerminal, restartTerminalSession, runRepoCommand, writeTerminalInput, } from './api.js';
 test('fetchSnapshot can opt into remote refresh after page load', async () => {
     const calls = [];
     const originalWindow = globalThis.window;
@@ -18,6 +18,9 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
             };
         },
         MutateRepo: async () => {
+            throw new Error('unused');
+        },
+        RefreshRepo: async () => {
             throw new Error('unused');
         },
         RunBatch: async () => {
@@ -85,6 +88,9 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
         MutateRepo: async () => {
             throw new Error('unused');
         },
+        RefreshRepo: async () => {
+            throw new Error('unused');
+        },
         RunBatch: async () => {
             throw new Error('unused');
         },
@@ -150,6 +156,9 @@ test('generateCommitMessage uses dedicated binding', async () => {
             throw new Error('should not fetch snapshot');
         },
         MutateRepo: async () => {
+            throw new Error('unused');
+        },
+        RefreshRepo: async () => {
             throw new Error('unused');
         },
         RunBatch: async () => {
@@ -235,16 +244,33 @@ test('mutateRepo accepts discard-all action', async () => {
         GetSnapshot: async () => {
             throw new Error('unused');
         },
+        RefreshRepo: async () => {
+            throw new Error('unused');
+        },
         MutateRepo: async (_repoId, action) => {
             calls.push(`MutateRepo:${action}`);
             return {
+                repo: {
+                    id: 'repo-1',
+                    name: 'repo-1',
+                    branch: 'main',
+                    path: '/repo/a',
+                    remote: 'origin',
+                    category: '测试',
+                    modified: 0,
+                    ahead: 0,
+                    behind: 0,
+                    conflicts: 0,
+                    status: 'clean',
+                    lastScan: '',
+                    files: [],
+                    stagedCount: 0,
+                    unstagedCount: 0,
+                    scannedAt: '',
+                    history: [],
+                },
+                commitCandidates: [],
                 scannedAt: '',
-                categories: [],
-                repos: [],
-                repoDetails: {},
-                selectedRepoId: '',
-                pullResults: [],
-                commitCandidates: {},
             };
         },
         RunBatch: async () => {
@@ -305,6 +331,9 @@ test('runRepoCommand uses dedicated binding', async () => {
             throw new Error('unused');
         },
         MutateRepo: async () => {
+            throw new Error('unused');
+        },
+        RefreshRepo: async () => {
             throw new Error('unused');
         },
         RunBatch: async () => {
@@ -375,6 +404,9 @@ test('terminal bindings use dedicated Wails bridge', async () => {
             throw new Error('unused');
         },
         MutateRepo: async () => {
+            throw new Error('unused');
+        },
+        RefreshRepo: async () => {
             throw new Error('unused');
         },
         RunBatch: async () => {
@@ -450,4 +482,92 @@ test('terminal bindings use dedicated Wails bridge', async () => {
         'WriteTerminalInput:term-2:git status\r',
         'ResizeTerminal:term-2:140:50',
     ]);
+});
+test('refreshRepo uses dedicated binding', async () => {
+    const calls = [];
+    const originalWindow = globalThis.window;
+    const bindings = {
+        GetSnapshot: async () => {
+            throw new Error('unused');
+        },
+        RefreshRepo: async (repoId) => {
+            calls.push(`RefreshRepo:${repoId}`);
+            return {
+                repo: {
+                    id: repoId,
+                    name: 'repo-1',
+                    branch: 'main',
+                    path: '/repo/a',
+                    remote: 'origin',
+                    category: '测试',
+                    modified: 1,
+                    ahead: 0,
+                    behind: 0,
+                    conflicts: 0,
+                    status: 'changed',
+                    lastScan: '',
+                    files: [],
+                    stagedCount: 0,
+                    unstagedCount: 1,
+                    scannedAt: '',
+                    history: [],
+                },
+                commitCandidates: [],
+                scannedAt: 'now',
+            };
+        },
+        MutateRepo: async () => {
+            throw new Error('unused');
+        },
+        RunBatch: async () => {
+            throw new Error('unused');
+        },
+        GetRepoLog: async () => {
+            throw new Error('unused');
+        },
+        RunRepoCommand: async () => {
+            throw new Error('unused');
+        },
+        EnsureTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        RestartTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        WriteTerminalInput: async () => {
+            throw new Error('unused');
+        },
+        ResizeTerminal: async () => {
+            throw new Error('unused');
+        },
+        GenerateCommitMessage: async () => {
+            throw new Error('unused');
+        },
+        OpenFolder: async () => {
+            throw new Error('unused');
+        },
+        OpenTerminal: async () => {
+            throw new Error('unused');
+        },
+        OpenConflicts: async () => {
+            throw new Error('unused');
+        },
+        PickFolder: async () => '',
+    };
+    Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: { go: { main: { App: bindings } } },
+    });
+    try {
+        const result = await refreshRepo('repo-1');
+        assert.equal(result.repo.id, 'repo-1');
+        assert.equal(result.scannedAt, 'now');
+    }
+    finally {
+        Object.defineProperty(globalThis, 'window', {
+            configurable: true,
+            value: originalWindow,
+        });
+    }
+    assert.deepEqual(calls, ['RefreshRepo:repo-1']);
 });

@@ -16,7 +16,16 @@ export function createSnapshotCoordinator(options) {
             return enqueueRefresh(queue, settings, fetchOptions, processQueue);
         },
         runSnapshotTask(task, readSnapshot) {
-            return enqueueTask(queue, task, readSnapshot, options, processQueue);
+            return enqueueTask(queue, task, (result, nextOptions) => {
+                const snapshot = readSnapshot(result);
+                if (snapshot)
+                    nextOptions.applySnapshot(snapshot);
+            }, options, processQueue);
+        },
+        runTask(task, onSuccess) {
+            return enqueueTask(queue, task, result => {
+                onSuccess?.(result);
+            }, options, processQueue);
         },
     };
 }
@@ -52,16 +61,14 @@ function enqueueRefresh(queue, settings, fetchOptions, processQueue) {
     void processQueue();
     return promise;
 }
-function enqueueTask(queue, task, readSnapshot, options, processQueue) {
+function enqueueTask(queue, task, onSuccess, options, processQueue) {
     let resolvedValue;
     const promise = new Promise((resolve, reject) => {
         queue.push({
             kind: 'task',
             run: async () => {
                 resolvedValue = await task();
-                const snapshot = readSnapshot(resolvedValue);
-                if (snapshot)
-                    options.applySnapshot(snapshot);
+                onSuccess(resolvedValue, options);
                 options.reportError?.(null);
             },
             resolve: () => resolve(resolvedValue),

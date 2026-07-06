@@ -6,15 +6,19 @@ import (
 	"strings"
 )
 
-func (s *Service) MutateRepo(repoID, action string, request Request, body RepoActionRequest) (AppSnapshot, error) {
+func (s *Service) MutateRepo(repoID, action string, request Request, body RepoActionRequest) (RepoSnapshotUpdate, error) {
 	repo, err := s.resolveRepoForAction(repoID, action, request, body)
 	if err != nil {
-		return AppSnapshot{}, err
+		return RepoSnapshotUpdate{}, err
 	}
 	if err := mutateRepo(repo, action, request, body); err != nil {
-		return AppSnapshot{}, err
+		return RepoSnapshotUpdate{}, err
 	}
-	return s.BuildAppSnapshot(request)
+	return s.buildRepoUpdate(repo.ID, repo.Path, repo.Category, request.RefreshRemotes)
+}
+
+func (s *Service) RefreshRepo(repoID string, request Request) (RepoSnapshotUpdate, error) {
+	return s.BuildRepoSnapshot(repoID, request, request.RefreshRemotes)
 }
 
 func (s *Service) RunBatch(operation string, request Request) (BatchResult, error) {

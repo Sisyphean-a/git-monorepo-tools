@@ -38,6 +38,10 @@ export function PickFolder() {
   return window['go']['main']['App']['PickFolder']();
 }
 
+export function RefreshRepo(arg1, arg2) {
+  return window['go']['main']['App']['RefreshRepo'](arg1, arg2);
+}
+
 export function ResizeTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeTerminal'](arg1, arg2, arg3);
 }

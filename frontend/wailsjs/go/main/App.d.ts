@@ -11,7 +11,7 @@ export function GetRepoLog(arg1:string,arg2:snapshot.Request):Promise<snapshot.R
 
 export function GetSnapshot(arg1:snapshot.Request):Promise<snapshot.AppSnapshot>;
 
-export function MutateRepo(arg1:string,arg2:string,arg3:snapshot.Request,arg4:snapshot.RepoActionRequest):Promise<snapshot.AppSnapshot>;
+export function MutateRepo(arg1:string,arg2:string,arg3:snapshot.Request,arg4:snapshot.RepoActionRequest):Promise<snapshot.RepoSnapshotUpdate>;
 
 export function OpenConflicts(arg1:string):Promise<void>;
 
@@ -20,6 +20,8 @@ export function OpenFolder(arg1:string):Promise<void>;
 export function OpenTerminal(arg1:string):Promise<void>;
 
 export function PickFolder():Promise<string>;
+
+export function RefreshRepo(arg1:string,arg2:snapshot.Request):Promise<snapshot.RepoSnapshotUpdate>;
 
 export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 

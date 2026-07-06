@@ -62,6 +62,9 @@ export function useSnapshotRefresh(
     refreshSnapshot(nextSettings = settingsRef.current) {
       return coordinatorRef.current.requestRefresh(nextSettings, { refreshRemotes: true });
     },
+    runQueuedTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
+      return coordinatorRef.current.runTask(task, onSuccess);
+    },
     runSnapshotTask<T>(task: () => Promise<T>, readSnapshot: (result: T) => AppSnapshot | null | undefined) {
       return coordinatorRef.current.runSnapshotTask(task, readSnapshot);
     },

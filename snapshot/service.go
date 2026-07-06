@@ -40,6 +40,14 @@ func (s *Service) BuildAppSnapshot(request Request) (AppSnapshot, error) {
 	return s.buildSnapshot(request, nil)
 }
 
+func (s *Service) BuildRepoSnapshot(repoID string, request Request, refreshRemotes bool) (RepoSnapshotUpdate, error) {
+	repo, err := s.resolveRepo(repoID, request)
+	if err != nil {
+		return RepoSnapshotUpdate{}, err
+	}
+	return s.buildRepoUpdate(repo.ID, repo.Path, repo.Category, refreshRemotes)
+}
+
 func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppSnapshot, error) {
 	scanTime := time.Now()
 	repoEntries := s.discoverRepos(s.buildRoots(request))
@@ -136,6 +144,25 @@ func (s *Service) selectedRepoID(items []repoSnapshot) string {
 
 func buildRepoSnapshot(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
 	return buildRepoSnapshotWithRemoteMode(entry, scanTime, false)
+}
+
+func (s *Service) buildRepoUpdate(repoID, repoPath, category string, refreshRemotes bool) (RepoSnapshotUpdate, error) {
+	scanTime := time.Now()
+	snapshot, err := buildRepoSnapshotWithRemoteMode(repoEntry{
+		repoPath: repoPath,
+		category: category,
+	}, scanTime, refreshRemotes)
+	if err != nil {
+		return RepoSnapshotUpdate{}, err
+	}
+	if snapshot.repo.ID != repoID {
+		return RepoSnapshotUpdate{}, fmt.Errorf("仓库路径与标识不匹配：%s", repoPath)
+	}
+	return RepoSnapshotUpdate{
+		Repo:             snapshot.detail,
+		CommitCandidates: snapshot.commitCandidates,
+		ScannedAt:        formatDateTime(scanTime),
+	}, nil
 }
 
 func buildRepoSnapshotWithRemoteMode(entry repoEntry, scanTime time.Time, refreshRemotes bool) (repoSnapshot, error) {
