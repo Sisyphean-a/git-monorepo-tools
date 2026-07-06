@@ -8,8 +8,10 @@ import { terminalEventBus } from '../terminal-runtime-event-bus';
 import { TerminalOutputWriter } from '../terminal-output-writer';
 import { C } from '../theme';
 import type { RepoDetail, TerminalSessionInfo } from '../types';
+import { ClipboardGetText } from '../../../frontend/wailsjs/runtime/runtime.js';
 
 type TerminalStatus = 'idle' | 'connecting' | 'running' | 'failed' | 'exited';
+type TerminalToast = { id: number; text: string } | null;
 
 export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active: boolean }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -22,11 +24,27 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   const outputWriterRef = useRef<TerminalOutputWriter | null>(null);
   const inputQueueRef = useRef(Promise.resolve());
   const resizeFrameRef = useRef<number | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const toastIdRef = useRef(0);
 
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [shellLabel, setShellLabel] = useState('终端');
   const [error, setError] = useState<string | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
+  const [toast, setToast] = useState<TerminalToast>(null);
+
+  const showToast = (text: string) => {
+    toastIdRef.current += 1;
+    const id = toastIdRef.current;
+    setToast({ id, text });
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(current => current?.id === id ? null : current);
+      toastTimerRef.current = null;
+    }, 1000);
+  };
 
   const resetViewportScroll = () => {
     const viewport = viewportRef.current?.querySelector('.xterm-viewport');
@@ -67,6 +85,16 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       }
       terminalRef.current?.focus();
     });
+  };
+
+  const enqueueTerminalInput = (data: string) => {
+    const session = sessionRef.current;
+    if (!session) {
+      return;
+    }
+    inputQueueRef.current = inputQueueRef.current
+      .then(() => writeTerminalInput(session.sessionId, data))
+      .catch(() => {});
   };
 
   const startSession = async (resetTerminal: boolean) => {
@@ -144,6 +172,16 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       return true;
     };
 
+    const pasteClipboard = async () => {
+      const text = await ClipboardGetText();
+      if (!text) {
+        return false;
+      }
+      enqueueTerminalInput(text);
+      terminalRef.current?.focus();
+      return true;
+    };
+
     const terminal = new Terminal({
       allowTransparency: true,
       cursorBlink: true,
@@ -185,25 +223,38 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');
 
     const contextMenuHandler = (event: MouseEvent) => {
-      if (!terminal.hasSelection()) {
+      event.preventDefault();
+      if (terminal.hasSelection()) {
+        void copySelection(terminal)
+          .then(copied => {
+            if (copied) {
+              showToast('已复制');
+            }
+          })
+          .catch(() => {});
         return;
       }
-      event.preventDefault();
-      void copySelection(terminal).catch(() => {});
+      void pasteClipboard()
+        .then(pasted => {
+          if (pasted) {
+            showToast('已粘贴');
+          }
+        })
+        .catch(() => {});
     };
     const scrollGuard = () => resetViewportScroll();
     viewportRef.current.addEventListener('contextmenu', contextMenuHandler);
     xtermViewport?.addEventListener('scroll', scrollGuard, { passive: true });
 
     const inputDisposable = terminal.onData(data => {
-      const session = sessionRef.current;
-      if (!session) return;
-      inputQueueRef.current = inputQueueRef.current
-        .then(() => writeTerminalInput(session.sessionId, data))
-        .catch(() => {});
+      enqueueTerminalInput(data);
     });
 
     return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
       viewportRef.current?.removeEventListener('contextmenu', contextMenuHandler);
       xtermViewport?.removeEventListener('scroll', scrollGuard);
       inputDisposable.dispose();
@@ -325,14 +376,21 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
             tone={C.modified}
           />
         )}
+        {toast && (
+          <StatusOverlay
+            text={toast.text}
+            tone={C.needPull}
+            bottom={14}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function StatusOverlay({ text, tone }: { text: string; tone?: string }) {
+function StatusOverlay({ text, tone, bottom }: { text: string; tone?: string; bottom?: number }) {
   return (
-    <div style={{ position: 'absolute', top: 14, right: 14, background: '#0f172acc', border: `1px solid ${(tone ?? '#475569')}55`, color: tone ?? '#cbd5e1', borderRadius: 8, padding: '6px 10px', fontSize: 11, backdropFilter: 'blur(8px)' }}>
+    <div style={{ position: 'absolute', top: bottom === undefined ? 14 : 'auto', bottom: bottom ?? 'auto', right: 14, background: '#0f172acc', border: `1px solid ${(tone ?? '#475569')}55`, color: tone ?? '#cbd5e1', borderRadius: 8, padding: '6px 10px', fontSize: 11, backdropFilter: 'blur(8px)' }}>
       {text}
     </div>
   );
