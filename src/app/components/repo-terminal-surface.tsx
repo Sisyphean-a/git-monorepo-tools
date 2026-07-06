@@ -9,6 +9,7 @@ import { TerminalOutputWriter } from '../terminal-output-writer';
 import { C } from '../theme';
 import type { RepoDetail, TerminalSessionInfo } from '../types';
 import { ClipboardGetText } from '../../../frontend/wailsjs/runtime/runtime.js';
+import { getWindowsTerminalShortcutAction } from './repo-terminal-shortcuts';
 
 type TerminalStatus = 'idle' | 'connecting' | 'running' | 'failed' | 'exited';
 type TerminalToast = { id: number; text: string } | null;
@@ -161,6 +162,8 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   useEffect(() => {
     if (!viewportRef.current || terminalRef.current) return;
 
+    const shortcutPlatform = window.navigator.platform ?? '';
+
     const copySelection = async (terminal: Terminal) => {
       const selection = terminal.getSelection();
       if (!selection) {
@@ -172,13 +175,13 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       return true;
     };
 
-    const pasteClipboard = async () => {
+    const pasteClipboard = async (terminal: Terminal) => {
       const text = await ClipboardGetText();
       if (!text) {
         return false;
       }
-      enqueueTerminalInput(text);
-      terminalRef.current?.focus();
+      terminal.paste(text);
+      terminal.focus();
       return true;
     };
 
@@ -220,6 +223,30 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     fitAddonRef.current = fitAddon;
     outputWriterRef.current = new TerminalOutputWriter(terminal);
     outputWriterRef.current.setEnabled(active);
+    terminal.attachCustomKeyEventHandler(event => {
+      switch (getWindowsTerminalShortcutAction(event, terminal.hasSelection(), shortcutPlatform)) {
+        case 'copy-selection':
+          void copySelection(terminal)
+            .then(copied => {
+              if (copied) {
+                showToast('已复制');
+              }
+            })
+            .catch(() => {});
+          return false;
+        case 'paste':
+          void pasteClipboard(terminal)
+            .then(pasted => {
+              if (pasted) {
+                showToast('已粘贴');
+              }
+            })
+            .catch(() => {});
+          return false;
+        default:
+          return true;
+      }
+    });
     const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');
 
     const contextMenuHandler = (event: MouseEvent) => {
@@ -234,7 +261,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
           .catch(() => {});
         return;
       }
-      void pasteClipboard()
+      void pasteClipboard(terminal)
         .then(pasted => {
           if (pasted) {
             showToast('已粘贴');

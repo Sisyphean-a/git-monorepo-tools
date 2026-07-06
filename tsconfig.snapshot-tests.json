@@ -28,6 +28,8 @@
     "src/app/terminal-event-bus.test.ts",
     "src/app/terminal-output-writer.ts",
     "src/app/terminal-output-writer.test.ts",
-    "src/app/types.ts"
+    "src/app/types.ts",
+    "src/app/components/repo-terminal-shortcuts.ts",
+    "src/app/components/repo-terminal-shortcuts.test.ts"
   ]
 }
