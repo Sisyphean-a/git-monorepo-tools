@@ -396,6 +396,7 @@ export namespace snapshot {
 	    concurrency: number;
 	    pullStrategy: string;
 	    pushStrategy: string;
+	    refreshRemotes?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Request(source);
@@ -407,6 +408,7 @@ export namespace snapshot {
 	        this.concurrency = source["concurrency"];
 	        this.pullStrategy = source["pullStrategy"];
 	        this.pushStrategy = source["pushStrategy"];
+	        this.refreshRemotes = source["refreshRemotes"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
