@@ -97,6 +97,9 @@ export namespace snapshot {
 	    message: string;
 	    additions: number;
 	    deletions: number;
+	    parents: number;
+	    refs?: string[];
+	    files: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new CommitSummary(source);
@@ -111,6 +114,9 @@ export namespace snapshot {
 	        this.message = source["message"];
 	        this.additions = source["additions"];
 	        this.deletions = source["deletions"];
+	        this.parents = source["parents"];
+	        this.refs = source["refs"];
+	        this.files = source["files"];
 	    }
 	}
 	export class FileChange {
@@ -156,6 +162,8 @@ export namespace snapshot {
 	    unstagedCount: number;
 	    scannedAt: string;
 	    history: CommitSummary[];
+	    historyTotal: number;
+	    historyHasMore: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RepoDetail(source);
@@ -181,6 +189,8 @@ export namespace snapshot {
 	        this.unstagedCount = source["unstagedCount"];
 	        this.scannedAt = source["scannedAt"];
 	        this.history = this.convertValues(source["history"], CommitSummary);
+	        this.historyTotal = source["historyTotal"];
+	        this.historyHasMore = source["historyHasMore"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -299,6 +309,44 @@ export namespace snapshot {
 	        this.full = source["full"];
 	    }
 	}
+	export class CommitDetail {
+	    hash: string;
+	    shortHash: string;
+	    author: string;
+	    time: string;
+	    message: string;
+	    additions: number;
+	    deletions: number;
+	    parents: number;
+	    refs?: string[];
+	    files: number;
+	    body: string;
+	    authorEmail: string;
+	    committedAt: string;
+	    filesChanged: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CommitDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hash = source["hash"];
+	        this.shortHash = source["shortHash"];
+	        this.author = source["author"];
+	        this.time = source["time"];
+	        this.message = source["message"];
+	        this.additions = source["additions"];
+	        this.deletions = source["deletions"];
+	        this.parents = source["parents"];
+	        this.refs = source["refs"];
+	        this.files = source["files"];
+	        this.body = source["body"];
+	        this.authorEmail = source["authorEmail"];
+	        this.committedAt = source["committedAt"];
+	        this.filesChanged = source["filesChanged"];
+	    }
+	}
 	
 	
 	
@@ -359,6 +407,50 @@ export namespace snapshot {
 	    }
 	}
 	
+	export class RepoHistoryPage {
+	    repoId: string;
+	    repoName: string;
+	    path: string;
+	    offset: number;
+	    limit: number;
+	    total: number;
+	    hasMore: boolean;
+	    commits: CommitSummary[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoHistoryPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repoId = source["repoId"];
+	        this.repoName = source["repoName"];
+	        this.path = source["path"];
+	        this.offset = source["offset"];
+	        this.limit = source["limit"];
+	        this.total = source["total"];
+	        this.hasMore = source["hasMore"];
+	        this.commits = this.convertValues(source["commits"], CommitSummary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class RepoLog {
 	    repoId: string;
 	    repoName: string;

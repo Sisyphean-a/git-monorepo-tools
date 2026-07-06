@@ -22,6 +22,8 @@ function repo(id: string, modified: number, path = `/repo/${id}`): RepoDetail {
     unstagedCount: modified,
     scannedAt: 'old',
     history: [],
+    historyTotal: 0,
+    historyHasMore: false,
   };
 }
 

@@ -7,6 +7,10 @@ export function EnsureTerminalSession(arg1:main.TerminalSessionRequest):Promise<
 
 export function GenerateCommitMessage(arg1:string,arg2:snapshot.Request,arg3:snapshot.AICommitSettings):Promise<string>;
 
+export function GetCommitDetail(arg1:string,arg2:snapshot.Request,arg3:string):Promise<snapshot.CommitDetail>;
+
+export function GetRepoHistory(arg1:string,arg2:snapshot.Request,arg3:number,arg4:number):Promise<snapshot.RepoHistoryPage>;
+
 export function GetRepoLog(arg1:string,arg2:snapshot.Request):Promise<snapshot.RepoLog>;
 
 export function GetSnapshot(arg1:snapshot.Request):Promise<snapshot.AppSnapshot>;

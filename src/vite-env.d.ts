@@ -62,6 +62,29 @@ interface Window {
             refreshRemotes: boolean;
           },
         ) => Promise<import('./app/types').RepoLog>;
+        GetRepoHistory: (
+          repoId: string,
+          request: {
+            scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
+            pullStrategy: 'ff-only' | 'rebase' | 'merge';
+            pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
+          },
+          offset: number,
+          limit: number,
+        ) => Promise<import('./app/types').RepoHistoryPage>;
+        GetCommitDetail: (
+          repoId: string,
+          request: {
+            scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
+            pullStrategy: 'ff-only' | 'rebase' | 'merge';
+            pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
+          },
+          hash: string,
+        ) => Promise<import('./app/types').CommitDetail>;
         EnsureTerminalSession: (request: {
           repoId: string;
           repoPath: string;

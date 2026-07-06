@@ -61,6 +61,14 @@ func (a *App) GetRepoLog(repoID string, request snapshot.Request) (snapshot.Repo
 	return a.service.GetRepoLog(repoID, request)
 }
 
+func (a *App) GetRepoHistory(repoID string, request snapshot.Request, offset, limit int) (snapshot.RepoHistoryPage, error) {
+	return a.service.GetRepoHistory(repoID, request, offset, limit)
+}
+
+func (a *App) GetCommitDetail(repoID string, request snapshot.Request, hash string) (snapshot.CommitDetail, error) {
+	return a.service.GetCommitDetail(repoID, request, hash)
+}
+
 func (a *App) GenerateCommitMessage(repoID string, request snapshot.Request, settings snapshot.AICommitSettings) (string, error) {
 	return a.service.GenerateCommitMessage(repoID, request, settings)
 }

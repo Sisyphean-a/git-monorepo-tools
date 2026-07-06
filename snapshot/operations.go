@@ -52,6 +52,51 @@ func (s *Service) GetRepoLog(repoID string, request Request) (RepoLog, error) {
 	return RepoLog{RepoID: repo.ID, RepoName: repo.Name, Path: repo.Path, Content: content}, nil
 }
 
+func (s *Service) GetRepoHistory(repoID string, request Request, offset, limit int) (RepoHistoryPage, error) {
+	repo, err := s.resolveRepo(repoID, request)
+	if err != nil {
+		return RepoHistoryPage{}, err
+	}
+	commits, hasMore, err := loadHistoryPage(repo.Path, offset, limit)
+	if isNoCommitHistoryError(err) {
+		return RepoHistoryPage{
+			RepoID:   repo.ID,
+			RepoName: repo.Name,
+			Path:     repo.Path,
+			Offset:   max(offset, 0),
+			Limit:    normalizeHistoryLimit(limit),
+			Total:    0,
+			HasMore:  false,
+			Commits:  nil,
+		}, nil
+	}
+	if err != nil {
+		return RepoHistoryPage{}, err
+	}
+	normalizedOffset := max(offset, 0)
+	return RepoHistoryPage{
+		RepoID:   repo.ID,
+		RepoName: repo.Name,
+		Path:     repo.Path,
+		Offset:   normalizedOffset,
+		Limit:    normalizeHistoryLimit(limit),
+		Total:    pageHistoryTotal(normalizedOffset, len(commits), hasMore),
+		HasMore:  hasMore,
+		Commits:  commits,
+	}, nil
+}
+
+func (s *Service) GetCommitDetail(repoID string, request Request, hash string) (CommitDetail, error) {
+	repo, err := s.resolveRepo(repoID, request)
+	if err != nil {
+		return CommitDetail{}, err
+	}
+	if strings.TrimSpace(hash) == "" {
+		return CommitDetail{}, errors.New("缺少提交哈希")
+	}
+	return loadCommitDetail(repo.Path, hash)
+}
+
 func mutateRepo(repo RepoDetail, action string, request Request, body RepoActionRequest) error {
 	switch action {
 	case "stage-all":
@@ -228,4 +273,18 @@ func batchOperationName(operation string) string {
 		return "pushAll"
 	}
 	return "pullAll"
+}
+
+func normalizeHistoryLimit(limit int) int {
+	if limit <= 0 {
+		return defaultHistoryPageSize
+	}
+	return limit
+}
+
+func pageHistoryTotal(offset, count int, hasMore bool) int {
+	if hasMore {
+		return 0
+	}
+	return offset + count
 }

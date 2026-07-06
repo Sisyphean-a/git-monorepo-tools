@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, PullResult, RepoCommandResult, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo } from './types.js';
+import type { AppSettings, AppSnapshot, CommitDetail, PullResult, RepoCommandResult, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
@@ -45,6 +45,8 @@ type WailsBindings = {
   MutateRepo: (repoId: string, action: string, request: SnapshotRequest, body: WailsRepoActionRequest) => Promise<RepoSnapshotUpdate>;
   RunBatch: (operation: 'pull' | 'push', request: SnapshotRequest) => Promise<SnapshotResponse>;
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
+  GetRepoHistory: (repoId: string, request: SnapshotRequest, offset: number, limit: number) => Promise<RepoHistoryPage>;
+  GetCommitDetail: (repoId: string, request: SnapshotRequest, hash: string) => Promise<CommitDetail>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
   EnsureTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
   RestartTerminalSession: (sessionId: string, cols: number, rows: number) => Promise<TerminalSessionInfo>;
@@ -96,6 +98,8 @@ function getWailsBindings(): WailsBindings {
     || typeof binding.MutateRepo !== 'function'
     || typeof binding.RunBatch !== 'function'
     || typeof binding.GetRepoLog !== 'function'
+    || typeof binding.GetRepoHistory !== 'function'
+    || typeof binding.GetCommitDetail !== 'function'
     || typeof binding.RunRepoCommand !== 'function'
     || typeof binding.EnsureTerminalSession !== 'function'
     || typeof binding.RestartTerminalSession !== 'function'
@@ -134,6 +138,14 @@ export async function runBatch(operation: 'pull' | 'push', settings?: AppSetting
 
 export async function fetchRepoLog(repoId: string, settings: AppSettings) {
   return getWailsBindings().GetRepoLog(repoId, buildSnapshotRequest(settings));
+}
+
+export async function fetchRepoHistory(repoId: string, offset: number, limit: number, settings?: AppSettings) {
+  return getWailsBindings().GetRepoHistory(repoId, buildSnapshotRequest(settings), offset, limit);
+}
+
+export async function fetchCommitDetail(repoId: string, hash: string, settings?: AppSettings) {
+  return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
 }
 
 export async function runRepoCommand(repoPath: string, command: string, streamId?: string) {

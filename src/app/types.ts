@@ -112,6 +112,8 @@ export interface RepoDetail extends Repo {
   unstagedCount: number;
   scannedAt: string;
   history: CommitSummary[];
+  historyTotal: number;
+  historyHasMore: boolean;
 }
 
 export interface RepoSnapshotUpdate {
@@ -176,6 +178,27 @@ export interface CommitSummary {
   message: string;
   additions: number;
   deletions: number;
+  parents: number;
+  refs: string[];
+  files: number;
+}
+
+export interface CommitDetail extends CommitSummary {
+  body: string;
+  authorEmail: string;
+  committedAt: string;
+  filesChanged: string[];
+}
+
+export interface RepoHistoryPage {
+  repoId: string;
+  repoName: string;
+  path: string;
+  offset: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+  commits: CommitSummary[];
 }
 
 export interface AppSnapshot {

@@ -56,9 +56,9 @@ type AppSnapshot struct {
 }
 
 type RepoSnapshotUpdate struct {
-	Repo             RepoDetail         `json:"repo"`
-	CommitCandidates []CommitCandidate  `json:"commitCandidates"`
-	ScannedAt        string             `json:"scannedAt"`
+	Repo             RepoDetail        `json:"repo"`
+	CommitCandidates []CommitCandidate `json:"commitCandidates"`
+	ScannedAt        string            `json:"scannedAt"`
 }
 
 type Repo struct {
@@ -79,11 +79,13 @@ type Repo struct {
 
 type RepoDetail struct {
 	Repo
-	Files         []FileChange    `json:"files"`
-	StagedCount   int             `json:"stagedCount"`
-	UnstagedCount int             `json:"unstagedCount"`
-	ScannedAt     string          `json:"scannedAt"`
-	History       []CommitSummary `json:"history"`
+	Files          []FileChange    `json:"files"`
+	StagedCount    int             `json:"stagedCount"`
+	UnstagedCount  int             `json:"unstagedCount"`
+	ScannedAt      string          `json:"scannedAt"`
+	History        []CommitSummary `json:"history"`
+	HistoryTotal   int             `json:"historyTotal"`
+	HistoryHasMore bool            `json:"historyHasMore"`
 }
 
 type FileChange struct {
@@ -115,13 +117,35 @@ type CommitCandidate struct {
 }
 
 type CommitSummary struct {
-	Hash      string `json:"hash"`
-	ShortHash string `json:"shortHash"`
-	Author    string `json:"author"`
-	Time      string `json:"time"`
-	Message   string `json:"message"`
-	Additions int    `json:"additions"`
-	Deletions int    `json:"deletions"`
+	Hash      string   `json:"hash"`
+	ShortHash string   `json:"shortHash"`
+	Author    string   `json:"author"`
+	Time      string   `json:"time"`
+	Message   string   `json:"message"`
+	Additions int      `json:"additions"`
+	Deletions int      `json:"deletions"`
+	Parents   int      `json:"parents"`
+	Refs      []string `json:"refs,omitempty"`
+	Files     int      `json:"files"`
+}
+
+type CommitDetail struct {
+	CommitSummary
+	Body         string   `json:"body"`
+	AuthorEmail  string   `json:"authorEmail"`
+	CommittedAt  string   `json:"committedAt"`
+	FilesChanged []string `json:"filesChanged"`
+}
+
+type RepoHistoryPage struct {
+	RepoID   string          `json:"repoId"`
+	RepoName string          `json:"repoName"`
+	Path     string          `json:"path"`
+	Offset   int             `json:"offset"`
+	Limit    int             `json:"limit"`
+	Total    int             `json:"total"`
+	HasMore  bool            `json:"hasMore"`
+	Commits  []CommitSummary `json:"commits"`
 }
 
 type RepoLog struct {

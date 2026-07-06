@@ -10,6 +10,14 @@ export function GenerateCommitMessage(arg1, arg2, arg3) {
   return window['go']['main']['App']['GenerateCommitMessage'](arg1, arg2, arg3);
 }
 
+export function GetCommitDetail(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetCommitDetail'](arg1, arg2, arg3);
+}
+
+export function GetRepoHistory(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['GetRepoHistory'](arg1, arg2, arg3, arg4);
+}
+
 export function GetRepoLog(arg1, arg2) {
   return window['go']['main']['App']['GetRepoLog'](arg1, arg2);
 }

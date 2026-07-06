@@ -30,6 +30,8 @@ function getWailsBindings() {
         || typeof binding.MutateRepo !== 'function'
         || typeof binding.RunBatch !== 'function'
         || typeof binding.GetRepoLog !== 'function'
+        || typeof binding.GetRepoHistory !== 'function'
+        || typeof binding.GetCommitDetail !== 'function'
         || typeof binding.RunRepoCommand !== 'function'
         || typeof binding.EnsureTerminalSession !== 'function'
         || typeof binding.RestartTerminalSession !== 'function'
@@ -62,6 +64,12 @@ export async function runBatch(operation, settings) {
 }
 export async function fetchRepoLog(repoId, settings) {
     return getWailsBindings().GetRepoLog(repoId, buildSnapshotRequest(settings));
+}
+export async function fetchRepoHistory(repoId, offset, limit, settings) {
+    return getWailsBindings().GetRepoHistory(repoId, buildSnapshotRequest(settings), offset, limit);
+}
+export async function fetchCommitDetail(repoId, hash, settings) {
+    return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
 }
 export async function runRepoCommand(repoPath, command, streamId) {
     return getWailsBindings().RunRepoCommand({ repoPath, command, streamId });

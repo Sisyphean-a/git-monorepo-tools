@@ -20,6 +20,8 @@ function repo(id, modified, path = `/repo/${id}`) {
         unstagedCount: modified,
         scannedAt: 'old',
         history: [],
+        historyTotal: 0,
+        historyHasMore: false,
     };
 }
 test('mergeRepoSnapshotUpdate replaces only target repo fields and candidates', () => {

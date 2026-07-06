@@ -184,3 +184,20 @@ func commitTestFile(t *testing.T, repoPath, relativePath, content, message strin
 		t.Fatalf("commit file: %v", err)
 	}
 }
+
+func commitWithBody(t *testing.T, repoPath, relativePath, content, subject, body string) {
+	t.Helper()
+	absolutePath := filepath.Join(repoPath, relativePath)
+	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
+		t.Fatalf("create parent dir: %v", err)
+	}
+	if err := os.WriteFile(absolutePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"add", "--", relativePath}); err != nil {
+		t.Fatalf("stage file: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"commit", "-m", subject, "-m", body}); err != nil {
+		t.Fatalf("commit file with body: %v", err)
+	}
+}

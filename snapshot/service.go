@@ -170,7 +170,7 @@ func buildRepoSnapshotWithRemoteMode(entry repoEntry, scanTime time.Time, refres
 	repoName := filepath.Base(repoPath)
 	parsed, statusErr := loadRepoStatus(repoPath, refreshRemotes)
 	files, filesErr := buildFileChanges(repoPath, parsed.entries)
-	history, historyErr := buildHistory(repoPath)
+	history, historyTotal, historyHasMore, historyErr := buildHistory(repoPath)
 	scanError := ""
 	if err := firstGitError(statusErr, filesErr, historyErr); err != nil {
 		scanError = err.Error()
@@ -194,12 +194,14 @@ func buildRepoSnapshotWithRemoteMode(entry repoEntry, scanTime time.Time, refres
 	}
 
 	detail := RepoDetail{
-		Repo:          repo,
-		Files:         files,
-		StagedCount:   countStaged(files, true),
-		UnstagedCount: countStaged(files, false),
-		ScannedAt:     formatDateTime(scanTime),
-		History:       history,
+		Repo:           repo,
+		Files:          files,
+		StagedCount:    countStaged(files, true),
+		UnstagedCount:  countStaged(files, false),
+		ScannedAt:      formatDateTime(scanTime),
+		History:        history,
+		HistoryTotal:   historyTotal,
+		HistoryHasMore: historyHasMore,
 	}
 
 	return repoSnapshot{

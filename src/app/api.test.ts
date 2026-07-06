@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ensureTerminalSession,
+  fetchCommitDetail,
+  fetchRepoHistory,
   fetchSnapshot,
   generateCommitMessage,
   invokeLocalRepoAction,
@@ -40,6 +42,12 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
       throw new Error('unused');
     },
     GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GetRepoHistory: async () => {
+      throw new Error('unused');
+    },
+    GetCommitDetail: async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
@@ -114,6 +122,12 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
     GetRepoLog: async () => {
       throw new Error('unused');
     },
+    GetRepoHistory: async () => {
+      throw new Error('unused');
+    },
+    GetCommitDetail: async () => {
+      throw new Error('unused');
+    },
     RunRepoCommand: async () => {
       throw new Error('unused');
     },
@@ -186,6 +200,12 @@ test('generateCommitMessage uses dedicated binding', async () => {
       throw new Error('unused');
     },
     GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GetRepoHistory: async () => {
+      throw new Error('unused');
+    },
+    GetCommitDetail: async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
@@ -293,6 +313,8 @@ test('mutateRepo accepts discard-all action', async () => {
           unstagedCount: 0,
           scannedAt: '',
           history: [],
+          historyTotal: 0,
+          historyHasMore: false,
         },
         commitCandidates: [],
         scannedAt: '',
@@ -302,6 +324,12 @@ test('mutateRepo accepts discard-all action', async () => {
       throw new Error('unused');
     },
     GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GetRepoHistory: async () => {
+      throw new Error('unused');
+    },
+    GetCommitDetail: async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
@@ -369,6 +397,12 @@ test('runRepoCommand uses dedicated binding', async () => {
       throw new Error('unused');
     },
     GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GetRepoHistory: async () => {
+      throw new Error('unused');
+    },
+    GetCommitDetail: async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async ({ repoPath, command }: { repoPath: string; command: string }) => {
@@ -446,6 +480,12 @@ test('terminal bindings use dedicated Wails bridge', async () => {
       throw new Error('unused');
     },
     GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GetRepoHistory: async () => {
+      throw new Error('unused');
+    },
+    GetCommitDetail: async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
@@ -548,6 +588,8 @@ test('refreshRepo uses dedicated binding', async () => {
           unstagedCount: 1,
           scannedAt: '',
           history: [],
+          historyTotal: 0,
+          historyHasMore: false,
         },
         commitCandidates: [],
         scannedAt: 'now',
@@ -560,6 +602,12 @@ test('refreshRepo uses dedicated binding', async () => {
       throw new Error('unused');
     },
     GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GetRepoHistory: async () => {
+      throw new Error('unused');
+    },
+    GetCommitDetail: async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
@@ -609,4 +657,122 @@ test('refreshRepo uses dedicated binding', async () => {
   }
 
   assert.deepEqual(calls, ['RefreshRepo:repo-1']);
+});
+
+test('history bindings use dedicated Wails bridge', async () => {
+  const calls: string[] = [];
+  const originalWindow = globalThis.window;
+
+  const bindings = {
+    GetSnapshot: async () => {
+      throw new Error('unused');
+    },
+    RefreshRepo: async () => {
+      throw new Error('unused');
+    },
+    MutateRepo: async () => {
+      throw new Error('unused');
+    },
+    RunBatch: async () => {
+      throw new Error('unused');
+    },
+    GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GetRepoHistory: async (repoId: string, _request: unknown, offset: number, limit: number) => {
+      calls.push(`GetRepoHistory:${repoId}:${offset}:${limit}`);
+      return {
+        repoId,
+        repoName: 'repo-1',
+        path: '/repo/a',
+        offset,
+        limit,
+        total: 51,
+        hasMore: true,
+        commits: [{
+          hash: 'abc',
+          shortHash: 'abc',
+          author: 'Test User',
+          time: '1 hour ago',
+          message: 'feat: add history tab',
+          additions: 10,
+          deletions: 2,
+          parents: 1,
+          refs: ['main'],
+          files: 3,
+        }],
+      };
+    },
+    GetCommitDetail: async (repoId: string, _request: unknown, hash: string) => {
+      calls.push(`GetCommitDetail:${repoId}:${hash}`);
+      return {
+        hash,
+        shortHash: 'abc',
+        author: 'Test User',
+        time: '1 hour ago',
+        message: 'feat: add history tab',
+        additions: 10,
+        deletions: 2,
+        parents: 1,
+        refs: ['main'],
+        files: 3,
+        body: 'details',
+        authorEmail: 'test@example.com',
+        committedAt: '2026-07-06T10:00:00+08:00',
+        filesChanged: ['src/app/components/repo-history-tab.tsx'],
+      };
+    },
+    RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    RestartTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    WriteTerminalInput: async () => {
+      throw new Error('unused');
+    },
+    ResizeTerminal: async () => {
+      throw new Error('unused');
+    },
+    GenerateCommitMessage: async () => {
+      throw new Error('unused');
+    },
+    OpenFolder: async () => {
+      throw new Error('unused');
+    },
+    OpenTerminal: async () => {
+      throw new Error('unused');
+    },
+    OpenConflicts: async () => {
+      throw new Error('unused');
+    },
+    PickFolder: async () => '',
+  };
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { go: { main: { App: bindings } } },
+  });
+
+  try {
+    const history = await fetchRepoHistory('repo-1', 50, 50);
+    assert.equal(history.total, 51);
+    assert.equal(history.commits[0]?.hash, 'abc');
+    const detail = await fetchCommitDetail('repo-1', 'abc');
+    assert.equal(detail.authorEmail, 'test@example.com');
+    assert.equal(detail.filesChanged[0], 'src/app/components/repo-history-tab.tsx');
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+
+  assert.deepEqual(calls, [
+    'GetRepoHistory:repo-1:50:50',
+    'GetCommitDetail:repo-1:abc',
+  ]);
 });

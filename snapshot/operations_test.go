@@ -9,6 +9,78 @@ import (
 	"time"
 )
 
+func TestGetRepoHistoryMarksUnknownTotalWhenMoreCommitsRemain(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	for index := 0; index < 3; index++ {
+		commitTestFile(t, repoPath, "tracked.txt", strings.Repeat("x", index+1)+"\n", "commit")
+	}
+
+	service := NewService(root)
+	request := Request{ScanRoots: []ScanRoot{{Path: root, Category: "测试"}}}
+	snapshot, err := service.BuildAppSnapshot(request)
+	if err != nil {
+		t.Fatalf("build snapshot: %v", err)
+	}
+	if len(snapshot.Repos) != 1 {
+		t.Fatalf("expected one repo, got %d", len(snapshot.Repos))
+	}
+
+	page, err := service.GetRepoHistory(snapshot.Repos[0].ID, request, 0, 2)
+	if err != nil {
+		t.Fatalf("get repo history: %v", err)
+	}
+	if !page.HasMore {
+		t.Fatal("expected more history pages")
+	}
+	if page.Total != 0 {
+		t.Fatalf("expected unknown total while more history remains, got %d", page.Total)
+	}
+	if len(page.Commits) != 2 {
+		t.Fatalf("expected 2 commits, got %d", len(page.Commits))
+	}
+}
+
+func TestGetCommitDetailSupportsMultiLineBody(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "tracked.txt", "base\n", "init")
+	commitWithBody(t, repoPath, "tracked.txt", "base\nnext\n", "feat: add detail", "line one\n\nline three")
+
+	service := NewService(root)
+	request := Request{ScanRoots: []ScanRoot{{Path: root, Category: "测试"}}}
+	snapshot, err := service.BuildAppSnapshot(request)
+	if err != nil {
+		t.Fatalf("build snapshot: %v", err)
+	}
+	if len(snapshot.Repos) != 1 {
+		t.Fatalf("expected one repo, got %d", len(snapshot.Repos))
+	}
+
+	hash, err := runGitStrict(repoPath, []string{"rev-parse", "HEAD"})
+	if err != nil {
+		t.Fatalf("rev-parse HEAD: %v", err)
+	}
+	detail, err := service.GetCommitDetail(snapshot.Repos[0].ID, request, hash)
+	if err != nil {
+		t.Fatalf("get commit detail: %v", err)
+	}
+	if detail.Message != "feat: add detail" {
+		t.Fatalf("expected subject to survive, got %q", detail.Message)
+	}
+	if detail.Body != "line one\n\nline three" {
+		t.Fatalf("expected multiline body, got %q", detail.Body)
+	}
+	if detail.Files != 1 {
+		t.Fatalf("expected one changed file, got %d", detail.Files)
+	}
+	if len(detail.FilesChanged) != 1 || detail.FilesChanged[0] != "tracked.txt" {
+		t.Fatalf("expected tracked.txt in files changed, got %#v", detail.FilesChanged)
+	}
+}
+
 func TestResolveRepoFromEntriesLoadsOnlyMatchingRepo(t *testing.T) {
 	entries := []repoEntry{
 		{repoPath: "E:/workspace/repo-a", category: "测试"},

@@ -3,6 +3,7 @@ package snapshot
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,8 @@ import (
 )
 
 var nonAlphaNum = regexp.MustCompile(`[^a-z0-9]+`)
+
+const defaultHistoryPageSize = 50
 
 type parsedStatus struct {
 	branch    string
@@ -92,16 +95,40 @@ func buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
 	return changes, firstGitError(stagedErr, unstagedErr)
 }
 
-func buildHistory(repoPath string) ([]CommitSummary, error) {
-	output, err := runGit(repoPath, []string{"log", "-5", "--numstat", "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s"})
+func buildHistory(repoPath string) ([]CommitSummary, int, bool, error) {
+	history, hasMore, err := loadHistoryPage(repoPath, 0, defaultHistoryPageSize)
 	if isNoCommitHistoryError(err) {
-		return nil, nil
+		return nil, 0, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, false, err
+	}
+	if hasMore {
+		return history, 0, true, nil
+	}
+	return history, len(history), false, nil
+}
+
+func loadHistoryPage(repoPath string, offset, limit int) ([]CommitSummary, bool, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = defaultHistoryPageSize
+	}
+	output, err := runGit(repoPath, []string{
+		"log",
+		fmt.Sprintf("--skip=%d", offset),
+		fmt.Sprintf("-%d", limit+1),
+		"--numstat",
+		"--decorate=short",
+		"--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1f%P%x1f%D",
+	})
+	if err != nil {
+		return nil, false, err
 	}
 	if strings.TrimSpace(output) == "" {
-		return nil, nil
+		return nil, false, nil
 	}
 	lines := filterNonEmpty(strings.Split(output, "\n"))
 	history := make([]CommitSummary, 0, len(lines))
@@ -128,17 +155,106 @@ func buildHistory(repoPath string) ([]CommitSummary, error) {
 		}
 		currentCommit.Additions += additions
 		currentCommit.Deletions += deletions
+		currentCommit.Files++
 	}
 	if currentCommit != nil {
 		history = append(history, *currentCommit)
 	}
-	return history, nil
+	hasMore := len(history) > limit
+	if hasMore {
+		history = history[:limit]
+	}
+	return history, hasMore, nil
+}
+
+func parseHistoryRefs(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	parts := strings.Split(trimmed, ",")
+	refs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		label := strings.TrimSpace(part)
+		if label == "" {
+			continue
+		}
+		if strings.HasPrefix(label, "HEAD -> ") {
+			headRef := strings.TrimSpace(strings.TrimPrefix(label, "HEAD -> "))
+			if headRef != "" {
+				refs = append(refs, headRef)
+			}
+			continue
+		}
+		refs = append(refs, label)
+	}
+	return refs
+}
+
+func loadCommitDetail(repoPath, hash string) (CommitDetail, error) {
+	metaOutput, err := runGit(repoPath, []string{
+		"show",
+		"--quiet",
+		"--decorate=short",
+		"--format=%H%x00%h%x00%an%x00%ae%x00%ar%x00%aI%x00%s%x00%b%x00%P%x00%D",
+		hash,
+	})
+	if err != nil {
+		return CommitDetail{}, err
+	}
+	if metaOutput == "" {
+		return CommitDetail{}, errors.New("未找到提交详情")
+	}
+	parts := strings.Split(metaOutput, "\x00")
+	if len(parts) < 10 {
+		return CommitDetail{}, errors.New("提交详情格式异常")
+	}
+	parentCount := 0
+	if parents := strings.Fields(strings.TrimSpace(parts[8])); len(parents) > 0 {
+		parentCount = len(parents)
+	}
+	detail := CommitDetail{
+		CommitSummary: CommitSummary{
+			Hash:      parts[0],
+			ShortHash: parts[1],
+			Author:    parts[2],
+			Time:      parts[4],
+			Message:   parts[6],
+			Parents:   parentCount,
+			Refs:      parseHistoryRefs(parts[9]),
+		},
+		Body:        strings.TrimSpace(parts[7]),
+		AuthorEmail: parts[3],
+		CommittedAt: parts[5],
+	}
+	statsOutput, statsErr := runGit(repoPath, []string{"show", "--numstat", "--format=", hash})
+	if statsErr != nil {
+		return CommitDetail{}, statsErr
+	}
+	files := []string{}
+	for _, line := range filterNonEmpty(strings.Split(statsOutput, "\n")) {
+		additions, deletions, ok := parseNumstatLine(line)
+		if !ok {
+			continue
+		}
+		numstat := strings.Split(line, "\t")
+		detail.Additions += additions
+		detail.Deletions += deletions
+		detail.Files++
+		files = append(files, normalizePath(numstat[2]))
+	}
+	detail.FilesChanged = files
+	return detail, nil
 }
 
 func parseHistoryCommit(line string) (CommitSummary, bool) {
 	parts := strings.Split(line, "\x1f")
-	if len(parts) < 5 {
+	if len(parts) < 7 {
 		return CommitSummary{}, false
+	}
+	parentCount := 0
+	if parents := strings.Fields(strings.TrimSpace(parts[5])); len(parents) > 0 {
+		parentCount = len(parents)
 	}
 	return CommitSummary{
 		Hash:      parts[0],
@@ -146,6 +262,8 @@ func parseHistoryCommit(line string) (CommitSummary, bool) {
 		Author:    parts[2],
 		Time:      parts[3],
 		Message:   parts[4],
+		Parents:   parentCount,
+		Refs:      parseHistoryRefs(parts[6]),
 	}, true
 }
 

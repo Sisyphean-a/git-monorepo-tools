@@ -2,8 +2,10 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
-import { ConflictBanner, HistoryTab, RepoHeader, summarizeFiles } from './workspace-parts';
+import { ConflictBanner, RepoHeader, summarizeFiles } from './workspace-parts';
+import { RepoHistoryTab } from './repo-history-tab';
 import { useRepoCommandPanel } from '../use-repo-command-panel';
+import { ensureTerminalSession, writeTerminalInput } from '../api';
 import type {
   AppSettings,
   RepoCommandResult,
@@ -83,6 +85,10 @@ export function Workspace({
   const handleOpenTerminal = () => setMainTab('terminal');
   const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(() => {});
   const handleViewLog = () => void onViewLog(repo.id).catch(() => {});
+  const handleSendToTerminal = async (command: string) => {
+    const session = await ensureTerminalSession(repo.id, repo.path);
+    await writeTerminalInput(session.sessionId, `${command}\r`);
+  };
   const isConflict = repo.conflicts > 0;
 
   const mainTabs: { key: MainTab; label: string }[] = [
@@ -159,7 +165,12 @@ export function Workspace({
             pointerEvents: mainTab === 'history' ? 'auto' : 'none',
           }}
         >
-          <HistoryTab commits={repo.history} />
+          <RepoHistoryTab
+            repo={repo}
+            settings={settings}
+            onOpenTerminal={handleOpenTerminal}
+            onSendToTerminal={handleSendToTerminal}
+          />
         </div>
         {terminalEnabled && (
           <Suspense fallback={null}>

@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, Clock, FolderOpen, GitBranch, GitCommit, Settings2, Terminal } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, FolderOpen, GitBranch, Settings2, Terminal } from 'lucide-react';
 import { C } from '../theme';
-import type { CommitSummary, FileChange, Repo } from '../types';
+import type { FileChange, Repo } from '../types';
 
 function HeaderActionBtn({
   icon,
@@ -103,39 +103,6 @@ export function ConflictBanner({
       </div>
     </div>
   );
-}
-
-function HistoryItem({ commit }: { commit: CommitSummary }) {
-  return (
-    <div
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: `1px solid ${C.border}30`, cursor: 'pointer' }}
-      onMouseEnter={e => { e.currentTarget.style.background = C.hoverBg; }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-    >
-      <div style={{ width: 28, height: 28, borderRadius: 6, background: C.panel2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <GitCommit size={12} color={C.textWeak} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: C.textPrimary, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{commit.message}</div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 2, alignItems: 'center' }}>
-          <span style={{ color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>{commit.shortHash}</span>
-          <span style={{ color: C.textWeak, fontSize: 10 }}>{commit.author}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: C.textWeak, fontSize: 10 }}><Clock size={9} color={C.textWeak} /> {commit.time}</span>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-        <span style={{ color: C.added, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>+{commit.additions}</span>
-        <span style={{ color: C.deleted, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>-{commit.deletions}</span>
-      </div>
-    </div>
-  );
-}
-
-export function HistoryTab({ commits }: { commits: CommitSummary[] }) {
-  if (commits.length === 0) {
-    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>暂无提交历史</div>;
-  }
-  return <div style={{ flex: 1, overflowY: 'auto' }}>{commits.map(commit => <HistoryItem key={commit.hash} commit={commit} />)}</div>;
 }
 
 export function ToolbarBtn({
