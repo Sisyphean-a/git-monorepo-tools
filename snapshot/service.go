@@ -137,8 +137,7 @@ func (s *Service) selectedRepoID(items []repoSnapshot) string {
 func buildRepoSnapshot(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
 	repoPath := normalizePath(entry.repoPath)
 	repoName := filepath.Base(repoPath)
-	statusOutput, statusErr := runGit(repoPath, []string{"status", "--porcelain=v1", "-b"})
-	parsed := parseStatus(statusOutput)
+	parsed, statusErr := readStatusAfterRemoteSync(repoPath)
 	files, filesErr := buildFileChanges(repoPath, parsed.entries)
 	history, historyErr := buildHistory(repoPath)
 	scanError := ""

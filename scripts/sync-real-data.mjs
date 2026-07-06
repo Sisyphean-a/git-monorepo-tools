@@ -107,8 +107,7 @@ function buildRepoSnapshot(entry, scanTime) {
   const repoPath = normalizePath(entry.repoPath);
   const repoName = path.basename(repoPath);
   const repoId = createRepoId(repoName, repoPath);
-  const statusOutput = runGit(repoPath, ['status', '--porcelain=v1', '-b']);
-  const parsed = parseStatus(statusOutput);
+  const parsed = readStatusAfterRemoteSync(repoPath);
   const files = buildFileChanges(repoPath, parsed.entries);
   const uniqueChanges = new Set(files.map(file => file.path)).size;
   const history = buildHistory(repoPath);
@@ -141,6 +140,17 @@ function buildRepoSnapshot(entry, scanTime) {
     commitCandidates: buildCommitCandidates(files),
     pullResult: buildPullResult(repoId, repoName, repoPath, repo),
   };
+}
+
+function readStatus(repoPath) {
+  return parseStatus(runGit(repoPath, ['status', '--porcelain=v1', '-b']));
+}
+
+function readStatusAfterRemoteSync(repoPath) {
+  const parsed = readStatus(repoPath);
+  if (parsed.remote === '—') return parsed;
+  runGitStrict(repoPath, ['fetch', '--prune', '--quiet', parsed.remote]);
+  return readStatus(repoPath);
 }
 
 function parseStatus(output) {

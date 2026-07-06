@@ -37,6 +37,22 @@ func runGit(repoPath string, args []string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
+func readStatus(repoPath string) (parsedStatus, error) {
+	output, err := runGit(repoPath, []string{"status", "--porcelain=v1", "-b"})
+	return parseStatus(output), err
+}
+
+func readStatusAfterRemoteSync(repoPath string) (parsedStatus, error) {
+	parsed, err := readStatus(repoPath)
+	if err != nil || parsed.remote == "—" {
+		return parsed, err
+	}
+	if _, fetchErr := runGit(repoPath, []string{"fetch", "--prune", "--quiet", parsed.remote}); fetchErr != nil {
+		return parsed, fetchErr
+	}
+	return readStatus(repoPath)
+}
+
 func parseStatus(output string) parsedStatus {
 	lines := filterNonEmpty(strings.Split(output, "\n"))
 	branchLine := "## HEAD"
