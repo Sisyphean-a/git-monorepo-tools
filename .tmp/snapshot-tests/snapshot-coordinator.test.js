@@ -41,19 +41,25 @@ test('coalesces queued refreshes and keeps latest settings', async () => {
     const gate = deferred();
     const coordinator = createSnapshotCoordinator({
         applySnapshot: next => applied.push(next.scannedAt),
-        fetchSnapshot: async (nextSettings) => {
-            calls.push(nextSettings.gitBehavior.concurrency);
+        fetchSnapshot: async (nextSettings, options) => {
+            calls.push({
+                concurrency: nextSettings.gitBehavior.concurrency,
+                refreshRemotes: Boolean(options?.refreshRemotes),
+            });
             if (calls.length === 1)
                 await gate.promise;
             return snapshot(`refresh-${nextSettings.gitBehavior.concurrency}`);
         },
     });
-    const first = coordinator.requestRefresh(settings(1));
-    const second = coordinator.requestRefresh(settings(3));
-    const third = coordinator.requestRefresh(settings(5));
+    const first = coordinator.requestRefresh(settings(1), { refreshRemotes: false });
+    const second = coordinator.requestRefresh(settings(3), { refreshRemotes: false });
+    const third = coordinator.requestRefresh(settings(5), { refreshRemotes: true });
     gate.resolve();
     await Promise.all([first, second, third]);
-    assert.deepEqual(calls, [1, 5]);
+    assert.deepEqual(calls, [
+        { concurrency: 1, refreshRemotes: false },
+        { concurrency: 5, refreshRemotes: true },
+    ]);
     assert.deepEqual(applied, ['refresh-1', 'refresh-5']);
 });
 test('serializes refreshes and snapshot tasks', async () => {

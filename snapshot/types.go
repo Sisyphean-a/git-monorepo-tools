@@ -1,10 +1,11 @@
 package snapshot
 
 type Request struct {
-	ScanRoots    []ScanRoot `json:"scanRoots"`
-	Concurrency  int        `json:"concurrency"`
-	PullStrategy string     `json:"pullStrategy"`
-	PushStrategy string     `json:"pushStrategy"`
+	ScanRoots      []ScanRoot `json:"scanRoots"`
+	Concurrency    int        `json:"concurrency"`
+	PullStrategy   string     `json:"pullStrategy"`
+	PushStrategy   string     `json:"pushStrategy"`
+	RefreshRemotes bool       `json:"refreshRemotes,omitempty"`
 }
 
 type RepoActionRequest struct {

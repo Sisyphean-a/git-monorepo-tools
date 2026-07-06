@@ -43,7 +43,7 @@ func (s *Service) BuildAppSnapshot(request Request) (AppSnapshot, error) {
 func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppSnapshot, error) {
 	scanTime := time.Now()
 	repoEntries := s.discoverRepos(s.buildRoots(request))
-	snapshots := s.buildSnapshots(repoEntries, scanTime, request.Concurrency)
+	snapshots := s.buildSnapshots(repoEntries, scanTime, request.Concurrency, request.RefreshRemotes)
 	ordered := s.sortSnapshots(snapshots)
 	selectedID := s.selectedRepoID(ordered)
 	results := orderedPullResults(ordered)
@@ -98,8 +98,8 @@ func (s *Service) discoverRepos(roots []ScanRoot) []repoEntry {
 	return entries
 }
 
-func (s *Service) buildSnapshots(entries []repoEntry, scanTime time.Time, concurrency int) []repoSnapshot {
-	return buildSnapshots(entries, scanTime, concurrency)
+func (s *Service) buildSnapshots(entries []repoEntry, scanTime time.Time, concurrency int, refreshRemotes bool) []repoSnapshot {
+	return buildSnapshots(entries, scanTime, concurrency, refreshRemotes)
 }
 
 func (s *Service) sortSnapshots(items []repoSnapshot) []repoSnapshot {
@@ -135,9 +135,13 @@ func (s *Service) selectedRepoID(items []repoSnapshot) string {
 }
 
 func buildRepoSnapshot(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
+	return buildRepoSnapshotWithRemoteMode(entry, scanTime, false)
+}
+
+func buildRepoSnapshotWithRemoteMode(entry repoEntry, scanTime time.Time, refreshRemotes bool) (repoSnapshot, error) {
 	repoPath := normalizePath(entry.repoPath)
 	repoName := filepath.Base(repoPath)
-	parsed, statusErr := readStatusAfterRemoteSync(repoPath)
+	parsed, statusErr := loadRepoStatus(repoPath, refreshRemotes)
 	files, filesErr := buildFileChanges(repoPath, parsed.entries)
 	history, historyErr := buildHistory(repoPath)
 	scanError := ""

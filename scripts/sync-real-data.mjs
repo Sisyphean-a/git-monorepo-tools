@@ -15,10 +15,10 @@ function main() {
   console.log(`已写入 ${normalizePath(targetPath)}`);
 }
 
-export function buildAppSnapshot(selectedRepoPath = PROJECT_ROOT, pullResultsOverride, scanRoots = []) {
+export function buildAppSnapshot(selectedRepoPath = PROJECT_ROOT, pullResultsOverride, scanRoots = [], refreshRemotes = false) {
   const scanTime = new Date();
   const repoEntries = discoverRepos(buildRoots(scanRoots));
-  const snapshots = repoEntries.map(entry => buildRepoSnapshot(entry, scanTime));
+  const snapshots = repoEntries.map(entry => buildRepoSnapshot(entry, scanTime, refreshRemotes));
   const ordered = sortSnapshots(snapshots, selectedRepoPath);
   const selected = ordered.find(item => item.path === selectedRepoPath) ?? ordered[0];
   return {
@@ -103,11 +103,11 @@ function isGitRepo(repoPath) {
   return fs.existsSync(path.join(repoPath, '.git'));
 }
 
-function buildRepoSnapshot(entry, scanTime) {
+function buildRepoSnapshot(entry, scanTime, refreshRemotes = false) {
   const repoPath = normalizePath(entry.repoPath);
   const repoName = path.basename(repoPath);
   const repoId = createRepoId(repoName, repoPath);
-  const parsed = readStatusAfterRemoteSync(repoPath);
+  const parsed = loadRepoStatus(repoPath, refreshRemotes);
   const files = buildFileChanges(repoPath, parsed.entries);
   const uniqueChanges = new Set(files.map(file => file.path)).size;
   const history = buildHistory(repoPath);
@@ -144,6 +144,10 @@ function buildRepoSnapshot(entry, scanTime) {
 
 function readStatus(repoPath) {
   return parseStatus(runGit(repoPath, ['status', '--porcelain=v1', '-b']));
+}
+
+function loadRepoStatus(repoPath, refreshRemotes) {
+  return refreshRemotes ? readStatusAfterRemoteSync(repoPath) : readStatus(repoPath);
 }
 
 function readStatusAfterRemoteSync(repoPath) {

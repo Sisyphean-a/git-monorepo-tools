@@ -12,8 +12,8 @@ export function createSnapshotCoordinator(options) {
         return activePromise;
     };
     return {
-        requestRefresh(settings) {
-            return enqueueRefresh(queue, settings, processQueue);
+        requestRefresh(settings, fetchOptions) {
+            return enqueueRefresh(queue, settings, fetchOptions, processQueue);
         },
         runSnapshotTask(task, readSnapshot) {
             return enqueueTask(queue, task, readSnapshot, options, processQueue);
@@ -39,13 +39,14 @@ function runQueue(queue, options, onDone) {
         }
     })();
 }
-function enqueueRefresh(queue, settings, processQueue) {
+function enqueueRefresh(queue, settings, fetchOptions, processQueue) {
     const existing = findTrailingRefresh(queue);
     if (existing) {
         existing.settings = settings;
+        existing.fetchOptions = mergeFetchOptions(existing.fetchOptions, fetchOptions);
         return createRefreshPromise(existing);
     }
-    const entry = { kind: 'refresh', settings, waiters: [] };
+    const entry = { kind: 'refresh', settings, fetchOptions, waiters: [] };
     const promise = createRefreshPromise(entry);
     queue.push(entry);
     void processQueue();
@@ -71,7 +72,7 @@ function enqueueTask(queue, task, readSnapshot, options, processQueue) {
     return promise;
 }
 function runRefreshEntry(entry, options) {
-    return options.fetchSnapshot(entry.settings)
+    return options.fetchSnapshot(entry.settings, entry.fetchOptions)
         .then(snapshot => {
         options.applySnapshot(snapshot);
         options.reportError?.(null);
@@ -100,6 +101,13 @@ function createRefreshPromise(entry) {
 function findTrailingRefresh(queue) {
     const lastEntry = queue.at(-1);
     return lastEntry?.kind === 'refresh' ? lastEntry : null;
+}
+function mergeFetchOptions(current, next) {
+    if (!current && !next)
+        return undefined;
+    return {
+        refreshRemotes: Boolean(current?.refreshRemotes || next?.refreshRemotes),
+    };
 }
 function formatError(error) {
     return error instanceof Error ? error.message : '刷新失败';

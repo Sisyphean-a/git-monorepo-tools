@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ensureTerminalSession,
+  fetchSnapshot,
   generateCommitMessage,
   invokeLocalRepoAction,
   mutateRepo,
@@ -10,6 +11,83 @@ import {
   runRepoCommand,
   writeTerminalInput,
 } from './api.js';
+
+test('fetchSnapshot can opt into remote refresh after page load', async () => {
+  const calls: Array<{ refreshRemotes: boolean }> = [];
+  const originalWindow = globalThis.window;
+
+  const bindings = {
+    GetSnapshot: async (request: { refreshRemotes: boolean }) => {
+      calls.push({ refreshRemotes: request.refreshRemotes });
+      return {
+        scannedAt: '',
+        categories: [],
+        repos: [],
+        repoDetails: {},
+        selectedRepoId: '',
+        pullResults: [],
+        commitCandidates: {},
+      };
+    },
+    MutateRepo: async () => {
+      throw new Error('unused');
+    },
+    RunBatch: async () => {
+      throw new Error('unused');
+    },
+    GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    RestartTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    WriteTerminalInput: async () => {
+      throw new Error('unused');
+    },
+    ResizeTerminal: async () => {
+      throw new Error('unused');
+    },
+    GenerateCommitMessage: async () => {
+      throw new Error('unused');
+    },
+    OpenFolder: async () => {
+      throw new Error('unused');
+    },
+    OpenTerminal: async () => {
+      throw new Error('unused');
+    },
+    OpenConflicts: async () => {
+      throw new Error('unused');
+    },
+    PickFolder: async () => '',
+  };
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { go: { main: { App: bindings } } },
+  });
+
+  try {
+    await fetchSnapshot();
+    await fetchSnapshot(undefined, { refreshRemotes: true });
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+
+  assert.deepEqual(calls, [
+    { refreshRemotes: false },
+    { refreshRemotes: true },
+  ]);
+});
 
 test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
   const calls: string[] = [];

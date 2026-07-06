@@ -1,6 +1,79 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateCommitMessage, invokeLocalRepoAction, mutateRepo, runRepoCommand } from './api.js';
+import { ensureTerminalSession, fetchSnapshot, generateCommitMessage, invokeLocalRepoAction, mutateRepo, resizeTerminal, restartTerminalSession, runRepoCommand, writeTerminalInput, } from './api.js';
+test('fetchSnapshot can opt into remote refresh after page load', async () => {
+    const calls = [];
+    const originalWindow = globalThis.window;
+    const bindings = {
+        GetSnapshot: async (request) => {
+            calls.push({ refreshRemotes: request.refreshRemotes });
+            return {
+                scannedAt: '',
+                categories: [],
+                repos: [],
+                repoDetails: {},
+                selectedRepoId: '',
+                pullResults: [],
+                commitCandidates: {},
+            };
+        },
+        MutateRepo: async () => {
+            throw new Error('unused');
+        },
+        RunBatch: async () => {
+            throw new Error('unused');
+        },
+        GetRepoLog: async () => {
+            throw new Error('unused');
+        },
+        RunRepoCommand: async () => {
+            throw new Error('unused');
+        },
+        EnsureTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        RestartTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        WriteTerminalInput: async () => {
+            throw new Error('unused');
+        },
+        ResizeTerminal: async () => {
+            throw new Error('unused');
+        },
+        GenerateCommitMessage: async () => {
+            throw new Error('unused');
+        },
+        OpenFolder: async () => {
+            throw new Error('unused');
+        },
+        OpenTerminal: async () => {
+            throw new Error('unused');
+        },
+        OpenConflicts: async () => {
+            throw new Error('unused');
+        },
+        PickFolder: async () => '',
+    };
+    Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: { go: { main: { App: bindings } } },
+    });
+    try {
+        await fetchSnapshot();
+        await fetchSnapshot(undefined, { refreshRemotes: true });
+    }
+    finally {
+        Object.defineProperty(globalThis, 'window', {
+            configurable: true,
+            value: originalWindow,
+        });
+    }
+    assert.deepEqual(calls, [
+        { refreshRemotes: false },
+        { refreshRemotes: true },
+    ]);
+});
 test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
     const calls = [];
     const originalWindow = globalThis.window;
@@ -19,6 +92,18 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
             throw new Error('unused');
         },
         RunRepoCommand: async () => {
+            throw new Error('unused');
+        },
+        EnsureTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        RestartTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        WriteTerminalInput: async () => {
+            throw new Error('unused');
+        },
+        ResizeTerminal: async () => {
             throw new Error('unused');
         },
         GenerateCommitMessage: async () => {
@@ -74,6 +159,18 @@ test('generateCommitMessage uses dedicated binding', async () => {
             throw new Error('unused');
         },
         RunRepoCommand: async () => {
+            throw new Error('unused');
+        },
+        EnsureTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        RestartTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        WriteTerminalInput: async () => {
+            throw new Error('unused');
+        },
+        ResizeTerminal: async () => {
             throw new Error('unused');
         },
         GenerateCommitMessage: async (repoId) => {
@@ -159,6 +256,18 @@ test('mutateRepo accepts discard-all action', async () => {
         RunRepoCommand: async () => {
             throw new Error('unused');
         },
+        EnsureTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        RestartTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        WriteTerminalInput: async () => {
+            throw new Error('unused');
+        },
+        ResizeTerminal: async () => {
+            throw new Error('unused');
+        },
         GenerateCommitMessage: async () => {
             throw new Error('unused');
         },
@@ -215,6 +324,18 @@ test('runRepoCommand uses dedicated binding', async () => {
                 endedAt: 2,
             };
         },
+        EnsureTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        RestartTerminalSession: async () => {
+            throw new Error('unused');
+        },
+        WriteTerminalInput: async () => {
+            throw new Error('unused');
+        },
+        ResizeTerminal: async () => {
+            throw new Error('unused');
+        },
         GenerateCommitMessage: async () => {
             throw new Error('unused');
         },
@@ -245,4 +366,88 @@ test('runRepoCommand uses dedicated binding', async () => {
         });
     }
     assert.deepEqual(calls, ['RunRepoCommand:/repo/a:wails build']);
+});
+test('terminal bindings use dedicated Wails bridge', async () => {
+    const calls = [];
+    const originalWindow = globalThis.window;
+    const bindings = {
+        GetSnapshot: async () => {
+            throw new Error('unused');
+        },
+        MutateRepo: async () => {
+            throw new Error('unused');
+        },
+        RunBatch: async () => {
+            throw new Error('unused');
+        },
+        GetRepoLog: async () => {
+            throw new Error('unused');
+        },
+        RunRepoCommand: async () => {
+            throw new Error('unused');
+        },
+        EnsureTerminalSession: async ({ repoId, repoPath, cols, rows }) => {
+            calls.push(`EnsureTerminalSession:${repoId}:${repoPath}:${cols}:${rows}`);
+            return {
+                sessionId: 'term-1',
+                repoId,
+                repoPath,
+                shell: 'pwsh',
+                startedAt: 1,
+            };
+        },
+        RestartTerminalSession: async (sessionId, cols, rows) => {
+            calls.push(`RestartTerminalSession:${sessionId}:${cols}:${rows}`);
+            return {
+                sessionId: 'term-2',
+                repoId: 'repo-1',
+                repoPath: '/repo/a',
+                shell: 'pwsh',
+                startedAt: 2,
+            };
+        },
+        WriteTerminalInput: async (sessionId, data) => {
+            calls.push(`WriteTerminalInput:${sessionId}:${data}`);
+        },
+        ResizeTerminal: async (sessionId, cols, rows) => {
+            calls.push(`ResizeTerminal:${sessionId}:${cols}:${rows}`);
+        },
+        GenerateCommitMessage: async () => {
+            throw new Error('unused');
+        },
+        OpenFolder: async () => {
+            throw new Error('unused');
+        },
+        OpenTerminal: async () => {
+            throw new Error('unused');
+        },
+        OpenConflicts: async () => {
+            throw new Error('unused');
+        },
+        PickFolder: async () => '',
+    };
+    Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: { go: { main: { App: bindings } } },
+    });
+    try {
+        const session = await ensureTerminalSession('repo-1', '/repo/a', 120, 40);
+        assert.equal(session.sessionId, 'term-1');
+        const restarted = await restartTerminalSession('term-1', 132, 44);
+        assert.equal(restarted.sessionId, 'term-2');
+        await writeTerminalInput('term-2', 'git status\r');
+        await resizeTerminal('term-2', 140, 50);
+    }
+    finally {
+        Object.defineProperty(globalThis, 'window', {
+            configurable: true,
+            value: originalWindow,
+        });
+    }
+    assert.deepEqual(calls, [
+        'EnsureTerminalSession:repo-1:/repo/a:120:40',
+        'RestartTerminalSession:term-1:132:44',
+        'WriteTerminalInput:term-2:git status\r',
+        'ResizeTerminal:term-2:140:50',
+    ]);
 });

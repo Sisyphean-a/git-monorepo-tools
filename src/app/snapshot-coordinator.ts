@@ -1,4 +1,5 @@
 import type { AppSettings, AppSnapshot } from './types.js';
+import type { SnapshotFetchOptions } from './api.js';
 
 type ErrorReporter = (message: string | null) => void;
 type QueueEntry = RefreshEntry | TaskEntry;
@@ -7,6 +8,7 @@ type Waiter = { resolve: () => void; reject: (error: unknown) => void };
 type RefreshEntry = {
   kind: 'refresh';
   settings: AppSettings;
+  fetchOptions?: SnapshotFetchOptions;
   waiters: Waiter[];
 };
 
@@ -19,7 +21,7 @@ type TaskEntry = {
 
 type SnapshotCoordinatorOptions = {
   applySnapshot: (snapshot: AppSnapshot) => void;
-  fetchSnapshot: (settings: AppSettings) => Promise<AppSnapshot>;
+  fetchSnapshot: (settings: AppSettings, options?: SnapshotFetchOptions) => Promise<AppSnapshot>;
   reportError?: ErrorReporter;
 };
 
@@ -39,8 +41,8 @@ export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
   };
 
   return {
-    requestRefresh(settings: AppSettings) {
-      return enqueueRefresh(queue, settings, processQueue);
+    requestRefresh(settings: AppSettings, fetchOptions?: SnapshotFetchOptions) {
+      return enqueueRefresh(queue, settings, fetchOptions, processQueue);
     },
     runSnapshotTask<T>(task: () => Promise<T>, readSnapshot: (result: T) => AppSnapshot | null | undefined) {
       return enqueueTask(queue, task, readSnapshot, options, processQueue);
@@ -66,13 +68,19 @@ function runQueue(queue: QueueEntry[], options: SnapshotCoordinatorOptions, onDo
   })();
 }
 
-function enqueueRefresh(queue: QueueEntry[], settings: AppSettings, processQueue: () => Promise<void>) {
+function enqueueRefresh(
+  queue: QueueEntry[],
+  settings: AppSettings,
+  fetchOptions: SnapshotFetchOptions | undefined,
+  processQueue: () => Promise<void>,
+) {
   const existing = findTrailingRefresh(queue);
   if (existing) {
     existing.settings = settings;
+    existing.fetchOptions = mergeFetchOptions(existing.fetchOptions, fetchOptions);
     return createRefreshPromise(existing);
   }
-  const entry: RefreshEntry = { kind: 'refresh', settings, waiters: [] };
+  const entry: RefreshEntry = { kind: 'refresh', settings, fetchOptions, waiters: [] };
   const promise = createRefreshPromise(entry);
   queue.push(entry);
   void processQueue();
@@ -105,7 +113,7 @@ function enqueueTask<T>(
 }
 
 function runRefreshEntry(entry: RefreshEntry, options: SnapshotCoordinatorOptions) {
-  return options.fetchSnapshot(entry.settings)
+  return options.fetchSnapshot(entry.settings, entry.fetchOptions)
     .then(snapshot => {
       options.applySnapshot(snapshot);
       options.reportError?.(null);
@@ -137,6 +145,16 @@ function createRefreshPromise(entry: RefreshEntry) {
 function findTrailingRefresh(queue: QueueEntry[]) {
   const lastEntry = queue.at(-1);
   return lastEntry?.kind === 'refresh' ? lastEntry : null;
+}
+
+function mergeFetchOptions(
+  current: SnapshotFetchOptions | undefined,
+  next: SnapshotFetchOptions | undefined,
+): SnapshotFetchOptions | undefined {
+  if (!current && !next) return undefined;
+  return {
+    refreshRemotes: Boolean(current?.refreshRemotes || next?.refreshRemotes),
+  };
 }
 
 function formatError(error: unknown) {

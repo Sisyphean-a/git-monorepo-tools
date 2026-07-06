@@ -7,18 +7,18 @@ import (
 
 const defaultSnapshotConcurrency = 5
 
-func buildSnapshots(entries []repoEntry, scanTime time.Time, concurrency int) []repoSnapshot {
+func buildSnapshots(entries []repoEntry, scanTime time.Time, concurrency int, refreshRemotes bool) []repoSnapshot {
 	workers := normalizeSnapshotConcurrency(concurrency, len(entries))
 	if workers <= 1 {
-		return buildSnapshotsSequential(entries, scanTime)
+		return buildSnapshotsSequential(entries, scanTime, refreshRemotes)
 	}
-	return buildSnapshotsParallel(entries, scanTime, workers)
+	return buildSnapshotsParallel(entries, scanTime, workers, refreshRemotes)
 }
 
-func buildSnapshotsSequential(entries []repoEntry, scanTime time.Time) []repoSnapshot {
+func buildSnapshotsSequential(entries []repoEntry, scanTime time.Time, refreshRemotes bool) []repoSnapshot {
 	snapshots := make([]repoSnapshot, 0, len(entries))
 	for _, entry := range entries {
-		snapshot, err := buildRepoSnapshot(entry, scanTime)
+		snapshot, err := buildRepoSnapshotWithRemoteMode(entry, scanTime, refreshRemotes)
 		if err != nil {
 			continue
 		}
@@ -27,14 +27,14 @@ func buildSnapshotsSequential(entries []repoEntry, scanTime time.Time) []repoSna
 	return snapshots
 }
 
-func buildSnapshotsParallel(entries []repoEntry, scanTime time.Time, workers int) []repoSnapshot {
+func buildSnapshotsParallel(entries []repoEntry, scanTime time.Time, workers int, refreshRemotes bool) []repoSnapshot {
 	jobs := make(chan repoEntry)
 	results := make(chan repoSnapshot, len(entries))
 	var wg sync.WaitGroup
 
 	wg.Add(workers)
 	for i := 0; i < workers; i++ {
-		go snapshotWorker(jobs, results, scanTime, &wg)
+		go snapshotWorker(jobs, results, scanTime, refreshRemotes, &wg)
 	}
 	go func() {
 		for _, entry := range entries {
@@ -52,10 +52,10 @@ func buildSnapshotsParallel(entries []repoEntry, scanTime time.Time, workers int
 	return snapshots
 }
 
-func snapshotWorker(jobs <-chan repoEntry, results chan<- repoSnapshot, scanTime time.Time, wg *sync.WaitGroup) {
+func snapshotWorker(jobs <-chan repoEntry, results chan<- repoSnapshot, scanTime time.Time, refreshRemotes bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for entry := range jobs {
-		snapshot, err := buildRepoSnapshot(entry, scanTime)
+		snapshot, err := buildRepoSnapshotWithRemoteMode(entry, scanTime, refreshRemotes)
 		if err == nil {
 			results <- snapshot
 		}

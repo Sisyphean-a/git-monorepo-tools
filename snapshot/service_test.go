@@ -116,7 +116,7 @@ func TestBuildRepoSnapshotRefreshesRemoteBeforeReadingBehind(t *testing.T) {
 		t.Fatalf("expected local clone to be stale before snapshot fetch, got %q", before)
 	}
 
-	snapshot, err := buildRepoSnapshot(repoEntry{repoPath: localPath, category: "测试"}, time.Unix(0, 0))
+	snapshot, err := buildRepoSnapshotWithRemoteMode(repoEntry{repoPath: localPath, category: "测试"}, time.Unix(0, 0), true)
 	if err != nil {
 		t.Fatalf("build snapshot: %v", err)
 	}

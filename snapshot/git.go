@@ -42,6 +42,13 @@ func readStatus(repoPath string) (parsedStatus, error) {
 	return parseStatus(output), err
 }
 
+func loadRepoStatus(repoPath string, refreshRemotes bool) (parsedStatus, error) {
+	if refreshRemotes {
+		return readStatusAfterRemoteSync(repoPath)
+	}
+	return readStatus(repoPath)
+}
+
 func readStatusAfterRemoteSync(repoPath string) (parsedStatus, error) {
 	parsed, err := readStatus(repoPath)
 	if err != nil || parsed.remote == "—" {

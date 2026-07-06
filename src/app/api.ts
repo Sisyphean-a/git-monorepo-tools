@@ -5,6 +5,7 @@ interface SnapshotRequest {
   concurrency: AppSettings['gitBehavior']['concurrency'];
   pullStrategy: AppSettings['gitBehavior']['pullStrategy'];
   pushStrategy: AppSettings['gitBehavior']['pushStrategy'];
+  refreshRemotes: boolean;
 }
 
 interface SnapshotResponse {
@@ -17,6 +18,9 @@ interface SnapshotResponse {
 }
 
 type WailsSnapshotBinding = (request: SnapshotRequest) => Promise<AppSnapshot>;
+export type SnapshotFetchOptions = {
+  refreshRemotes?: boolean;
+};
 type WailsRepoActionRequest = {
 	fileId?: string;
 	filePath?: string;
@@ -67,12 +71,13 @@ const WAILS_REPO_ACTIONS = new Set<RepoMutationAction>([
   'discard-all',
 ]);
 
-function buildSnapshotRequest(settings?: AppSettings): SnapshotRequest {
+function buildSnapshotRequest(settings?: AppSettings, options?: SnapshotFetchOptions): SnapshotRequest {
   return {
     scanRoots: settings?.scanRoots ?? [],
     concurrency: settings?.gitBehavior.concurrency ?? 5,
     pullStrategy: settings?.gitBehavior.pullStrategy ?? 'ff-only',
     pushStrategy: settings?.gitBehavior.pushStrategy ?? 'upstream-only',
+    refreshRemotes: options?.refreshRemotes ?? false,
   };
 }
 
@@ -105,8 +110,8 @@ function getWailsBindings(): WailsBindings {
   return binding as WailsBindings;
 }
 
-export async function fetchSnapshot(settings?: AppSettings) {
-  return getWailsBindings().GetSnapshot(buildSnapshotRequest(settings));
+export async function fetchSnapshot(settings?: AppSettings, options?: SnapshotFetchOptions) {
+  return getWailsBindings().GetSnapshot(buildSnapshotRequest(settings, options));
 }
 
 export async function mutateRepo(repoId: string, action: RepoMutationAction, settings?: AppSettings, body?: Record<string, unknown>) {

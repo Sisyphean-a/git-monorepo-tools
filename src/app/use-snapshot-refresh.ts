@@ -27,7 +27,16 @@ export function useSnapshotRefresh(
   }, [applySnapshot, reportError]);
 
   useEffect(() => {
-    void coordinatorRef.current.requestRefresh(settingsRef.current).catch(() => {});
+    let cancelled = false;
+    void coordinatorRef.current.requestRefresh(settingsRef.current, { refreshRemotes: false })
+      .then(() => {
+        if (cancelled) return;
+        void coordinatorRef.current.requestRefresh(settingsRef.current, { refreshRemotes: true }).catch(() => {});
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -37,7 +46,7 @@ export function useSnapshotRefresh(
 
     const schedule = () => {
       timer = window.setTimeout(async () => {
-        await coordinatorRef.current.requestRefresh(settingsRef.current).catch(() => {});
+        await coordinatorRef.current.requestRefresh(settingsRef.current, { refreshRemotes: true }).catch(() => {});
         if (!cancelled) schedule();
       }, settings.gitBehavior.autoScanIntervalSeconds * 1000);
     };
@@ -51,7 +60,7 @@ export function useSnapshotRefresh(
 
   return {
     refreshSnapshot(nextSettings = settingsRef.current) {
-      return coordinatorRef.current.requestRefresh(nextSettings);
+      return coordinatorRef.current.requestRefresh(nextSettings, { refreshRemotes: true });
     },
     runSnapshotTask<T>(task: () => Promise<T>, readSnapshot: (result: T) => AppSnapshot | null | undefined) {
       return coordinatorRef.current.runSnapshotTask(task, readSnapshot);
