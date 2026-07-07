@@ -234,15 +234,6 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
             })
             .catch(() => {});
           return false;
-        case 'paste':
-          void pasteClipboard(terminal)
-            .then(pasted => {
-              if (pasted) {
-                showToast('已粘贴');
-              }
-            })
-            .catch(() => {});
-          return false;
         default:
           return true;
       }

@@ -1,4 +1,4 @@
-export type RepoTerminalShortcutAction = 'copy-selection' | 'paste' | 'pass-through';
+export type RepoTerminalShortcutAction = 'copy-selection' | 'pass-through';
 
 interface RepoTerminalShortcutEvent {
   readonly type: string;
@@ -23,8 +23,6 @@ export function getWindowsTerminalShortcutAction(
   switch (event.key.toLowerCase()) {
     case 'c':
       return hasSelection ? 'copy-selection' : 'pass-through';
-    case 'v':
-      return 'paste';
     default:
       return 'pass-through';
   }

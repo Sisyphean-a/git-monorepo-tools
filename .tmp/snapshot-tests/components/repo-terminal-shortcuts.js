@@ -8,8 +8,6 @@ export function getWindowsTerminalShortcutAction(event, hasSelection, platform) 
     switch (event.key.toLowerCase()) {
         case 'c':
             return hasSelection ? 'copy-selection' : 'pass-through';
-        case 'v':
-            return 'paste';
         default:
             return 'pass-through';
     }

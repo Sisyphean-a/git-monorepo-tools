@@ -22,14 +22,14 @@ test('windows ctrl+c without selection passes through to terminal', () => {
   }, false, 'Win32'), 'pass-through');
 });
 
-test('windows ctrl+v pastes even with shift modifier', () => {
+test('windows ctrl+v passes through to xterm default paste handling', () => {
   assert.equal(getWindowsTerminalShortcutAction({
     type: 'keydown',
     ctrlKey: true,
     altKey: false,
     metaKey: false,
     key: 'V',
-  }, false, 'Win32'), 'paste');
+  }, false, 'Win32'), 'pass-through');
 });
 
 test('non-windows platforms keep default terminal shortcuts', () => {
