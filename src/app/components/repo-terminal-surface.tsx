@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { ensureTerminalSession, resizeTerminal, restartTerminalSession, writeTerminalInput } from '../api';
+import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../repo-terminal-status';
 import { terminalEventBus } from '../terminal-runtime-event-bus';
 import { TerminalOutputWriter } from '../terminal-output-writer';
 import { C } from '../theme';
@@ -108,6 +109,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       terminal.reset();
     }
 
+    setRepoTerminalStarting(repo.id);
     setStatus('connecting');
     setError(null);
     setExitCode(null);
@@ -116,6 +118,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
 
     try {
       const session = await ensureTerminalSession(repo.id, repo.path, nextSize.cols, nextSize.rows);
+      registerTerminalSession(session);
       sessionRef.current = session;
       setSessionId(session.sessionId);
       sessionBindingRef.current?.bindSession(session.sessionId);
@@ -123,6 +126,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       setStatus('running');
       scheduleResize();
     } catch (sessionError) {
+      setRepoTerminalFailed(repo.id);
       sessionRef.current = null;
       setStatus('failed');
       setError(sessionError instanceof Error ? sessionError.message : '终端启动失败');
@@ -139,6 +143,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
 
     outputWriterRef.current?.reset();
     terminal.reset();
+    setRepoTerminalStarting(repo.id);
     setStatus('connecting');
     setError(null);
     setExitCode(null);
@@ -146,6 +151,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
 
     try {
       const replacement = await restartTerminalSession(session.sessionId, nextSize.cols, nextSize.rows);
+      registerTerminalSession(replacement);
       sessionRef.current = replacement;
       setSessionId(replacement.sessionId);
       sessionBindingRef.current?.bindSession(replacement.sessionId);
@@ -153,6 +159,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       setStatus('running');
       scheduleResize();
     } catch (sessionError) {
+      setRepoTerminalFailed(repo.id);
       sessionBindingRef.current?.bindSession(session.sessionId);
       setStatus('failed');
       setError(sessionError instanceof Error ? sessionError.message : '终端重启失败');
@@ -377,7 +384,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
         <div
           ref={viewportRef}
           className="repo-terminal-viewport"
-          style={{ position: 'absolute', inset: 0, padding: '10px 12px', overflow: 'hidden' }}
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 10, left: 0, padding: '10px 12px 0', overflow: 'hidden' }}
         />
         {status === 'connecting' && (
           <StatusOverlay text="正在启动终端..." />

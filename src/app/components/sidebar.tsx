@@ -1,24 +1,24 @@
 import { useState } from 'react';
 import {
   FolderPlus,
-  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Download,
-  FolderGit2,
   GitBranch,
   Loader2,
-  Plus,
   RefreshCw,
   Search,
   Upload,
 } from 'lucide-react';
+import { useRepoTerminalStatuses } from '../repo-terminal-status';
+import type { RepoTerminalState } from '../repo-terminal-status';
 import { C } from '../theme';
 import { shouldShowCleanIndicator } from '../repo-status';
 import { formatAutoScanLabel } from '../settings';
 import type { AppSettings, Repo } from '../types';
 import { StatusPill } from './common';
+import { RepoTerminalIndicator } from './repo-terminal-indicator';
 
 interface SidebarProps {
   repos: Repo[];
@@ -37,7 +37,17 @@ interface SidebarProps {
   onToggleAutoScan: () => void;
 }
 
-function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; onClick: () => void }) {
+function RepoItem({
+  repo,
+  selected,
+  terminalState,
+  onClick,
+}: {
+  repo: Repo;
+  selected: boolean;
+  terminalState?: RepoTerminalState;
+  onClick: () => void;
+}) {
   const hasCriticalState = repo.status === 'error' || repo.conflicts > 0;
   const itemBackground = selected ? C.selectedBg : 'transparent';
 
@@ -67,19 +77,7 @@ function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; 
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
-          {repo.status === 'checking' ? (
-            <Loader2 size={12} color={C.textWeak} style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />
-          ) : repo.status === 'error' ? (
-            <AlertTriangle size={12} color={C.conflict} style={{ flexShrink: 0 }} />
-          ) : repo.conflicts > 0 ? (
-            <AlertTriangle size={12} color={C.conflict} style={{ flexShrink: 0 }} />
-          ) : (
-            <FolderGit2
-              size={12}
-              color={selected ? C.textPrimary : C.textWeak}
-              style={{ flexShrink: 0 }}
-            />
-          )}
+          <RepoTerminalIndicator state={terminalState} selected={selected} />
           <span
             style={{
               color: selected || hasCriticalState ? C.textPrimary : C.textSecondary,
@@ -111,11 +109,13 @@ function RepoItem({ repo, selected, onClick }: { repo: Repo; selected: boolean; 
 function CategoryGroup({
   name,
   repos,
+  terminalStates,
   selectedRepoId,
   onSelectRepo,
 }: {
   name: string;
   repos: Repo[];
+  terminalStates: Record<string, RepoTerminalState>;
   selectedRepoId: string;
   onSelectRepo: (id: string) => void;
 }) {
@@ -173,6 +173,7 @@ function CategoryGroup({
               key={repo.id}
               repo={repo}
               selected={repo.id === selectedRepoId}
+              terminalState={terminalStates[repo.id]}
               onClick={() => onSelectRepo(repo.id)}
             />
           ))}
@@ -199,6 +200,7 @@ export function Sidebar({
   onToggleAutoScan,
 }: SidebarProps) {
   const [search, setSearch] = useState('');
+  const terminalStates = useRepoTerminalStatuses();
 
   const filteredRepos = search
     ? repos.filter(repo =>
@@ -292,6 +294,7 @@ export function Sidebar({
                 key={repo.id}
                 repo={repo}
                 selected={repo.id === selectedRepoId}
+                terminalState={terminalStates[repo.id]}
                 onClick={() => onSelectRepo(repo.id)}
               />
             ))
@@ -308,6 +311,7 @@ export function Sidebar({
                 key={category}
                 name={category}
                 repos={categoryRepos}
+                terminalStates={terminalStates}
                 selectedRepoId={selectedRepoId}
                 onSelectRepo={onSelectRepo}
               />

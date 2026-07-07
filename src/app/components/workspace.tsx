@@ -6,6 +6,7 @@ import { ConflictBanner, RepoHeader, summarizeFiles } from './workspace-parts';
 import { RepoHistoryTab } from './repo-history-tab';
 import { useRepoCommandPanel } from '../use-repo-command-panel';
 import { ensureTerminalSession, writeTerminalInput } from '../api';
+import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../repo-terminal-status';
 import type {
   AppSettings,
   RepoCommandResult,
@@ -86,8 +87,15 @@ export function Workspace({
   const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(() => {});
   const handleViewLog = () => void onViewLog(repo.id).catch(() => {});
   const handleSendToTerminal = async (command: string) => {
-    const session = await ensureTerminalSession(repo.id, repo.path);
-    await writeTerminalInput(session.sessionId, `${command}\r`);
+    setRepoTerminalStarting(repo.id);
+    try {
+      const session = await ensureTerminalSession(repo.id, repo.path);
+      registerTerminalSession(session);
+      await writeTerminalInput(session.sessionId, `${command}\r`);
+    } catch (error) {
+      setRepoTerminalFailed(repo.id);
+      throw error;
+    }
   };
   const isConflict = repo.conflicts > 0;
 
