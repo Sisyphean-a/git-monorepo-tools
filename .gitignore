@@ -25,6 +25,7 @@ build/windows/*
 out/
 coverage/
 *.tsbuildinfo
+.tmp/
 
 # Python
 __pycache__/

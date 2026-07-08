@@ -1,5 +1,5 @@
-import { cloneDefaultCommandCenter, sanitizeCommandCenter } from './command-center';
-import type { AppSettings, ScanRootSetting } from './types';
+import { cloneDefaultCommandCenter, sanitizeCommandCenter } from './command-center.js';
+import type { AppSettings, ScanRootSetting } from './types.js';
 
 const STORAGE_KEY = 'git-manager-ui-settings';
 
@@ -22,6 +22,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     pushStrategy: 'upstream-only',
     concurrency: 5,
     timeoutSeconds: 60,
+    proxy: {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 7897,
+    },
   },
   commandCenter: cloneDefaultCommandCenter(),
 };
@@ -41,6 +46,11 @@ function sanitizeBoolean(value: unknown, fallback: boolean) {
 function sanitizeNumber(value: unknown, fallback: number, allowed: number[]) {
   const parsed = Number(value);
   return allowed.includes(parsed) ? parsed : fallback;
+}
+
+function sanitizePort(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : fallback;
 }
 
 function sanitizeScanRoots(value: unknown) {
@@ -66,12 +76,13 @@ export function sanitizeSettings(value: unknown): AppSettings {
   const draft = cloneDefaults();
   if (!value || typeof value !== 'object') return draft;
   const source = value as Partial<AppSettings>;
-  const aiCommit = source.aiCommit ?? {};
-  const gitBehavior = source.gitBehavior ?? {};
+  const aiCommit: Partial<AppSettings['aiCommit']> = source.aiCommit ?? {};
+  const gitBehavior: Partial<AppSettings['gitBehavior']> = source.gitBehavior ?? {};
+  const proxy: Partial<AppSettings['gitBehavior']['proxy']> = gitBehavior.proxy ?? {};
 
   draft.scanRoots = sanitizeScanRoots(source.scanRoots);
   draft.customCategories = Array.isArray(source.customCategories)
-    ? source.customCategories.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    ? source.customCategories.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
     : [];
   draft.aiCommit.apiKey = typeof aiCommit.apiKey === 'string' ? aiCommit.apiKey : draft.aiCommit.apiKey;
   draft.aiCommit.baseUrl = sanitizeText(aiCommit.baseUrl, draft.aiCommit.baseUrl);
@@ -91,6 +102,9 @@ export function sanitizeSettings(value: unknown): AppSettings {
     : draft.gitBehavior.pushStrategy;
   draft.gitBehavior.concurrency = sanitizeNumber(gitBehavior.concurrency, draft.gitBehavior.concurrency, [1, 2, 3, 5]);
   draft.gitBehavior.timeoutSeconds = sanitizeNumber(gitBehavior.timeoutSeconds, draft.gitBehavior.timeoutSeconds, [30, 60, 120]);
+  draft.gitBehavior.proxy.enabled = sanitizeBoolean(proxy.enabled, draft.gitBehavior.proxy.enabled);
+  draft.gitBehavior.proxy.host = sanitizeText(proxy.host, draft.gitBehavior.proxy.host);
+  draft.gitBehavior.proxy.port = sanitizePort(proxy.port, draft.gitBehavior.proxy.port);
   draft.commandCenter = sanitizeCommandCenter(source.commandCenter);
   return draft;
 }

@@ -20,6 +20,11 @@ const settings = (concurrency) => ({
         pushStrategy: 'upstream-only',
         concurrency,
         timeoutSeconds: 60,
+        proxy: {
+            enabled: false,
+            host: '127.0.0.1',
+            port: 7897,
+        },
     },
     commandCenter: {
         combos: [],

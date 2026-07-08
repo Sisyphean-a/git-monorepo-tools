@@ -349,6 +349,22 @@ export namespace snapshot {
 	}
 	
 	
+	export class GitProxySettings {
+	    enabled: boolean;
+	    host: string;
+	    port: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GitProxySettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.host = source["host"];
+	        this.port = source["port"];
+	    }
+	}
 	
 	export class RepoActionRequest {
 	    fileId: string;
@@ -523,6 +539,7 @@ export namespace snapshot {
 	    pullStrategy: string;
 	    pushStrategy: string;
 	    refreshRemotes?: boolean;
+	    proxy: GitProxySettings;
 	
 	    static createFrom(source: any = {}) {
 	        return new Request(source);
@@ -535,6 +552,7 @@ export namespace snapshot {
 	        this.pullStrategy = source["pullStrategy"];
 	        this.pushStrategy = source["pushStrategy"];
 	        this.refreshRemotes = source["refreshRemotes"];
+	        this.proxy = this.convertValues(source["proxy"], GitProxySettings);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -6,7 +6,11 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
     const originalWindow = globalThis.window;
     const bindings = {
         GetSnapshot: async (request) => {
-            calls.push({ refreshRemotes: request.refreshRemotes });
+            calls.push({
+                refreshRemotes: request.refreshRemotes,
+                proxyEnabled: request.proxy.enabled,
+                proxyPort: request.proxy.port,
+            });
             return {
                 scannedAt: '',
                 categories: [],
@@ -79,8 +83,8 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
         });
     }
     assert.deepEqual(calls, [
-        { refreshRemotes: false },
-        { refreshRemotes: true },
+        { refreshRemotes: false, proxyEnabled: false, proxyPort: 7897 },
+        { refreshRemotes: true, proxyEnabled: false, proxyPort: 7897 },
     ]);
 });
 test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
@@ -239,6 +243,11 @@ test('generateCommitMessage uses dedicated binding', async () => {
                 pushStrategy: 'upstream-only',
                 concurrency: 5,
                 timeoutSeconds: 60,
+                proxy: {
+                    enabled: false,
+                    host: '127.0.0.1',
+                    port: 7897,
+                },
             },
             commandCenter: {
                 combos: [],

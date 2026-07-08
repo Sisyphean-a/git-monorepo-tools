@@ -139,6 +139,7 @@ func (s *Service) runRepoCommand(request RepoCommandRequest, onChunk func(string
 func runShellCommand(repoPath, commandText string, onChunk func(string), captureOutput bool) (string, int, error) {
 	cmd := buildShellCommand(repoPath, commandText)
 	applyBackgroundProcessAttrs(cmd)
+	cmd.Env = buildGitProcessEnv()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", -1, err

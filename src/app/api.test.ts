@@ -16,12 +16,16 @@ import {
 } from './api.js';
 
 test('fetchSnapshot can opt into remote refresh after page load', async () => {
-  const calls: Array<{ refreshRemotes: boolean }> = [];
+  const calls: Array<{ refreshRemotes: boolean; proxyEnabled: boolean; proxyPort: number }> = [];
   const originalWindow = globalThis.window;
 
   const bindings = {
-    GetSnapshot: async (request: { refreshRemotes: boolean }) => {
-      calls.push({ refreshRemotes: request.refreshRemotes });
+    GetSnapshot: async (request: { refreshRemotes: boolean; proxy: { enabled: boolean; port: number } }) => {
+      calls.push({
+        refreshRemotes: request.refreshRemotes,
+        proxyEnabled: request.proxy.enabled,
+        proxyPort: request.proxy.port,
+      });
       return {
         scannedAt: '',
         categories: [],
@@ -96,8 +100,8 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
   }
 
   assert.deepEqual(calls, [
-    { refreshRemotes: false },
-    { refreshRemotes: true },
+    { refreshRemotes: false, proxyEnabled: false, proxyPort: 7897 },
+    { refreshRemotes: true, proxyEnabled: false, proxyPort: 7897 },
   ]);
 });
 
@@ -264,6 +268,11 @@ test('generateCommitMessage uses dedicated binding', async () => {
         pushStrategy: 'upstream-only',
         concurrency: 5,
         timeoutSeconds: 60,
+        proxy: {
+          enabled: false,
+          host: '127.0.0.1',
+          port: 7897,
+        },
       },
       commandCenter: {
         combos: [],

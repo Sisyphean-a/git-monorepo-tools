@@ -62,6 +62,12 @@ export interface AICommitSettings {
   promptTemplate: string;
 }
 
+export interface GitProxySettings {
+  enabled: boolean;
+  host: string;
+  port: number;
+}
+
 export type PullStrategy = 'ff-only' | 'rebase' | 'merge';
 export type PushStrategy = 'upstream-only' | 'all';
 
@@ -72,6 +78,7 @@ export interface GitBehaviorSettings {
   pushStrategy: PushStrategy;
   concurrency: number;
   timeoutSeconds: number;
+  proxy: GitProxySettings;
 }
 
 export interface CommandCombo {

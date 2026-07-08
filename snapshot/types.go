@@ -1,11 +1,12 @@
 package snapshot
 
 type Request struct {
-	ScanRoots      []ScanRoot `json:"scanRoots"`
-	Concurrency    int        `json:"concurrency"`
-	PullStrategy   string     `json:"pullStrategy"`
-	PushStrategy   string     `json:"pushStrategy"`
-	RefreshRemotes bool       `json:"refreshRemotes,omitempty"`
+	ScanRoots      []ScanRoot       `json:"scanRoots"`
+	Concurrency    int              `json:"concurrency"`
+	PullStrategy   string           `json:"pullStrategy"`
+	PushStrategy   string           `json:"pushStrategy"`
+	RefreshRemotes bool             `json:"refreshRemotes,omitempty"`
+	Proxy          GitProxySettings `json:"proxy"`
 }
 
 type RepoActionRequest struct {
@@ -38,6 +39,12 @@ type AICommitSettings struct {
 	GenerateThree  bool   `json:"generateThree"`
 	StagedOnly     bool   `json:"stagedOnly"`
 	PromptTemplate string `json:"promptTemplate"`
+}
+
+type GitProxySettings struct {
+	Enabled bool   `json:"enabled"`
+	Host    string `json:"host"`
+	Port    int    `json:"port"`
 }
 
 type ScanRoot struct {

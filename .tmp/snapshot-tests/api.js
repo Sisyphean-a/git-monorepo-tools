@@ -15,6 +15,11 @@ function buildSnapshotRequest(settings, options) {
         pullStrategy: settings?.gitBehavior.pullStrategy ?? 'ff-only',
         pushStrategy: settings?.gitBehavior.pushStrategy ?? 'upstream-only',
         refreshRemotes: options?.refreshRemotes ?? false,
+        proxy: settings?.gitBehavior.proxy ?? {
+            enabled: false,
+            host: '127.0.0.1',
+            port: 7897,
+        },
     };
 }
 function getWailsBindings() {

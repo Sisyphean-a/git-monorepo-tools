@@ -14,7 +14,15 @@ import (
 	"time"
 )
 
-var nonAlphaNum = regexp.MustCompile(`[^a-z0-9]+`)
+var (
+	nonAlphaNum              = regexp.MustCompile(`[^a-z0-9]+`)
+	remoteFetchRetryDelays   = []time.Duration{0, 0, 5 * time.Second}
+	sleepForRemoteFetchRetry = time.Sleep
+	runRemoteFetch           = func(repoPath, remote string) error {
+		_, err := runGit(repoPath, []string{"fetch", "--prune", "--quiet", remote})
+		return err
+	}
+)
 
 const defaultHistoryPageSize = 50
 
@@ -30,6 +38,7 @@ type parsedStatus struct {
 func runGit(repoPath string, args []string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", repoPath}, args...)...)
 	applyBackgroundProcessAttrs(cmd)
+	cmd.Env = buildGitProcessEnv()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -57,10 +66,24 @@ func readStatusAfterRemoteSync(repoPath string) (parsedStatus, error) {
 	if err != nil || parsed.remote == "—" {
 		return parsed, err
 	}
-	if _, fetchErr := runGit(repoPath, []string{"fetch", "--prune", "--quiet", parsed.remote}); fetchErr != nil {
+	if fetchErr := refreshRemoteWithRetry(repoPath, parsed.remote); fetchErr != nil {
 		return parsed, fetchErr
 	}
 	return readStatus(repoPath)
+}
+
+func refreshRemoteWithRetry(repoPath, remote string) error {
+	var lastErr error
+	for _, delay := range remoteFetchRetryDelays {
+		if delay > 0 {
+			sleepForRemoteFetchRetry(delay)
+		}
+		lastErr = runRemoteFetch(repoPath, remote)
+		if lastErr == nil {
+			return nil
+		}
+	}
+	return lastErr
 }
 
 func parseStatus(output string) parsedStatus {

@@ -3,7 +3,7 @@ import type {
   CommandCenterSettings,
   CommandCombo,
   CustomCommandButton,
-} from './types';
+} from './types.js';
 
 export const BUILT_IN_COMMAND_OPTIONS: { value: BuiltInCommandAction; label: string }[] = [
   { value: 'stage-all', label: '全部暂存' },

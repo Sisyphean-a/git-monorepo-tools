@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppSettings } from '../types';
-import { FormRow, Select, Toggle } from './settings-modal-shared';
+import { FormRow, Input, Select, Toggle } from './settings-modal-shared';
 
 interface GitBehaviorSettingsTabProps {
   draft: AppSettings;
@@ -33,6 +33,38 @@ export function GitBehaviorSettingsTab({ draft, setDraft }: GitBehaviorSettingsT
           ]}
         />
       </FormRow>
+      <FormRow label="Git 代理">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ color: '#8fa6bf', fontSize: 12, fontWeight: 500 }}>启用手动代理</div>
+            <div style={{ color: '#5f7084', fontSize: 11 }}>内置 Git 的 fetch / pull / push 会走这个代理</div>
+          </div>
+          <Toggle checked={gitBehavior.proxy.enabled} onChange={() => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, proxy: { ...current.gitBehavior.proxy, enabled: !current.gitBehavior.proxy.enabled } } }))} />
+        </div>
+      </FormRow>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <FormRow label="代理主机">
+            <Input
+              value={gitBehavior.proxy.host}
+              onChange={value => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, proxy: { ...current.gitBehavior.proxy, host: value } } }))}
+              placeholder="127.0.0.1"
+              monospace
+            />
+          </FormRow>
+        </div>
+        <div style={{ width: 140 }}>
+          <FormRow label="代理端口">
+            <Input
+              value={String(gitBehavior.proxy.port)}
+              onChange={value => setDraft(current => ({ ...current, gitBehavior: { ...current.gitBehavior, proxy: { ...current.gitBehavior.proxy, port: Number(value) } } }))}
+              placeholder="7897"
+              type="number"
+              monospace
+            />
+          </FormRow>
+        </div>
+      </div>
       <FormRow label="批量 Pull 策略">
         <Select
           value={gitBehavior.pullStrategy}

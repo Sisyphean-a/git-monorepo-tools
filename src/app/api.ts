@@ -6,6 +6,7 @@ interface SnapshotRequest {
   pullStrategy: AppSettings['gitBehavior']['pullStrategy'];
   pushStrategy: AppSettings['gitBehavior']['pushStrategy'];
   refreshRemotes: boolean;
+  proxy: AppSettings['gitBehavior']['proxy'];
 }
 
 interface SnapshotResponse {
@@ -81,6 +82,11 @@ function buildSnapshotRequest(settings?: AppSettings, options?: SnapshotFetchOpt
     pullStrategy: settings?.gitBehavior.pullStrategy ?? 'ff-only',
     pushStrategy: settings?.gitBehavior.pushStrategy ?? 'upstream-only',
     refreshRemotes: options?.refreshRemotes ?? false,
+    proxy: settings?.gitBehavior.proxy ?? {
+      enabled: false,
+      host: '127.0.0.1',
+      port: 7897,
+    },
   };
 }
 

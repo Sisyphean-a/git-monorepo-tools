@@ -42,34 +42,42 @@ func (a *App) shutdown(context.Context) {
 }
 
 func (a *App) GetSnapshot(request snapshot.Request) (snapshot.AppSnapshot, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.BuildAppSnapshot(request)
 }
 
 func (a *App) RefreshRepo(repoID string, request snapshot.Request) (snapshot.RepoSnapshotUpdate, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.RefreshRepo(repoID, request)
 }
 
 func (a *App) MutateRepo(repoID, action string, request snapshot.Request, body snapshot.RepoActionRequest) (snapshot.RepoSnapshotUpdate, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.MutateRepo(repoID, action, request, body)
 }
 
 func (a *App) RunBatch(operation string, request snapshot.Request) (snapshot.BatchResult, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.RunBatch(operation, request)
 }
 
 func (a *App) GetRepoLog(repoID string, request snapshot.Request) (snapshot.RepoLog, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.GetRepoLog(repoID, request)
 }
 
 func (a *App) GetRepoHistory(repoID string, request snapshot.Request, offset, limit int) (snapshot.RepoHistoryPage, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.GetRepoHistory(repoID, request, offset, limit)
 }
 
 func (a *App) GetCommitDetail(repoID string, request snapshot.Request, hash string) (snapshot.CommitDetail, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.GetCommitDetail(repoID, request, hash)
 }
 
 func (a *App) GenerateCommitMessage(repoID string, request snapshot.Request, settings snapshot.AICommitSettings) (string, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.GenerateCommitMessage(repoID, request, settings)
 }
 
