@@ -3,8 +3,8 @@ doc_type: learner-report
 unit: .codestable/refactors/2026-07-10-git-performance
 branch: refactor/git-performance-20260710
 base_ref: master
-covered_head: 8c5a2e4a9d610d58d271afb08a22d800be45d5ef
-covered_diff: master...8c5a2e4a9d610d58d271afb08a22d800be45d5ef
+covered_head: ba3bc1a97d547c29cd7e4cfdb379f5ae4797ec52
+covered_diff: master...ba3bc1a97d547c29cd7e4cfdb379f5ae4797ec52
 status: ready-to-merge
 ---
 
@@ -31,6 +31,9 @@ status: ready-to-merge
 ### 相关文件
 - .codestable/refactors/2026-07-10-git-performance/git-performance-apply-notes.md
 - .codestable/refactors/2026-07-10-git-performance/git-performance-checklist.yaml
+- .codestable/refactors/2026-07-10-git-performance/git-performance-learning-context-check.json
+- .codestable/refactors/2026-07-10-git-performance/git-performance-learning-report.md
+- .codestable/refactors/2026-07-10-git-performance/git-performance-merge-readiness.json
 - .codestable/refactors/2026-07-10-git-performance/git-performance-refactor-design.md
 - .codestable/refactors/2026-07-10-git-performance/git-performance-review.md
 - .codestable/refactors/2026-07-10-git-performance/git-performance-scan.md
@@ -63,6 +66,9 @@ status: ready-to-merge
 ## 2. 改了什么
 - .codestable/refactors/2026-07-10-git-performance/git-performance-apply-notes.md
 - .codestable/refactors/2026-07-10-git-performance/git-performance-checklist.yaml
+- .codestable/refactors/2026-07-10-git-performance/git-performance-learning-context-check.json
+- .codestable/refactors/2026-07-10-git-performance/git-performance-learning-report.md
+- .codestable/refactors/2026-07-10-git-performance/git-performance-merge-readiness.json
 - .codestable/refactors/2026-07-10-git-performance/git-performance-refactor-design.md
 - .codestable/refactors/2026-07-10-git-performance/git-performance-review.md
 - .codestable/refactors/2026-07-10-git-performance/git-performance-scan.md
@@ -86,7 +92,7 @@ status: ready-to-merge
 - 未自动清理 worktree。
 
 ## 4. 关键决策
-- `covered_head` 固定为 `8c5a2e4a9d610d58d271afb08a22d800be45d5ef`；HEAD 变化后本报告失效。
+- `covered_head` 固定为 `ba3bc1a97d547c29cd7e4cfdb379f5ae4797ec52`；HEAD 变化后本报告失效。
 
 ## 5. Task agent review 发现与修复
 - 见同 unit 的 implementation review 记录；finish gate 只验证 evidence 是否存在。
@@ -95,7 +101,7 @@ status: ready-to-merge
 - go test ./... -count=1 -> passed; npm run test:snapshot-coordinator -> passed; npm run web:build -> passed
 
 ## 7. 合并前注意事项
-- 合并前确认 `refactor/git-performance-20260710` 当前 HEAD 仍为 `8c5a2e4a9d610d58d271afb08a22d800be45d5ef`。
+- 合并前确认 `refactor/git-performance-20260710` 当前 HEAD 仍为 `ba3bc1a97d547c29cd7e4cfdb379f5ae4797ec52`。
 
 ## 8. 后续 follow-up
 - None
