@@ -3,10 +3,15 @@ import { fetchSnapshot } from './api';
 import { createSnapshotCoordinator } from './snapshot-coordinator';
 import type { AppSettings, AppSnapshot } from './types';
 
+interface SnapshotRefreshOptions {
+  skipInitialRefresh?: boolean;
+}
+
 export function useSnapshotRefresh(
   settings: AppSettings,
   applySnapshot: (snapshot: AppSnapshot) => void,
   reportError: (message: string | null) => void,
+  options: SnapshotRefreshOptions = {},
 ) {
   const settingsRef = useRef(settings);
   const applySnapshotRef = useRef(applySnapshot);
@@ -27,6 +32,7 @@ export function useSnapshotRefresh(
   }, [applySnapshot, reportError]);
 
   useEffect(() => {
+    if (options.skipInitialRefresh) return;
     let cancelled = false;
     void coordinatorRef.current.requestRefresh(settingsRef.current, { refreshRemotes: false })
       .then(() => {
@@ -37,7 +43,7 @@ export function useSnapshotRefresh(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [options.skipInitialRefresh]);
 
   useEffect(() => {
     if (!settings.gitBehavior.autoScanEnabled) return;

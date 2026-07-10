@@ -46,6 +46,11 @@ func (a *App) GetSnapshot(request snapshot.Request) (snapshot.AppSnapshot, error
 	return a.service.BuildAppSnapshot(request)
 }
 
+func (a *App) GetWorkspaceBootstrap(request snapshot.Request) (snapshot.WorkspaceBootstrap, error) {
+	snapshot.SetRuntimeGitProxy(request.Proxy)
+	return a.service.BuildWorkspaceBootstrap(request)
+}
+
 func (a *App) RefreshRepo(repoID string, request snapshot.Request) (snapshot.RepoSnapshotUpdate, error) {
 	snapshot.SetRuntimeGitProxy(request.Proxy)
 	return a.service.RefreshRepo(repoID, request)

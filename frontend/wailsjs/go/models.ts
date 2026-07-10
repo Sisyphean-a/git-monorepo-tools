@@ -366,6 +366,42 @@ export namespace snapshot {
 	    }
 	}
 	
+	export class Repo {
+	    id: string;
+	    name: string;
+	    branch: string;
+	    path: string;
+	    remote: string;
+	    category: string;
+	    modified: number;
+	    ahead: number;
+	    behind: number;
+	    conflicts: number;
+	    status: string;
+	    scanError?: string;
+	    lastScan: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Repo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.branch = source["branch"];
+	        this.path = source["path"];
+	        this.remote = source["remote"];
+	        this.category = source["category"];
+	        this.modified = source["modified"];
+	        this.ahead = source["ahead"];
+	        this.behind = source["behind"];
+	        this.conflicts = source["conflicts"];
+	        this.status = source["status"];
+	        this.scanError = source["scanError"];
+	        this.lastScan = source["lastScan"];
+	    }
+	}
 	export class RepoActionRequest {
 	    fileId: string;
 	    filePath: string;
@@ -540,6 +576,8 @@ export namespace snapshot {
 	    pushStrategy: string;
 	    refreshRemotes?: boolean;
 	    proxy: GitProxySettings;
+	    repoPath?: string;
+	    repoCategory?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Request(source);
@@ -553,6 +591,45 @@ export namespace snapshot {
 	        this.pushStrategy = source["pushStrategy"];
 	        this.refreshRemotes = source["refreshRemotes"];
 	        this.proxy = this.convertValues(source["proxy"], GitProxySettings);
+	        this.repoPath = source["repoPath"];
+	        this.repoCategory = source["repoCategory"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class WorkspaceBootstrap {
+	    repos: Repo[];
+	    selectedRepoId: string;
+	    scannedAt: string;
+	    categories: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceBootstrap(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repos = this.convertValues(source["repos"], Repo);
+	        this.selectedRepoId = source["selectedRepoId"];
+	        this.scannedAt = source["scannedAt"];
+	        this.categories = source["categories"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

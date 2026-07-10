@@ -30,6 +30,63 @@ interface WorkspaceProps {
   onViewLog: (repoId: string) => Promise<void>;
 }
 
+function ScanningPlaceholderCard({
+  title,
+  lines,
+}: {
+  title: string;
+  lines: string[];
+}) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        background: C.panel1,
+        border: `1px solid ${C.border}`,
+        borderRadius: 12,
+        padding: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}
+    >
+      <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>{title}</div>
+      {lines.map((line, index) => (
+        <div
+          key={`${title}-${index}`}
+          style={{
+            height: 12,
+            width: line,
+            borderRadius: 999,
+            background: C.panel3,
+            border: `1px solid ${C.border}`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function WorkspaceScanningState() {
+  return (
+    <div style={{ flex: 1, minHeight: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 16 }}>
+        <ScanningPlaceholderCard
+          title="变更列表"
+          lines={['62%', '88%', '76%', '70%', '92%', '64%', '80%']}
+        />
+        <div style={{ width: 420, flexShrink: 0, display: 'flex' }}>
+          <ScanningPlaceholderCard
+            title="提交面板"
+            lines={['54%', '100%', '100%', '72%', '86%', '68%']}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Workspace({
   repoDetails,
   settings,
@@ -61,6 +118,7 @@ export function Workspace({
   }
 
   const fileSummary = summarizeFiles(repo.files);
+  const isChecking = repo.status === 'checking';
 
   const {
     stagedIds,
@@ -121,17 +179,21 @@ export function Workspace({
         {mainTabs.map(tab => (
           <button
             key={tab.key}
-            onClick={() => setMainTab(tab.key)}
+            disabled={isChecking}
+            onClick={() => {
+              if (!isChecking) setMainTab(tab.key);
+            }}
             style={{
               background: 'none',
               border: 'none',
               borderBottom: `2px solid ${mainTab === tab.key ? C.btnPrimary : 'transparent'}`,
               color: mainTab === tab.key ? C.textPrimary : C.textWeak,
               padding: '8px 14px',
-              cursor: 'pointer',
+              cursor: isChecking ? 'default' : 'pointer',
               fontSize: 12,
               fontWeight: mainTab === tab.key ? 500 : 400,
               transition: 'all 0.1s',
+              opacity: isChecking ? 0.65 : 1,
               whiteSpace: 'nowrap',
             }}
           >
@@ -141,49 +203,55 @@ export function Workspace({
       </div>
 
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            visibility: mainTab === 'changes' ? 'visible' : 'hidden',
-            pointerEvents: mainTab === 'changes' ? 'auto' : 'none',
-          }}
-        >
-          <DiffList files={repo.files} stagedIds={stagedIds} onToggleStaged={handleToggleStaged} />
-          <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
-            <AiCommitPanel
-              topAction={topAction}
-              message={commitMessage}
-              error={aiError}
-              actionGroups={actionGroups}
-              commandSections={commandSections}
-              commandConsole={commandConsole}
-              onMessageChange={setCommitMessage}
-              onClearConsole={clearCommandConsole}
-            />
-          </div>
-        </div>
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            visibility: mainTab === 'history' ? 'visible' : 'hidden',
-            pointerEvents: mainTab === 'history' ? 'auto' : 'none',
-          }}
-        >
-          <RepoHistoryTab
-            repo={repo}
-            settings={settings}
-            onOpenTerminal={handleOpenTerminal}
-            onSendToTerminal={handleSendToTerminal}
-          />
-        </div>
-        {terminalEnabled && (
-          <Suspense fallback={null}>
-            <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={mainTab === 'terminal'} />
-          </Suspense>
+        {isChecking ? (
+          <WorkspaceScanningState />
+        ) : (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                visibility: mainTab === 'changes' ? 'visible' : 'hidden',
+                pointerEvents: mainTab === 'changes' ? 'auto' : 'none',
+              }}
+            >
+              <DiffList files={repo.files} stagedIds={stagedIds} onToggleStaged={handleToggleStaged} />
+              <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
+                <AiCommitPanel
+                  topAction={topAction}
+                  message={commitMessage}
+                  error={aiError}
+                  actionGroups={actionGroups}
+                  commandSections={commandSections}
+                  commandConsole={commandConsole}
+                  onMessageChange={setCommitMessage}
+                  onClearConsole={clearCommandConsole}
+                />
+              </div>
+            </div>
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                visibility: mainTab === 'history' ? 'visible' : 'hidden',
+                pointerEvents: mainTab === 'history' ? 'auto' : 'none',
+              }}
+            >
+              <RepoHistoryTab
+                repo={repo}
+                settings={settings}
+                onOpenTerminal={handleOpenTerminal}
+                onSendToTerminal={handleSendToTerminal}
+              />
+            </div>
+            {terminalEnabled && (
+              <Suspense fallback={null}>
+                <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={mainTab === 'terminal'} />
+              </Suspense>
+            )}
+          </>
         )}
       </div>
     </div>

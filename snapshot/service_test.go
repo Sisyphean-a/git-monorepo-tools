@@ -139,6 +139,59 @@ func TestBuildRepoSnapshotRefreshesRemoteBeforeReadingBehind(t *testing.T) {
 	}
 }
 
+func TestBuildWorkspaceBootstrapReturnsCheckingRepos(t *testing.T) {
+	root := t.TempDir()
+	repoA := filepath.Join(root, "repo-a")
+	repoB := filepath.Join(root, "repo-b")
+	initTestRepo(t, repoA)
+	initTestRepo(t, repoB)
+
+	service := NewService(repoA)
+	bootstrap, err := service.BuildWorkspaceBootstrap(Request{
+		ScanRoots: []ScanRoot{{Path: root, Category: "测试工作区"}},
+	})
+	if err != nil {
+		t.Fatalf("build workspace bootstrap: %v", err)
+	}
+	if len(bootstrap.Repos) != 2 {
+		t.Fatalf("expected 2 bootstrap repos, got %d", len(bootstrap.Repos))
+	}
+	if bootstrap.SelectedRepoID != repoIDForPath(repoA) {
+		t.Fatalf("expected selected repo %q, got %q", repoIDForPath(repoA), bootstrap.SelectedRepoID)
+	}
+	if bootstrap.Repos[0].ID != repoIDForPath(repoA) {
+		t.Fatalf("expected project repo first, got %q", bootstrap.Repos[0].ID)
+	}
+	if bootstrap.Repos[0].Status != "checking" || bootstrap.Repos[1].Status != "checking" {
+		t.Fatalf("expected bootstrap repos to be checking, got %#v", bootstrap.Repos)
+	}
+	if !slices.Equal(bootstrap.Categories, []string{"测试工作区"}) {
+		t.Fatalf("expected bootstrap categories to match scan roots, got %#v", bootstrap.Categories)
+	}
+}
+
+func TestBuildRepoSnapshotUsesRequestHintWithoutScanRoots(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo-a")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "tracked.txt", "base\n", "seed")
+
+	service := NewService(repoPath)
+	update, err := service.BuildRepoSnapshot(repoIDForPath(repoPath), Request{
+		RepoPath:     repoPath,
+		RepoCategory: "测试工作区",
+	}, false)
+	if err != nil {
+		t.Fatalf("build repo snapshot with hint: %v", err)
+	}
+	if got, want := update.Repo.Path, normalizePath(repoPath); got != want {
+		t.Fatalf("expected hinted repo path %q, got %q", want, got)
+	}
+	if got, want := update.Repo.Category, "测试工作区"; got != want {
+		t.Fatalf("expected hinted repo category %q, got %q", want, got)
+	}
+}
+
 func initTestRepo(t *testing.T, repoPath string) {
 	t.Helper()
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {

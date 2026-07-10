@@ -40,12 +40,25 @@ func (s *Service) BuildAppSnapshot(request Request) (AppSnapshot, error) {
 	return s.buildSnapshot(request, nil)
 }
 
+func (s *Service) BuildWorkspaceBootstrap(request Request) (WorkspaceBootstrap, error) {
+	scanTime := time.Now()
+	entries := s.discoverRepos(s.buildRoots(request))
+	snapshots := s.sortSnapshots(buildBootstrapSnapshots(entries, scanTime))
+
+	return WorkspaceBootstrap{
+		Repos:          orderedRepos(snapshots),
+		SelectedRepoID: s.selectedRepoID(snapshots),
+		ScannedAt:      formatDateTime(scanTime),
+		Categories:     uniqueCategories(snapshots),
+	}, nil
+}
+
 func (s *Service) BuildRepoSnapshot(repoID string, request Request, refreshRemotes bool) (RepoSnapshotUpdate, error) {
-	repo, err := s.resolveRepo(repoID, request)
+	entry, err := s.resolveRepoEntry(repoID, request)
 	if err != nil {
 		return RepoSnapshotUpdate{}, err
 	}
-	return s.buildRepoUpdate(repo.ID, repo.Path, repo.Category, refreshRemotes)
+	return s.buildRepoUpdate(repoID, entry.repoPath, entry.category, refreshRemotes)
 }
 
 func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppSnapshot, error) {
@@ -110,6 +123,31 @@ func (s *Service) buildSnapshots(entries []repoEntry, scanTime time.Time, concur
 	return buildSnapshots(entries, scanTime, concurrency, refreshRemotes)
 }
 
+func buildBootstrapSnapshots(entries []repoEntry, scanTime time.Time) []repoSnapshot {
+	snapshots := make([]repoSnapshot, 0, len(entries))
+	for _, entry := range entries {
+		snapshots = append(snapshots, buildBootstrapRepo(entry, scanTime))
+	}
+	return snapshots
+}
+
+func buildBootstrapRepo(entry repoEntry, scanTime time.Time) repoSnapshot {
+	repoPath := normalizePath(entry.repoPath)
+	repoName := filepath.Base(repoPath)
+	return repoSnapshot{
+		repo: Repo{
+			ID:       createRepoID(repoName, repoPath),
+			Name:     repoName,
+			Branch:   "扫描中",
+			Path:     repoPath,
+			Remote:   "—",
+			Category: entry.category,
+			Status:   "checking",
+			LastScan: formatTime(scanTime),
+		},
+	}
+}
+
 func (s *Service) sortSnapshots(items []repoSnapshot) []repoSnapshot {
 	sorted := slices.Clone(items)
 	slices.SortFunc(sorted, func(left, right repoSnapshot) int {
@@ -140,6 +178,14 @@ func (s *Service) selectedRepoID(items []repoSnapshot) string {
 		return ""
 	}
 	return items[0].repo.ID
+}
+
+func orderedRepos(items []repoSnapshot) []Repo {
+	repos := make([]Repo, 0, len(items))
+	for _, item := range items {
+		repos = append(repos, item.repo)
+	}
+	return repos
 }
 
 func buildRepoSnapshot(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {

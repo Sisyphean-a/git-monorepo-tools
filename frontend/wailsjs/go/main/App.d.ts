@@ -15,6 +15,8 @@ export function GetRepoLog(arg1:string,arg2:snapshot.Request):Promise<snapshot.R
 
 export function GetSnapshot(arg1:snapshot.Request):Promise<snapshot.AppSnapshot>;
 
+export function GetWorkspaceBootstrap(arg1:snapshot.Request):Promise<snapshot.WorkspaceBootstrap>;
+
 export function MutateRepo(arg1:string,arg2:string,arg3:snapshot.Request,arg4:snapshot.RepoActionRequest):Promise<snapshot.RepoSnapshotUpdate>;
 
 export function OpenConflicts(arg1:string):Promise<void>;

@@ -7,6 +7,8 @@ type Request struct {
 	PushStrategy   string           `json:"pushStrategy"`
 	RefreshRemotes bool             `json:"refreshRemotes,omitempty"`
 	Proxy          GitProxySettings `json:"proxy"`
+	RepoPath       string           `json:"repoPath,omitempty"`
+	RepoCategory   string           `json:"repoCategory,omitempty"`
 }
 
 type RepoActionRequest struct {
@@ -50,6 +52,13 @@ type GitProxySettings struct {
 type ScanRoot struct {
 	Path     string `json:"path"`
 	Category string `json:"category"`
+}
+
+type WorkspaceBootstrap struct {
+	Repos          []Repo   `json:"repos"`
+	SelectedRepoID string   `json:"selectedRepoId"`
+	ScannedAt      string   `json:"scannedAt"`
+	Categories     []string `json:"categories"`
 }
 
 type AppSnapshot struct {

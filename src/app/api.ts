@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, CommitDetail, PullResult, RepoCommandResult, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo } from './types.js';
+import type { AppSettings, AppSnapshot, CommitDetail, PullResult, RepoCommandResult, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo, WorkspaceBootstrap } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
@@ -7,6 +7,8 @@ interface SnapshotRequest {
   pushStrategy: AppSettings['gitBehavior']['pushStrategy'];
   refreshRemotes: boolean;
   proxy: AppSettings['gitBehavior']['proxy'];
+  repoPath?: string;
+  repoCategory?: string;
 }
 
 interface SnapshotResponse {
@@ -19,8 +21,13 @@ interface SnapshotResponse {
 }
 
 type WailsSnapshotBinding = (request: SnapshotRequest) => Promise<AppSnapshot>;
+type WailsBootstrapBinding = (request: SnapshotRequest) => Promise<WorkspaceBootstrap>;
 export type SnapshotFetchOptions = {
   refreshRemotes?: boolean;
+};
+export type RepoRefreshTarget = {
+  path: string;
+  category: string;
 };
 type WailsRepoActionRequest = {
 	fileId?: string;
@@ -41,6 +48,7 @@ type WailsTerminalSessionRequest = {
 };
 
 type WailsBindings = {
+  GetWorkspaceBootstrap: WailsBootstrapBinding;
   GetSnapshot: WailsSnapshotBinding;
   RefreshRepo: (repoId: string, request: SnapshotRequest) => Promise<RepoSnapshotUpdate>;
   MutateRepo: (repoId: string, action: string, request: SnapshotRequest, body: WailsRepoActionRequest) => Promise<RepoSnapshotUpdate>;
@@ -75,7 +83,11 @@ const WAILS_REPO_ACTIONS = new Set<RepoMutationAction>([
   'discard-all',
 ]);
 
-function buildSnapshotRequest(settings?: AppSettings, options?: SnapshotFetchOptions): SnapshotRequest {
+function buildSnapshotRequest(
+  settings?: AppSettings,
+  options?: SnapshotFetchOptions,
+  target?: RepoRefreshTarget,
+): SnapshotRequest {
   return {
     scanRoots: settings?.scanRoots ?? [],
     concurrency: settings?.gitBehavior.concurrency ?? 5,
@@ -87,6 +99,8 @@ function buildSnapshotRequest(settings?: AppSettings, options?: SnapshotFetchOpt
       host: '127.0.0.1',
       port: 7897,
     },
+    repoPath: target?.path,
+    repoCategory: target?.category,
   };
 }
 
@@ -99,7 +113,8 @@ function getWailsBindings(): WailsBindings {
     throw new Error('Wails 绑定不可用');
   }
   if (
-    typeof binding.GetSnapshot !== 'function'
+    typeof binding.GetWorkspaceBootstrap !== 'function'
+    || typeof binding.GetSnapshot !== 'function'
     || typeof binding.RefreshRepo !== 'function'
     || typeof binding.MutateRepo !== 'function'
     || typeof binding.RunBatch !== 'function'
@@ -122,12 +137,21 @@ function getWailsBindings(): WailsBindings {
   return binding as WailsBindings;
 }
 
+export async function fetchWorkspaceBootstrap(settings?: AppSettings) {
+  return getWailsBindings().GetWorkspaceBootstrap(buildSnapshotRequest(settings));
+}
+
 export async function fetchSnapshot(settings?: AppSettings, options?: SnapshotFetchOptions) {
   return getWailsBindings().GetSnapshot(buildSnapshotRequest(settings, options));
 }
 
-export async function refreshRepo(repoId: string, settings?: AppSettings, options?: SnapshotFetchOptions) {
-  return getWailsBindings().RefreshRepo(repoId, buildSnapshotRequest(settings, options));
+export async function refreshRepo(
+  repoId: string,
+  settings?: AppSettings,
+  options?: SnapshotFetchOptions,
+  target?: RepoRefreshTarget,
+) {
+  return getWailsBindings().RefreshRepo(repoId, buildSnapshotRequest(settings, options, target));
 }
 
 export async function mutateRepo(repoId: string, action: RepoMutationAction, settings?: AppSettings, body?: Record<string, unknown>) {

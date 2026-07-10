@@ -5,6 +5,7 @@ import {
   fetchCommitDetail,
   fetchRepoHistory,
   fetchSnapshot,
+  fetchWorkspaceBootstrap,
   generateCommitMessage,
   invokeLocalRepoAction,
   mutateRepo,
@@ -20,6 +21,9 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
   const originalWindow = globalThis.window;
 
   const bindings = {
+    GetWorkspaceBootstrap: async () => {
+      throw new Error('unused');
+    },
     GetSnapshot: async (request: { refreshRemotes: boolean; proxy: { enabled: boolean; port: number } }) => {
       calls.push({
         refreshRemotes: request.refreshRemotes,
@@ -105,11 +109,96 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
   ]);
 });
 
+test('fetchWorkspaceBootstrap uses dedicated binding', async () => {
+  const calls: boolean[] = [];
+  const originalWindow = globalThis.window;
+
+  const bindings = {
+    GetWorkspaceBootstrap: async (request: { refreshRemotes: boolean }) => {
+      calls.push(request.refreshRemotes);
+      return {
+        repos: [],
+        selectedRepoId: '',
+        scannedAt: '',
+        categories: [],
+      };
+    },
+    GetSnapshot: async () => {
+      throw new Error('unused');
+    },
+    MutateRepo: async () => {
+      throw new Error('unused');
+    },
+    RefreshRepo: async () => {
+      throw new Error('unused');
+    },
+    RunBatch: async () => {
+      throw new Error('unused');
+    },
+    GetRepoLog: async () => {
+      throw new Error('unused');
+    },
+    GetRepoHistory: async () => {
+      throw new Error('unused');
+    },
+    GetCommitDetail: async () => {
+      throw new Error('unused');
+    },
+    RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    EnsureTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    RestartTerminalSession: async () => {
+      throw new Error('unused');
+    },
+    WriteTerminalInput: async () => {
+      throw new Error('unused');
+    },
+    ResizeTerminal: async () => {
+      throw new Error('unused');
+    },
+    GenerateCommitMessage: async () => {
+      throw new Error('unused');
+    },
+    OpenFolder: async () => {
+      throw new Error('unused');
+    },
+    OpenTerminal: async () => {
+      throw new Error('unused');
+    },
+    OpenConflicts: async () => {
+      throw new Error('unused');
+    },
+    PickFolder: async () => '',
+  };
+
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { go: { main: { App: bindings } } },
+  });
+
+  try {
+    await fetchWorkspaceBootstrap();
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+
+  assert.deepEqual(calls, [false]);
+});
+
 test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
   const calls: string[] = [];
   const originalWindow = globalThis.window;
 
   const bindings = {
+    GetWorkspaceBootstrap: async () => {
+      throw new Error('unused');
+    },
     GetSnapshot: async () => {
       calls.push('GetSnapshot');
       throw new Error('should not fetch snapshot');
@@ -190,6 +279,9 @@ test('generateCommitMessage uses dedicated binding', async () => {
   const originalWindow = globalThis.window;
 
   const bindings = {
+    GetWorkspaceBootstrap: async () => {
+      throw new Error('unused');
+    },
     GetSnapshot: async () => {
       calls.push('GetSnapshot');
       throw new Error('should not fetch snapshot');
@@ -295,6 +387,9 @@ test('mutateRepo accepts discard-all action', async () => {
   const originalWindow = globalThis.window;
 
   const bindings = {
+    GetWorkspaceBootstrap: async () => {
+      throw new Error('unused');
+    },
     GetSnapshot: async () => {
       throw new Error('unused');
     },
@@ -393,6 +488,9 @@ test('runRepoCommand uses dedicated binding', async () => {
   const originalWindow = globalThis.window;
 
   const bindings = {
+    GetWorkspaceBootstrap: async () => {
+      throw new Error('unused');
+    },
     GetSnapshot: async () => {
       throw new Error('unused');
     },
@@ -476,6 +574,9 @@ test('terminal bindings use dedicated Wails bridge', async () => {
   const originalWindow = globalThis.window;
 
   const bindings = {
+    GetWorkspaceBootstrap: async () => {
+      throw new Error('unused');
+    },
     GetSnapshot: async () => {
       throw new Error('unused');
     },
@@ -569,15 +670,25 @@ test('terminal bindings use dedicated Wails bridge', async () => {
 });
 
 test('refreshRepo uses dedicated binding', async () => {
-  const calls: string[] = [];
+  const calls: Array<{ repoId: string; repoPath?: string; repoCategory?: string }> = [];
   const originalWindow = globalThis.window;
 
   const bindings = {
+    GetWorkspaceBootstrap: async () => {
+      throw new Error('unused');
+    },
     GetSnapshot: async () => {
       throw new Error('unused');
     },
-    RefreshRepo: async (repoId: string) => {
-      calls.push(`RefreshRepo:${repoId}`);
+    RefreshRepo: async (
+      repoId: string,
+      request: { repoPath?: string; repoCategory?: string },
+    ) => {
+      calls.push({
+        repoId,
+        repoPath: request.repoPath,
+        repoCategory: request.repoCategory,
+      });
       return {
         repo: {
           id: repoId,
@@ -655,7 +766,12 @@ test('refreshRepo uses dedicated binding', async () => {
   });
 
   try {
-    const result = await refreshRepo('repo-1');
+    const result = await refreshRepo(
+      'repo-1',
+      undefined,
+      undefined,
+      { path: '/repo/a', category: '测试' },
+    );
     assert.equal(result.repo.id, 'repo-1');
     assert.equal(result.scannedAt, 'now');
   } finally {
@@ -665,7 +781,13 @@ test('refreshRepo uses dedicated binding', async () => {
     });
   }
 
-  assert.deepEqual(calls, ['RefreshRepo:repo-1']);
+  assert.deepEqual(calls, [
+    {
+      repoId: 'repo-1',
+      repoPath: '/repo/a',
+      repoCategory: '测试',
+    },
+  ]);
 });
 
 test('history bindings use dedicated Wails bridge', async () => {
@@ -673,6 +795,9 @@ test('history bindings use dedicated Wails bridge', async () => {
   const originalWindow = globalThis.window;
 
   const bindings = {
+    GetWorkspaceBootstrap: async () => {
+      throw new Error('unused');
+    },
     GetSnapshot: async () => {
       throw new Error('unused');
     },

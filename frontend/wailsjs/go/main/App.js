@@ -26,6 +26,10 @@ export function GetSnapshot(arg1) {
   return window['go']['main']['App']['GetSnapshot'](arg1);
 }
 
+export function GetWorkspaceBootstrap(arg1) {
+  return window['go']['main']['App']['GetWorkspaceBootstrap'](arg1);
+}
+
 export function MutateRepo(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['MutateRepo'](arg1, arg2, arg3, arg4);
 }

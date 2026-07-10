@@ -24,6 +24,15 @@ func (s *Service) resolveRepo(repoID string, request Request) (RepoDetail, error
 	return resolveRepoFromEntries(repoID, s.discoverRepos(s.buildRoots(request)), time.Now(), buildRepoSnapshot)
 }
 
+func (s *Service) resolveRepoEntry(repoID string, request Request) (repoEntry, error) {
+	if hinted, ok, err := resolveRepoEntryHint(repoID, request.RepoPath, request.RepoCategory); err != nil {
+		return repoEntry{}, err
+	} else if ok {
+		return hinted, nil
+	}
+	return resolveRepoEntryFromEntries(repoID, s.discoverRepos(s.buildRoots(request)))
+}
+
 func resolveRepoByPath(
 	repoID string,
 	repoPath string,
@@ -59,9 +68,29 @@ func resolveRepoFromEntries(
 	return RepoDetail{}, fmt.Errorf("未找到仓库：%s", repoID)
 }
 
+func resolveRepoEntryFromEntries(repoID string, entries []repoEntry) (repoEntry, error) {
+	for _, entry := range entries {
+		if repoIDForPath(entry.repoPath) == repoID {
+			return entry, nil
+		}
+	}
+	return repoEntry{}, fmt.Errorf("未找到仓库：%s", repoID)
+}
+
 func repoIDForPath(repoPath string) string {
 	normalized := normalizePath(repoPath)
 	return createRepoID(filepath.Base(normalized), normalized)
+}
+
+func resolveRepoEntryHint(repoID, repoPath, category string) (repoEntry, bool, error) {
+	if strings.TrimSpace(category) == "" {
+		return repoEntry{}, false, nil
+	}
+	hintedPath, ok, err := validateRepoPathHint(repoID, repoPath)
+	if err != nil || !ok {
+		return repoEntry{}, false, err
+	}
+	return repoEntry{repoPath: hintedPath, category: strings.TrimSpace(category)}, true, nil
 }
 
 func resolveRepoPathHint(repoID, action, repoPath string) (RepoDetail, bool) {

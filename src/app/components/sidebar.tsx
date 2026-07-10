@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   FolderPlus,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Download,
@@ -14,10 +13,9 @@ import {
 import { useRepoTerminalStatuses } from '../repo-terminal-status';
 import type { RepoTerminalState } from '../repo-terminal-status';
 import { C } from '../theme';
-import { shouldShowCleanIndicator } from '../repo-status';
 import { formatAutoScanLabel } from '../settings';
 import type { AppSettings, Repo } from '../types';
-import { StatusPill } from './common';
+import { RepoListStatus } from './repo-list-status';
 import { RepoTerminalIndicator } from './repo-terminal-indicator';
 
 interface SidebarProps {
@@ -91,16 +89,7 @@ function RepoItem({
             {repo.name}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 3, flexShrink: 0, alignItems: 'center' }}>
-          {repo.status === 'error' && <StatusPill color={C.conflict}>ERR</StatusPill>}
-          {repo.conflicts > 0 && <StatusPill color={C.conflict}>⚠</StatusPill>}
-          {repo.modified > 0 && <StatusPill color={C.modified}>M {repo.modified}</StatusPill>}
-          {repo.ahead > 0 && <StatusPill color={C.needPush}>↑{repo.ahead}</StatusPill>}
-          {repo.behind > 0 && <StatusPill color={C.needPull}>↓{repo.behind}</StatusPill>}
-          {shouldShowCleanIndicator(repo) && (
-            <CheckCircle2 size={11} color={C.clean} />
-          )}
-        </div>
+        <RepoListStatus repo={repo} />
       </div>
     </div>
   );
@@ -201,6 +190,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [search, setSearch] = useState('');
   const terminalStates = useRepoTerminalStatuses();
+  const hasPendingRepoScan = repos.some(repo => repo.status === 'checking');
 
   const filteredRepos = search
     ? repos.filter(repo =>
@@ -322,7 +312,7 @@ export function Sidebar({
 
       <div style={{ borderTop: `1px solid ${C.border}`, padding: '10px 12px', flexShrink: 0 }}>
         <div style={{ color: C.textWeak, fontSize: 10, marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
-          上次扫描 {scannedAt.split(' ').at(-1) ?? scannedAt}
+          {hasPendingRepoScan ? '启动扫描中…' : `上次扫描 ${scannedAt.split(' ').at(-1) ?? scannedAt}`}
         </div>
         {recentError && (
           <div style={{ color: C.conflict, fontSize: 10, marginBottom: 8 }}>

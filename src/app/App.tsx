@@ -12,6 +12,7 @@ import { viewRepoLog } from './repo-log';
 import type { AppSettings, AppSnapshot, PullResult, RepoLog, RepoMutationAction, RepoSnapshotUpdate, SettingsTab } from './types';
 import { mergeRepoSnapshotUpdate } from './repo-snapshot-merge';
 import { useSnapshotRefresh } from './use-snapshot-refresh';
+import { useProgressiveStartupScan } from './use-progressive-startup-scan';
 
 function AppFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -57,7 +58,13 @@ export default function App() {
     setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
   };
 
-  const { refreshSnapshot, runQueuedTask, runSnapshotTask } = useSnapshotRefresh(settings, applySnapshot, setRefreshError);
+  const { retryStartupScan } = useProgressiveStartupScan(settings, selectedRepoId, applySnapshot, setRefreshError);
+  const { refreshSnapshot, runQueuedTask, runSnapshotTask } = useSnapshotRefresh(
+    settings,
+    applySnapshot,
+    setRefreshError,
+    { skipInitialRefresh: true },
+  );
 
   const applyRepoUpdate = (update: RepoSnapshotUpdate) => {
     setSnapshot(current => (current ? mergeRepoSnapshotUpdate(current, update) : current));
@@ -195,7 +202,12 @@ export default function App() {
 
   const handleWorkspaceRefresh = (repoId: string) => (
     runQueuedTask(
-      () => refreshRepo(repoId, settings, { refreshRemotes: false }),
+      () => refreshRepo(
+        repoId,
+        settings,
+        { refreshRemotes: false },
+        readRepoRefreshTarget(snapshot, repoId),
+      ),
       applyRepoUpdate,
     )
   );
@@ -232,7 +244,7 @@ export default function App() {
           <div>{refreshError ? `扫描失败：${refreshError}` : '正在扫描仓库...'}</div>
           {refreshError && (
             <button
-              onClick={() => void refreshSnapshot().catch(() => {})}
+              onClick={() => retryStartupScan()}
               style={{ background: C.panel2, color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12 }}
             >
               重试扫描
@@ -307,4 +319,18 @@ export default function App() {
       <LogViewerModal log={repoLog} onClose={() => setRepoLog(null)} />
     </AppFrame>
   );
+}
+
+function readRepoRefreshTarget(snapshot: AppSnapshot | null, repoId: string) {
+  if (!snapshot) {
+    return undefined;
+  }
+  const repo = snapshot.repoDetails[repoId] ?? snapshot.repos.find(item => item.id === repoId);
+  if (!repo) {
+    return undefined;
+  }
+  return {
+    path: repo.path,
+    category: repo.category,
+  };
 }

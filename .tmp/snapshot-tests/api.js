@@ -8,7 +8,7 @@ const WAILS_REPO_ACTIONS = new Set([
     'push',
     'discard-all',
 ]);
-function buildSnapshotRequest(settings, options) {
+function buildSnapshotRequest(settings, options, target) {
     return {
         scanRoots: settings?.scanRoots ?? [],
         concurrency: settings?.gitBehavior.concurrency ?? 5,
@@ -20,6 +20,8 @@ function buildSnapshotRequest(settings, options) {
             host: '127.0.0.1',
             port: 7897,
         },
+        repoPath: target?.path,
+        repoCategory: target?.category,
     };
 }
 function getWailsBindings() {
@@ -30,7 +32,8 @@ function getWailsBindings() {
     if (!binding) {
         throw new Error('Wails 绑定不可用');
     }
-    if (typeof binding.GetSnapshot !== 'function'
+    if (typeof binding.GetWorkspaceBootstrap !== 'function'
+        || typeof binding.GetSnapshot !== 'function'
         || typeof binding.RefreshRepo !== 'function'
         || typeof binding.MutateRepo !== 'function'
         || typeof binding.RunBatch !== 'function'
@@ -51,11 +54,14 @@ function getWailsBindings() {
     }
     return binding;
 }
+export async function fetchWorkspaceBootstrap(settings) {
+    return getWailsBindings().GetWorkspaceBootstrap(buildSnapshotRequest(settings));
+}
 export async function fetchSnapshot(settings, options) {
     return getWailsBindings().GetSnapshot(buildSnapshotRequest(settings, options));
 }
-export async function refreshRepo(repoId, settings, options) {
-    return getWailsBindings().RefreshRepo(repoId, buildSnapshotRequest(settings, options));
+export async function refreshRepo(repoId, settings, options, target) {
+    return getWailsBindings().RefreshRepo(repoId, buildSnapshotRequest(settings, options, target));
 }
 export async function mutateRepo(repoId, action, settings, body) {
     const binding = getWailsBindings();
