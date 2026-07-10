@@ -98,3 +98,26 @@ func TestRefreshRemoteWithRetryReturnsLastFailure(t *testing.T) {
 		t.Fatalf("expected one delayed retry after 5s, got %#v", sleeps)
 	}
 }
+
+func TestBuildUntrackedChangesKeepsDirectoryWithoutExpandingFiles(t *testing.T) {
+	repoPath := t.TempDir()
+	directoryPath := filepath.Join(repoPath, "generated")
+	if err := os.MkdirAll(directoryPath, 0o755); err != nil {
+		t.Fatalf("create directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(directoryPath, "nested.txt"), []byte("one\ntwo\n"), 0o644); err != nil {
+		t.Fatalf("write nested file: %v", err)
+	}
+
+	changes := buildUntrackedChanges(repoPath, []string{"?? generated/"}, nil)
+	if len(changes) != 1 {
+		t.Fatalf("expected one directory change, got %#v", changes)
+	}
+	change := changes[0]
+	if change.Path != "generated/" {
+		t.Fatalf("expected directory path, got %q", change.Path)
+	}
+	if change.Additions != 0 || change.Size != "—" {
+		t.Fatalf("expected no nested file statistics, got %#v", change)
+	}
+}

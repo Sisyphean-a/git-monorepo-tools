@@ -49,6 +49,7 @@ export default function App() {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [drawerOperation, setDrawerOperation] = useState<'pullAll' | 'pushAll'>('pullAll');
   const [drawerResults, setDrawerResults] = useState<PullResult[]>([]);
+  const [drawerScannedAt, setDrawerScannedAt] = useState('');
   const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
   const [sidebarBatchAction, setSidebarBatchAction] = useState<'pull' | 'push' | null>(null);
   const [sidebarRefreshing, setSidebarRefreshing] = useState(false);
@@ -69,7 +70,7 @@ export default function App() {
     setRefreshError,
     { skipInitialRefresh: true },
   );
-  const { refreshSnapshot, runQueuedTask, runSnapshotTask } = snapshotRefresh;
+  const { refreshSnapshot, runQueuedTask } = snapshotRefresh;
   const { retryStartupScan } = useProgressiveStartupScan(
     settings,
     selectedRepoId,
@@ -93,12 +94,13 @@ export default function App() {
   const handleBatch = async (operation: 'pull' | 'push') => {
     setSidebarBatchAction(operation);
     try {
-      const result = await runSnapshotTask(
+      const result = await runQueuedTask(
         () => runBatch(operation, settings),
-        response => response.snapshot,
+        response => response.updates?.forEach(applyRepoUpdate),
       );
       setDrawerOperation(result.operation ?? (operation === 'pull' ? 'pullAll' : 'pushAll'));
       setDrawerResults(result.results ?? []);
+      setDrawerScannedAt(result.scannedAt);
       setShowPullDrawer(true);
     } catch {
     } finally {
@@ -307,7 +309,7 @@ export default function App() {
         open={showPullDrawer}
         operation={drawerOperation}
         results={drawerResults}
-        scannedAt={snapshot.scannedAt}
+        scannedAt={drawerScannedAt || snapshot.scannedAt}
         onClose={() => setShowPullDrawer(false)}
         onOpenRepo={path => void handleOpenRepoFromDrawer(path)}
         onViewLog={handleViewRepoLogFromDrawer}

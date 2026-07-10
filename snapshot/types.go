@@ -175,7 +175,8 @@ type RepoLog struct {
 }
 
 type BatchResult struct {
-	Snapshot  AppSnapshot  `json:"snapshot"`
-	Results   []PullResult `json:"results,omitempty"`
-	Operation string       `json:"operation,omitempty"`
+	Updates   []RepoSnapshotUpdate `json:"updates,omitempty"`
+	Results   []PullResult         `json:"results,omitempty"`
+	Operation string               `json:"operation,omitempty"`
+	ScannedAt string               `json:"scannedAt"`
 }

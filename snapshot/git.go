@@ -131,20 +131,6 @@ func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) 
 	return changes, firstGitError(stagedErr, unstagedErr)
 }
 
-func (executor gitExecutor) buildHistory(repoPath string) ([]CommitSummary, int, bool, error) {
-	history, hasMore, err := executor.loadHistoryPage(repoPath, 0, defaultHistoryPageSize)
-	if isNoCommitHistoryError(err) {
-		return nil, 0, false, nil
-	}
-	if err != nil {
-		return nil, 0, false, err
-	}
-	if hasMore {
-		return history, 0, true, nil
-	}
-	return history, len(history), false, nil
-}
-
 func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) ([]CommitSummary, bool, error) {
 	if offset < 0 {
 		offset = 0
@@ -164,7 +150,7 @@ func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) 
 		return nil, false, err
 	}
 	if strings.TrimSpace(output) == "" {
-		return nil, false, nil
+		return []CommitSummary{}, false, nil
 	}
 	lines := filterNonEmpty(strings.Split(output, "\n"))
 	history := make([]CommitSummary, 0, len(lines))
@@ -390,49 +376,32 @@ func buildUntrackedChanges(repoPath string, entries []string, existing []FileCha
 		if !strings.HasPrefix(entry, "?? ") {
 			continue
 		}
-		for _, filePath := range expandUntracked(repoPath, strings.TrimSpace(strings.TrimPrefix(entry, "?? "))) {
-			id := filePath + "::unstaged"
-			if seen[id] {
-				continue
-			}
-			seen[id] = true
-			absolute := filepath.Join(repoPath, filepath.FromSlash(filePath))
-			changes = append(changes, FileChange{
-				ID: id, Status: "A", Path: filePath, Additions: countFileLines(absolute),
-				Deletions: 0, Size: formatSize(resolveSize(absolute)), Staged: false,
-			})
+		filePath, directory := untrackedPath(repoPath, strings.TrimSpace(strings.TrimPrefix(entry, "?? ")))
+		id := filePath + "::unstaged"
+		if seen[id] {
+			continue
 		}
+		seen[id] = true
+		absolute := filepath.Join(repoPath, filepath.FromSlash(filePath))
+		additions := 0
+		if !directory {
+			additions = countFileLines(absolute)
+		}
+		changes = append(changes, FileChange{
+			ID: id, Status: "A", Path: filePath, Additions: additions,
+			Deletions: 0, Size: formatSize(resolveSize(absolute)), Staged: false,
+		})
 	}
 	return changes
 }
 
-func expandUntracked(repoPath, rawPath string) []string {
+func untrackedPath(repoPath, rawPath string) (string, bool) {
 	absolute := filepath.Join(repoPath, filepath.FromSlash(rawPath))
 	info, err := os.Stat(absolute)
 	if err != nil || !info.IsDir() {
-		return []string{normalizePath(rawPath)}
+		return normalizePath(rawPath), false
 	}
-	return listFiles(repoPath, absolute)
-}
-
-func listFiles(repoPath, rootPath string) []string {
-	files := []string{}
-	entries, err := os.ReadDir(rootPath)
-	if err != nil {
-		return files
-	}
-	for _, entry := range entries {
-		absolute := filepath.Join(rootPath, entry.Name())
-		if entry.IsDir() {
-			files = append(files, listFiles(repoPath, absolute)...)
-			continue
-		}
-		relative, relErr := filepath.Rel(repoPath, absolute)
-		if relErr == nil {
-			files = append(files, normalizePath(relative))
-		}
-	}
-	return files
+	return strings.TrimSuffix(normalizePath(rawPath), "/") + "/", true
 }
 
 func extractBranch(line string) string {

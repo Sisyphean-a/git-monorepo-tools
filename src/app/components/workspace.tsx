@@ -242,6 +242,7 @@ export function Workspace({
               <RepoHistoryTab
                 repo={repo}
                 settings={settings}
+                active={mainTab === 'history'}
                 onOpenTerminal={handleOpenTerminal}
                 onSendToTerminal={handleSendToTerminal}
               />
