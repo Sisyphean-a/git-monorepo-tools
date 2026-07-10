@@ -1,0 +1,20 @@
+{
+  "base_ref": "master",
+  "branch": "refactor/git-performance-20260710",
+  "context_check": ".codestable/refactors/2026-07-10-git-performance/git-performance-learning-context-check.json",
+  "context_check_abs": "E:/github/git-monorepo-tools-git-performance/.codestable/refactors/2026-07-10-git-performance/git-performance-learning-context-check.json",
+  "covered_diff": "master...8c5a2e4a9d610d58d271afb08a22d800be45d5ef",
+  "covered_head": "8c5a2e4a9d610d58d271afb08a22d800be45d5ef",
+  "created_at": "2026-07-10T13:13:51Z",
+  "last_seen_at": "2026-07-10T13:13:51Z",
+  "learning_report": ".codestable/refactors/2026-07-10-git-performance/git-performance-learning-report.md",
+  "learning_report_abs": "E:/github/git-monorepo-tools-git-performance/.codestable/refactors/2026-07-10-git-performance/git-performance-learning-report.md",
+  "merge_readiness": ".codestable/refactors/2026-07-10-git-performance/git-performance-merge-readiness.json",
+  "merge_readiness_abs": "E:/github/git-monorepo-tools-git-performance/.codestable/refactors/2026-07-10-git-performance/git-performance-merge-readiness.json",
+  "next_action": "merge refactor/git-performance-20260710 into master after owner approval",
+  "schema_version": 1,
+  "snoozed_until": null,
+  "status": "ready-to-merge",
+  "unit": ".codestable/refactors/2026-07-10-git-performance",
+  "worktree": "E:/github/git-monorepo-tools-git-performance"
+}
