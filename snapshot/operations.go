@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 func (s *Service) MutateRepo(repoID, action string, request Request, body RepoActionRequest) (RepoSnapshotUpdate, error) {
@@ -23,19 +24,22 @@ func (s *Service) RefreshRepo(repoID string, request Request) (RepoSnapshotUpdat
 }
 
 func (s *Service) RunBatch(operation string, request Request) (BatchResult, error) {
-	snapshot, err := s.BuildAppSnapshot(request)
+	states, err := s.buildBatchStates(request)
 	if err != nil {
 		return BatchResult{}, err
 	}
-	results, err := newGitExecutor(request).runBatch(snapshot, operation, request)
+	executor := newGitExecutor(request)
+	results, err := executor.runBatch(states, operation, request)
 	if err != nil {
 		return BatchResult{}, err
 	}
-	updated, err := s.buildSnapshot(request, results)
-	if err != nil {
-		return BatchResult{}, err
-	}
-	return BatchResult{Snapshot: updated, Results: results, Operation: batchOperationName(operation)}, nil
+	updates := executor.buildBatchUpdates(states, results)
+	return BatchResult{
+		Updates:   updates,
+		Results:   results,
+		Operation: batchOperationName(operation),
+		ScannedAt: formatDateTime(time.Now()),
+	}, nil
 }
 
 func (s *Service) GetRepoLog(repoID string, request Request) (RepoLog, error) {
@@ -43,7 +47,9 @@ func (s *Service) GetRepoLog(repoID string, request Request) (RepoLog, error) {
 	if err != nil {
 		return RepoLog{}, err
 	}
-	content, err := newGitExecutor(request).runGit(repo.Path, []string{"log", "--decorate", "--stat", "-10"})
+	content, err := newGitExecutor(request).runGit(repo.Path, []string{
+		"log", "--decorate", "-10", "--format=%h%x09%an%x09%ar%x09%s",
+	})
 	if err != nil {
 		return RepoLog{}, err
 	}
@@ -68,7 +74,7 @@ func (s *Service) GetRepoHistory(repoID string, request Request, offset, limit i
 			Limit:    normalizeHistoryLimit(limit),
 			Total:    0,
 			HasMore:  false,
-			Commits:  nil,
+			Commits:  []CommitSummary{},
 		}, nil
 	}
 	if err != nil {
@@ -149,23 +155,16 @@ func (executor gitExecutor) mutateRepo(repo RepoDetail, action string, request R
 	}
 }
 
-func (executor gitExecutor) runBatch(snapshot AppSnapshot, operation string, request Request) ([]PullResult, error) {
-	results := make([]PullResult, 0, len(snapshot.Repos))
-	for _, repo := range snapshot.Repos {
-		detail, ok := snapshot.RepoDetails[repo.ID]
-		if !ok {
-			continue
-		}
-		switch operation {
-		case "pull":
-			results = append(results, executor.executePullAll(detail, request.PullStrategy))
-		case "push":
-			results = append(results, executor.executePushAll(detail, request.PushStrategy))
-		default:
-			return nil, fmt.Errorf("未找到批量操作：%s", operation)
-		}
+func (executor gitExecutor) runBatch(states []batchRepoState, operation string, request Request) ([]PullResult, error) {
+	if operation != "pull" && operation != "push" {
+		return nil, fmt.Errorf("未找到批量操作：%s", operation)
 	}
-	return results, nil
+	return runBatchConcurrent(states, request.Concurrency, func(state batchRepoState) PullResult {
+		if operation == "pull" {
+			return executor.executePullAll(state.detail, request.PullStrategy)
+		}
+		return executor.executePushAll(state.detail, request.PushStrategy)
+	}), nil
 }
 
 func (executor gitExecutor) executePullAll(repo RepoDetail, strategy string) PullResult {
@@ -181,7 +180,7 @@ func (executor gitExecutor) executePullAll(repo RepoDetail, strategy string) Pul
 	if repo.Conflicts > 0 {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: "检测到冲突，需先人工处理"}
 	}
-	if len(repo.Files) > 0 {
+	if repo.Modified > 0 {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：存在本地未提交改动"}
 	}
 	if repo.Behind == 0 {

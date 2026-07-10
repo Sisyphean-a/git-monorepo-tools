@@ -13,12 +13,10 @@ interface SnapshotRequest {
 }
 
 interface SnapshotResponse {
-  snapshot: AppSnapshot;
+  updates?: RepoSnapshotUpdate[];
   results?: PullResult[];
   operation?: 'pullAll' | 'pushAll';
-  log?: RepoLog;
-  path?: string | null;
-  error?: string;
+  scannedAt: string;
 }
 
 type WailsSnapshotBinding = (request: SnapshotRequest) => Promise<AppSnapshot>;

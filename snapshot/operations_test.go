@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -26,6 +28,10 @@ func TestGetRepoHistoryMarksUnknownTotalWhenMoreCommitsRemain(t *testing.T) {
 	if len(snapshot.Repos) != 1 {
 		t.Fatalf("expected one repo, got %d", len(snapshot.Repos))
 	}
+	history := snapshot.RepoDetails[snapshot.Repos[0].ID].History
+	if history == nil || len(history) != 0 {
+		t.Fatal("expected app snapshot to defer commit history")
+	}
 
 	page, err := service.GetRepoHistory(snapshot.Repos[0].ID, request, 0, 2)
 	if err != nil {
@@ -39,6 +45,96 @@ func TestGetRepoHistoryMarksUnknownTotalWhenMoreCommitsRemain(t *testing.T) {
 	}
 	if len(page.Commits) != 2 {
 		t.Fatalf("expected 2 commits, got %d", len(page.Commits))
+	}
+}
+
+func TestGetRepoHistoryReturnsEmptySliceForRepositoryWithoutCommits(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	service := NewService(root)
+	request := Request{ScanRoots: []ScanRoot{{Path: root, Category: "测试"}}}
+	snapshot, err := service.BuildAppSnapshot(request)
+	if err != nil {
+		t.Fatalf("build snapshot: %v", err)
+	}
+
+	page, err := service.GetRepoHistory(snapshot.Repos[0].ID, request, 0, 2)
+	if err != nil {
+		t.Fatalf("get repo history: %v", err)
+	}
+	if page.Commits == nil || len(page.Commits) != 0 {
+		t.Fatalf("expected empty commits slice, got %#v", page.Commits)
+	}
+}
+
+func TestGetRepoLogReturnsSummariesWithoutFileStats(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "large-change.txt", strings.Repeat("x\n", 32), "feat: concise log")
+
+	service := NewService(root)
+	request := Request{ScanRoots: []ScanRoot{{Path: root, Category: "测试"}}}
+	snapshot, err := service.BuildAppSnapshot(request)
+	if err != nil {
+		t.Fatalf("build snapshot: %v", err)
+	}
+	log, err := service.GetRepoLog(snapshot.Repos[0].ID, request)
+	if err != nil {
+		t.Fatalf("get repo log: %v", err)
+	}
+	if !strings.Contains(log.Content, "feat: concise log") {
+		t.Fatalf("expected commit summary, got %q", log.Content)
+	}
+	if strings.Contains(log.Content, "large-change.txt") {
+		t.Fatalf("expected no file statistics, got %q", log.Content)
+	}
+}
+
+func TestRunBatchConcurrentHonorsConfiguredWorkerLimit(t *testing.T) {
+	states := make([]batchRepoState, 4)
+	started := make(chan struct{}, len(states))
+	release := make(chan struct{})
+	done := make(chan []PullResult, 1)
+	var active atomic.Int32
+	var peak atomic.Int32
+
+	go func() {
+		done <- runBatchConcurrent(states, 2, func(_ batchRepoState) PullResult {
+			current := active.Add(1)
+			for current > peak.Load() && !peak.CompareAndSwap(peak.Load(), current) {
+			}
+			started <- struct{}{}
+			<-release
+			active.Add(-1)
+			return PullResult{}
+		})
+	}()
+
+	<-started
+	<-started
+	if peak.Load() != 2 {
+		t.Fatalf("expected two concurrent batch operations, got %d", peak.Load())
+	}
+	close(release)
+	if results := <-done; len(results) != len(states) {
+		t.Fatalf("expected %d results, got %d", len(states), len(results))
+	}
+}
+
+func TestSortBatchStatesMatchesSnapshotOrder(t *testing.T) {
+	service := NewService("E:/workspace/pinned")
+	states := []batchRepoState{
+		{detail: RepoDetail{Repo: Repo{Name: "zeta", Path: "E:/workspace/zeta", Modified: 1}}},
+		{detail: RepoDetail{Repo: Repo{Name: "pinned", Path: "E:/workspace/pinned"}}},
+		{detail: RepoDetail{Repo: Repo{Name: "alpha", Path: "E:/workspace/alpha", Modified: 1}}},
+	}
+
+	sorted := service.sortBatchStates(states)
+	paths := []string{sorted[0].detail.Path, sorted[1].detail.Path, sorted[2].detail.Path}
+	if !slices.Equal(paths, []string{"E:/workspace/pinned", "E:/workspace/alpha", "E:/workspace/zeta"}) {
+		t.Fatalf("unexpected batch order: %v", paths)
 	}
 }
 

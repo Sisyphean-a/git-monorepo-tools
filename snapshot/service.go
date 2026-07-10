@@ -151,21 +151,33 @@ func buildBootstrapRepo(entry repoEntry, scanTime time.Time) repoSnapshot {
 func (s *Service) sortSnapshots(items []repoSnapshot) []repoSnapshot {
 	sorted := slices.Clone(items)
 	slices.SortFunc(sorted, func(left, right repoSnapshot) int {
-		if left.repo.Path == s.projectRoot {
-			return -1
-		}
-		if right.repo.Path == s.projectRoot {
-			return 1
-		}
-		if left.repo.Modified != right.repo.Modified {
-			return right.repo.Modified - left.repo.Modified
-		}
-		if nameDiff := strings.Compare(left.repo.Name, right.repo.Name); nameDiff != 0 {
-			return nameDiff
-		}
-		return strings.Compare(left.repo.Path, right.repo.Path)
+		return s.compareRepoOrder(left.repo, right.repo)
 	})
 	return sorted
+}
+
+func (s *Service) sortBatchStates(items []batchRepoState) []batchRepoState {
+	sorted := slices.Clone(items)
+	slices.SortFunc(sorted, func(left, right batchRepoState) int {
+		return s.compareRepoOrder(left.detail.Repo, right.detail.Repo)
+	})
+	return sorted
+}
+
+func (s *Service) compareRepoOrder(left, right Repo) int {
+	if left.Path == s.projectRoot {
+		return -1
+	}
+	if right.Path == s.projectRoot {
+		return 1
+	}
+	if left.Modified != right.Modified {
+		return right.Modified - left.Modified
+	}
+	if nameDiff := strings.Compare(left.Name, right.Name); nameDiff != 0 {
+		return nameDiff
+	}
+	return strings.Compare(left.Path, right.Path)
 }
 
 func (s *Service) selectedRepoID(items []repoSnapshot) string {
@@ -220,9 +232,8 @@ func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, sca
 	repoName := filepath.Base(repoPath)
 	parsed, statusErr := executor.loadRepoStatus(repoPath, refreshRemotes)
 	files, filesErr := executor.buildFileChanges(repoPath, parsed.entries)
-	history, historyTotal, historyHasMore, historyErr := executor.buildHistory(repoPath)
 	scanError := ""
-	if err := firstGitError(statusErr, filesErr, historyErr); err != nil {
+	if err := firstGitError(statusErr, filesErr); err != nil {
 		scanError = err.Error()
 	}
 	modified := uniquePathCount(files)
@@ -244,14 +255,12 @@ func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, sca
 	}
 
 	detail := RepoDetail{
-		Repo:           repo,
-		Files:          files,
-		StagedCount:    countStaged(files, true),
-		UnstagedCount:  countStaged(files, false),
-		ScannedAt:      formatDateTime(scanTime),
-		History:        history,
-		HistoryTotal:   historyTotal,
-		HistoryHasMore: historyHasMore,
+		Repo:          repo,
+		Files:         files,
+		StagedCount:   countStaged(files, true),
+		UnstagedCount: countStaged(files, false),
+		ScannedAt:     formatDateTime(scanTime),
+		History:       []CommitSummary{},
 	}
 
 	return repoSnapshot{

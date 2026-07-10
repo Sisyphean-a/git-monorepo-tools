@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, Copy, GitBranch, GitCommit, GitMerge, TerminalSquare } from 'lucide-react';
 import { fetchCommitDetail, fetchRepoHistory } from '../api';
 import { C } from '../theme';
@@ -10,33 +10,66 @@ const HISTORY_PAGE_SIZE = 50;
 interface RepoHistoryTabProps {
   repo: RepoDetail;
   settings: AppSettings;
+  active: boolean;
   onOpenTerminal: () => void;
   onSendToTerminal?: (command: string) => Promise<void>;
 }
 
-export function RepoHistoryTab({ repo, settings, onOpenTerminal, onSendToTerminal }: RepoHistoryTabProps) {
-  const [commits, setCommits] = useState<CommitSummary[]>(repo.history);
+export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendToTerminal }: RepoHistoryTabProps) {
+  const repoHistory = Array.isArray(repo.history) ? repo.history : [];
+  const [commits, setCommits] = useState<CommitSummary[]>(repoHistory);
   const [total, setTotal] = useState(repo.historyTotal);
   const [hasMore, setHasMore] = useState(repo.historyHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [selectedHash, setSelectedHash] = useState<string>(repo.history[0]?.hash ?? '');
+  const [selectedHash, setSelectedHash] = useState<string>(repoHistory[0]?.hash ?? '');
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [copiedHash, setCopiedHash] = useState('');
   const [terminalBusy, setTerminalBusy] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
+  const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
+  const loadedRepoId = useRef(repoHistory.length > 0 ? repo.id : '');
 
   useEffect(() => {
-    setCommits(repo.history);
+    setCommits(repoHistory);
     setTotal(repo.historyTotal);
     setHasMore(repo.historyHasMore);
     setSelectedHash(current => {
-      if (current && repo.history.some(commit => commit.hash === current)) {
+      if (current && repoHistory.some(commit => commit.hash === current)) {
         return current;
       }
-      return repo.history[0]?.hash ?? '';
+      return repoHistory[0]?.hash ?? '';
     });
-  }, [repo.history, repo.historyHasMore, repo.historyTotal, repo.id]);
+    loadedRepoId.current = repoHistory.length > 0 ? repo.id : '';
+    setInitialLoadError(null);
+  }, [repo]);
+
+  useEffect(() => {
+    if (!active || loadedRepoId.current === repo.id) return;
+    let cancelled = false;
+    setInitialLoading(true);
+    setInitialLoadError(null);
+    void fetchRepoHistory(repo.id, 0, HISTORY_PAGE_SIZE, settings)
+      .then(next => {
+        if (cancelled) return;
+        const nextCommits = Array.isArray(next.commits) ? next.commits : [];
+        loadedRepoId.current = repo.id;
+        setCommits(nextCommits);
+        setTotal(next.total);
+        setHasMore(next.hasMore);
+        setSelectedHash(nextCommits[0]?.hash ?? '');
+      })
+      .catch(error => {
+        if (!cancelled) setInitialLoadError(error instanceof Error ? error.message : '提交历史加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setInitialLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, repo, settings]);
 
   useEffect(() => {
     if (!selectedHash) {
@@ -79,10 +112,11 @@ export function RepoHistoryTab({ repo, settings, onOpenTerminal, onSendToTermina
     setLoadingMore(true);
     try {
       const next = await fetchRepoHistory(repo.id, commits.length, HISTORY_PAGE_SIZE, settings);
+      const nextCommits = Array.isArray(next.commits) ? next.commits : [];
       setCommits(current => {
         const seen = new Set(current.map(commit => commit.hash));
         const merged = [...current];
-        for (const commit of next.commits) {
+        for (const commit of nextCommits) {
           if (seen.has(commit.hash)) continue;
           merged.push(commit);
         }
@@ -90,8 +124,8 @@ export function RepoHistoryTab({ repo, settings, onOpenTerminal, onSendToTermina
       });
       setTotal(next.total);
       setHasMore(next.hasMore);
-      if (!selectedHash && next.commits[0]) {
-        setSelectedHash(next.commits[0].hash);
+      if (!selectedHash && nextCommits[0]) {
+        setSelectedHash(nextCommits[0].hash);
       }
     } finally {
       setLoadingMore(false);
@@ -118,6 +152,14 @@ export function RepoHistoryTab({ repo, settings, onOpenTerminal, onSendToTermina
       setTerminalBusy(false);
     }
   };
+
+  if (initialLoading) {
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>正在加载提交历史…</div>;
+  }
+
+  if (initialLoadError) {
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.conflict, fontSize: 12 }}>{initialLoadError}</div>;
+  }
 
   if (commits.length === 0) {
     return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>暂无提交历史</div>;

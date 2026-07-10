@@ -254,9 +254,10 @@ export namespace snapshot {
 		}
 	}
 	export class BatchResult {
-	    snapshot: AppSnapshot;
+	    updates?: RepoSnapshotUpdate[];
 	    results?: PullResult[];
 	    operation?: string;
+	    scannedAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new BatchResult(source);
@@ -264,9 +265,10 @@ export namespace snapshot {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.snapshot = this.convertValues(source["snapshot"], AppSnapshot);
+	        this.updates = this.convertValues(source["updates"], RepoSnapshotUpdate);
 	        this.results = this.convertValues(source["results"], PullResult);
 	        this.operation = source["operation"];
+	        this.scannedAt = source["scannedAt"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
