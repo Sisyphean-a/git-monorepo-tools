@@ -1,25 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchSnapshot, fetchWorkspaceBootstrap, refreshRepo } from './api';
+import { fetchWorkspaceBootstrap, refreshRepo, type SnapshotFetchOptions } from './api';
 import { buildBootstrapSnapshot } from './bootstrap-snapshot';
-import { mergeRepoSnapshotUpdate } from './repo-snapshot-merge';
 import type { AppSettings, AppSnapshot, Repo, RepoSnapshotUpdate } from './types';
+import type { ProgressiveSnapshotLease } from './snapshot-coordinator';
 
 interface StartupScanHandlers {
   getPreferredRepoId: () => string;
   applySnapshot: (snapshot: AppSnapshot) => void;
+  applyRepoUpdate: (update: RepoSnapshotUpdate) => void;
   reportError: (message: string | null) => void;
+  isCurrent: () => boolean;
+}
+
+interface StartupScanCoordinator {
+  beginProgressiveScan: () => ProgressiveSnapshotLease;
+  requestRefresh: (settings: AppSettings, options?: SnapshotFetchOptions) => Promise<void>;
 }
 
 export function useProgressiveStartupScan(
   settings: AppSettings,
   selectedRepoId: string,
   applySnapshot: (snapshot: AppSnapshot) => void,
+  applyRepoUpdate: (update: RepoSnapshotUpdate) => void,
   reportError: (message: string | null) => void,
+  coordinator: StartupScanCoordinator,
 ) {
   const settingsRef = useRef(settings);
   const selectedRepoIdRef = useRef(selectedRepoId);
   const applySnapshotRef = useRef(applySnapshot);
+  const applyRepoUpdateRef = useRef(applyRepoUpdate);
   const reportErrorRef = useRef(reportError);
+  const coordinatorRef = useRef(coordinator);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -32,24 +43,34 @@ export function useProgressiveStartupScan(
 
   useEffect(() => {
     applySnapshotRef.current = applySnapshot;
+    applyRepoUpdateRef.current = applyRepoUpdate;
     reportErrorRef.current = reportError;
-  }, [applySnapshot, reportError]);
+  }, [applySnapshot, applyRepoUpdate, reportError]);
+
+  useEffect(() => {
+    coordinatorRef.current = coordinator;
+  }, [coordinator]);
 
   useEffect(() => {
     let active = true;
+    const lease = coordinatorRef.current.beginProgressiveScan();
     reportErrorRef.current(null);
 
-    void loadProgressiveStartupScan(settingsRef.current, {
+    void loadProgressiveStartupScan(settingsRef.current, coordinatorRef.current, {
       getPreferredRepoId: () => selectedRepoIdRef.current,
       applySnapshot: snapshot => {
-        if (active) applySnapshotRef.current(snapshot);
+        if (active) lease.applySnapshot(snapshot);
+      },
+      applyRepoUpdate: update => {
+        if (active && lease.isCurrent()) applyRepoUpdateRef.current(update);
       },
       reportError: message => {
-        if (active) reportErrorRef.current(message);
+        if (active) lease.reportError(message);
       },
+      isCurrent: () => active && lease.isCurrent(),
     }).catch(error => {
       if (!active) return;
-      reportErrorRef.current(error instanceof Error ? error.message : '启动扫描失败');
+      lease.reportError(error instanceof Error ? error.message : '启动扫描失败');
     });
 
     return () => {
@@ -64,13 +85,19 @@ export function useProgressiveStartupScan(
   };
 }
 
-async function loadProgressiveStartupScan(settings: AppSettings, handlers: StartupScanHandlers) {
+async function loadProgressiveStartupScan(
+  settings: AppSettings,
+  coordinator: StartupScanCoordinator,
+  handlers: StartupScanHandlers,
+) {
   const bootstrap = await fetchWorkspaceBootstrap(settings);
-  let snapshot = buildBootstrapSnapshot(bootstrap);
+  if (!handlers.isCurrent()) return;
+  const snapshot = buildBootstrapSnapshot(bootstrap);
   handlers.applySnapshot(snapshot);
   handlers.reportError(null);
-  snapshot = await scanRepos(snapshot, settings, handlers.getPreferredRepoId() || bootstrap.selectedRepoId, handlers);
-  void refreshRemotesInBackground(settings, handlers);
+  await scanRepos(snapshot, settings, handlers.getPreferredRepoId() || bootstrap.selectedRepoId, handlers);
+  if (!handlers.isCurrent()) return;
+  await coordinator.requestRefresh(settings, { refreshRemotes: true });
 }
 
 async function scanRepos(
@@ -81,29 +108,18 @@ async function scanRepos(
 ) {
   const pendingTargets = orderStartupTargets(snapshot.repos, preferredRepoId);
   if (pendingTargets.length === 0) {
-    return snapshot;
+    return;
   }
 
-  let nextSnapshot = snapshot;
   const workerCount = normalizeStartupConcurrency(settings.gitBehavior.concurrency, pendingTargets.length);
   await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (pendingTargets.length > 0) {
+    while (handlers.isCurrent() && pendingTargets.length > 0) {
       const target = pendingTargets.shift();
       if (!target) return;
       const update = await loadStartupRepoUpdate(target, settings, snapshot);
-      nextSnapshot = mergeRepoSnapshotUpdate(nextSnapshot, update);
-      handlers.applySnapshot(nextSnapshot);
+      if (handlers.isCurrent()) handlers.applyRepoUpdate(update);
     }
   }));
-  return nextSnapshot;
-}
-
-async function refreshRemotesInBackground(settings: AppSettings, handlers: StartupScanHandlers) {
-  try {
-    const snapshot = await fetchSnapshot(settings, { refreshRemotes: true });
-    handlers.applySnapshot(snapshot);
-  } catch {
-  }
 }
 
 async function loadStartupRepoUpdate(target: Repo, settings: AppSettings, snapshot: AppSnapshot) {

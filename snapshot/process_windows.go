@@ -4,6 +4,7 @@ package snapshot
 
 import (
 	"os/exec"
+	"strconv"
 	"syscall"
 )
 
@@ -17,4 +18,13 @@ func applyBackgroundProcessAttrs(cmd *exec.Cmd) {
 	attrs.HideWindow = true
 	attrs.CreationFlags |= createNoWindow
 	cmd.SysProcAttr = attrs
+}
+
+func terminateCommandTree(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return nil
+	}
+	killer := exec.Command("taskkill", "/PID", strconv.Itoa(cmd.Process.Pid), "/T", "/F")
+	applyBackgroundProcessAttrs(killer)
+	return killer.Run()
 }

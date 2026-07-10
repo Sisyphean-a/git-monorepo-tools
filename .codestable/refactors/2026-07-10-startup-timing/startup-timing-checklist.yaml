@@ -1,0 +1,20 @@
+steps:
+  - id: snapshot-write-lease
+    status: done
+    description: 统一启动扫描与常规快照任务的写回代次
+  - id: request-execution-options
+    status: done
+    description: 将代理和超时接入请求级 Git 执行参数
+  - id: command-execution-options
+    status: done
+    description: 将代理和超时接入自定义命令执行
+  - id: verification
+    status: done
+    description: 运行测试、构建和独立审查
+checks:
+  - id: stale-results-do-not-apply
+    status: passed
+  - id: request-proxy-is-isolated
+    status: passed
+  - id: configured-timeout-is-enforced
+    status: passed

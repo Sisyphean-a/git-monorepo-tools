@@ -5,6 +5,7 @@ type Request struct {
 	Concurrency    int              `json:"concurrency"`
 	PullStrategy   string           `json:"pullStrategy"`
 	PushStrategy   string           `json:"pushStrategy"`
+	TimeoutSeconds int              `json:"timeoutSeconds"`
 	RefreshRemotes bool             `json:"refreshRemotes,omitempty"`
 	Proxy          GitProxySettings `json:"proxy"`
 	RepoPath       string           `json:"repoPath,omitempty"`
@@ -19,9 +20,11 @@ type RepoActionRequest struct {
 }
 
 type RepoCommandRequest struct {
-	RepoPath string `json:"repoPath"`
-	Command  string `json:"command"`
-	StreamID string `json:"streamId,omitempty"`
+	RepoPath       string           `json:"repoPath"`
+	Command        string           `json:"command"`
+	StreamID       string           `json:"streamId,omitempty"`
+	TimeoutSeconds int              `json:"timeoutSeconds"`
+	Proxy          GitProxySettings `json:"proxy"`
 }
 
 type RepoCommandResult struct {

@@ -195,6 +195,29 @@ test('continues after snapshot task failure and reports error visibility', async
   assert.deepEqual(messages, ['task-boom', null]);
 });
 
+test('invalidates progressive scan writes as soon as normal refresh is queued', async () => {
+  const applied: string[] = [];
+  const errors: (string | null)[] = [];
+  const coordinator = createSnapshotCoordinator({
+    applySnapshot: next => applied.push(next.scannedAt),
+    fetchSnapshot: async () => snapshot('manual-refresh'),
+    reportError: message => errors.push(message),
+  });
+
+  const startup = coordinator.beginProgressiveScan();
+  assert.equal(startup.applySnapshot(snapshot('bootstrap')), true);
+
+  const refresh = coordinator.requestRefresh(settings(5));
+
+  assert.equal(startup.isCurrent(), false);
+  assert.equal(startup.applySnapshot(snapshot('late-startup-result')), false);
+  assert.equal(startup.reportError('late-startup-error'), false);
+  await refresh;
+
+  assert.deepEqual(applied, ['bootstrap', 'manual-refresh']);
+  assert.deepEqual(errors, [null]);
+});
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>(nextResolve => {

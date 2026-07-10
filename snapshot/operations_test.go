@@ -303,7 +303,7 @@ func TestMutateRepoDiscardAllClearsTrackedAndUntrackedChanges(t *testing.T) {
 	if err := os.WriteFile(untrackedPath, []byte("temp\n"), 0o644); err != nil {
 		t.Fatalf("write untracked file: %v", err)
 	}
-	if err := mutateRepo(RepoDetail{Repo: Repo{Path: normalizePath(repoPath)}}, "discard-all", Request{}, RepoActionRequest{}); err != nil {
+	if err := defaultGitExecutor().mutateRepo(RepoDetail{Repo: Repo{Path: normalizePath(repoPath)}}, "discard-all", Request{}, RepoActionRequest{}); err != nil {
 		t.Fatalf("discard all changes: %v", err)
 	}
 	content, err := os.ReadFile(trackedPath)

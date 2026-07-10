@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"runtime"
@@ -121,7 +122,13 @@ func (s *Service) runRepoCommand(request RepoCommandRequest, onChunk func(string
 	}
 
 	startedAt := time.Now()
-	output, exitCode, err := runShellCommand(repoPath, commandText, onChunk, captureOutput)
+	executor := newGitExecutor(Request{Proxy: request.Proxy, TimeoutSeconds: request.TimeoutSeconds})
+	output, exitCode, err := executor.runShellCommand(shellCommand{
+		repoPath:      repoPath,
+		commandText:   commandText,
+		onChunk:       onChunk,
+		captureOutput: captureOutput,
+	})
 	result := RepoCommandResult{
 		RepoPath:  repoPath,
 		Command:   commandText,
@@ -136,10 +143,17 @@ func (s *Service) runRepoCommand(request RepoCommandRequest, onChunk func(string
 	return result, nil
 }
 
-func runShellCommand(repoPath, commandText string, onChunk func(string), captureOutput bool) (string, int, error) {
-	cmd := buildShellCommand(repoPath, commandText)
+type shellCommand struct {
+	repoPath      string
+	commandText   string
+	onChunk       func(string)
+	captureOutput bool
+}
+
+func (executor gitExecutor) runShellCommand(command shellCommand) (string, int, error) {
+	cmd := buildShellCommand(command.repoPath, command.commandText)
 	applyBackgroundProcessAttrs(cmd)
-	cmd.Env = buildGitProcessEnv()
+	cmd.Env = buildGitProcessEnv(executor.proxy)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", -1, err
@@ -153,20 +167,23 @@ func runShellCommand(repoPath, commandText string, onChunk func(string), capture
 	}
 
 	var builder *strings.Builder
-	if captureOutput {
+	if command.captureOutput {
 		builder = &strings.Builder{}
 	}
 	var lock sync.Mutex
 	var streamGroup sync.WaitGroup
 	streamGroup.Add(2)
-	go streamCommand(stdout, onChunk, builder, &lock, &streamGroup)
-	go streamCommand(stderr, onChunk, builder, &lock, &streamGroup)
-	waitErr := cmd.Wait()
+	go streamCommand(stdout, command.onChunk, builder, &lock, &streamGroup)
+	go streamCommand(stderr, command.onChunk, builder, &lock, &streamGroup)
+	waitErr, timedOut := waitForCommand(cmd, executor.timeout)
 	streamGroup.Wait()
 
 	output := ""
 	if builder != nil {
 		output = builder.String()
+	}
+	if timedOut {
+		return output, -1, fmt.Errorf("命令执行超时（%s）", executor.timeout)
 	}
 	if waitErr == nil {
 		return output, 0, nil

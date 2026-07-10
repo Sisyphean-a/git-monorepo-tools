@@ -7,18 +7,24 @@ import (
 
 const defaultSnapshotConcurrency = 5
 
-func buildSnapshots(entries []repoEntry, scanTime time.Time, concurrency int, refreshRemotes bool) []repoSnapshot {
-	workers := normalizeSnapshotConcurrency(concurrency, len(entries))
-	if workers <= 1 {
-		return buildSnapshotsSequential(entries, scanTime, refreshRemotes)
-	}
-	return buildSnapshotsParallel(entries, scanTime, workers, refreshRemotes)
+type snapshotBuildOptions struct {
+	scanTime       time.Time
+	concurrency    int
+	refreshRemotes bool
 }
 
-func buildSnapshotsSequential(entries []repoEntry, scanTime time.Time, refreshRemotes bool) []repoSnapshot {
+func (executor gitExecutor) buildSnapshots(entries []repoEntry, options snapshotBuildOptions) []repoSnapshot {
+	workers := normalizeSnapshotConcurrency(options.concurrency, len(entries))
+	if workers <= 1 {
+		return executor.buildSnapshotsSequential(entries, options)
+	}
+	return executor.buildSnapshotsParallel(entries, options, workers)
+}
+
+func (executor gitExecutor) buildSnapshotsSequential(entries []repoEntry, options snapshotBuildOptions) []repoSnapshot {
 	snapshots := make([]repoSnapshot, 0, len(entries))
 	for _, entry := range entries {
-		snapshot, err := buildRepoSnapshotWithRemoteMode(entry, scanTime, refreshRemotes)
+		snapshot, err := executor.buildRepoSnapshotWithRemoteMode(entry, options.scanTime, options.refreshRemotes)
 		if err != nil {
 			continue
 		}
@@ -27,14 +33,14 @@ func buildSnapshotsSequential(entries []repoEntry, scanTime time.Time, refreshRe
 	return snapshots
 }
 
-func buildSnapshotsParallel(entries []repoEntry, scanTime time.Time, workers int, refreshRemotes bool) []repoSnapshot {
+func (executor gitExecutor) buildSnapshotsParallel(entries []repoEntry, options snapshotBuildOptions, workers int) []repoSnapshot {
 	jobs := make(chan repoEntry)
 	results := make(chan repoSnapshot, len(entries))
 	var wg sync.WaitGroup
 
 	wg.Add(workers)
 	for i := 0; i < workers; i++ {
-		go snapshotWorker(jobs, results, scanTime, refreshRemotes, &wg)
+		go executor.snapshotWorker(jobs, results, options, &wg)
 	}
 	go func() {
 		for _, entry := range entries {
@@ -52,10 +58,10 @@ func buildSnapshotsParallel(entries []repoEntry, scanTime time.Time, workers int
 	return snapshots
 }
 
-func snapshotWorker(jobs <-chan repoEntry, results chan<- repoSnapshot, scanTime time.Time, refreshRemotes bool, wg *sync.WaitGroup) {
+func (executor gitExecutor) snapshotWorker(jobs <-chan repoEntry, results chan<- repoSnapshot, options snapshotBuildOptions, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for entry := range jobs {
-		snapshot, err := buildRepoSnapshotWithRemoteMode(entry, scanTime, refreshRemotes)
+		snapshot, err := executor.buildRepoSnapshotWithRemoteMode(entry, options.scanTime, options.refreshRemotes)
 		if err == nil {
 			results <- snapshot
 		}

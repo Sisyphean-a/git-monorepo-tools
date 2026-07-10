@@ -1,9 +1,17 @@
 package snapshot
 
 import (
+	"encoding/base64"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf16"
 )
 
 func TestRunRepoCommandReturnsCombinedOutput(t *testing.T) {
@@ -136,6 +144,43 @@ func TestRunRepoCommandRejectsMissingPath(t *testing.T) {
 	}
 }
 
+func TestRunRepoCommandStopsAtConfiguredTimeout(t *testing.T) {
+	service := NewService(t.TempDir())
+	result, err := service.RunRepoCommand(RepoCommandRequest{
+		RepoPath:       t.TempDir(),
+		Command:        slowShellCommand(),
+		TimeoutSeconds: 1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "超时") {
+		t.Fatalf("expected timeout error, got result=%#v err=%v", result, err)
+	}
+	if result.ExitCode != -1 {
+		t.Fatalf("expected timeout exit code, got %#v", result)
+	}
+}
+
+func TestRunRepoCommandTimeoutStopsChildProcess(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("child process tree verification runs on Windows")
+	}
+
+	markerPath := filepath.Join(t.TempDir(), "child-ran.txt")
+	service := NewService(t.TempDir())
+	_, err := service.RunRepoCommand(RepoCommandRequest{
+		RepoPath:       t.TempDir(),
+		Command:        childProcessShellCommand(markerPath),
+		TimeoutSeconds: 1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "超时") {
+		t.Fatalf("expected timeout error, got %v", err)
+	}
+
+	time.Sleep(2500 * time.Millisecond)
+	if _, err := os.Stat(markerPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected child process to be terminated, stat error=%v", err)
+	}
+}
+
 func successShellCommand() string {
 	if runtime.GOOS == "windows" {
 		return "Write-Output 'hello'"
@@ -162,4 +207,29 @@ func controlStringShellCommand() string {
 		return "Write-Output \"A$([char]27)Psecret$([char]27)\\B\""
 	}
 	return "printf 'A\\033Psecret\\033\\\\B\\n'"
+}
+
+func slowShellCommand() string {
+	if runtime.GOOS == "windows" {
+		return "Start-Sleep -Seconds 3"
+	}
+	return "sleep 3"
+}
+
+func childProcessShellCommand(markerPath string) string {
+	encoded := encodePowerShellCommand(delayedMarkerScript(markerPath))
+	return fmt.Sprintf("Start-Process powershell.exe -ArgumentList '-NoLogo -NoProfile -NonInteractive -EncodedCommand %s'; Start-Sleep -Seconds 3", encoded)
+}
+
+func delayedMarkerScript(markerPath string) string {
+	return fmt.Sprintf("Start-Sleep -Seconds 2; Set-Content -LiteralPath %q -Value 'child'", markerPath)
+}
+
+func encodePowerShellCommand(value string) string {
+	characters := utf16.Encode([]rune(value))
+	bytes := make([]byte, len(characters)*2)
+	for index, character := range characters {
+		binary.LittleEndian.PutUint16(bytes[index*2:], character)
+	}
+	return base64.StdEncoding.EncodeToString(bytes)
 }

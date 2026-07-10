@@ -58,13 +58,17 @@ func (s *Service) BuildRepoSnapshot(repoID string, request Request, refreshRemot
 	if err != nil {
 		return RepoSnapshotUpdate{}, err
 	}
-	return s.buildRepoUpdate(repoID, entry.repoPath, entry.category, refreshRemotes)
+	return newGitExecutor(request).buildRepoUpdate(repoID, entry.repoPath, entry.category, refreshRemotes)
 }
 
 func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppSnapshot, error) {
 	scanTime := time.Now()
 	repoEntries := s.discoverRepos(s.buildRoots(request))
-	snapshots := s.buildSnapshots(repoEntries, scanTime, request.Concurrency, request.RefreshRemotes)
+	snapshots := newGitExecutor(request).buildSnapshots(repoEntries, snapshotBuildOptions{
+		scanTime:       scanTime,
+		concurrency:    request.Concurrency,
+		refreshRemotes: request.RefreshRemotes,
+	})
 	ordered := s.sortSnapshots(snapshots)
 	selectedID := s.selectedRepoID(ordered)
 	results := orderedPullResults(ordered)
@@ -117,10 +121,6 @@ func (s *Service) discoverRepos(roots []ScanRoot) []repoEntry {
 		entries = append(entries, entry)
 	}
 	return entries
-}
-
-func (s *Service) buildSnapshots(entries []repoEntry, scanTime time.Time, concurrency int, refreshRemotes bool) []repoSnapshot {
-	return buildSnapshots(entries, scanTime, concurrency, refreshRemotes)
 }
 
 func buildBootstrapSnapshots(entries []repoEntry, scanTime time.Time) []repoSnapshot {
@@ -189,12 +189,16 @@ func orderedRepos(items []repoSnapshot) []Repo {
 }
 
 func buildRepoSnapshot(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
-	return buildRepoSnapshotWithRemoteMode(entry, scanTime, false)
+	return defaultGitExecutor().buildRepoSnapshot(entry, scanTime)
 }
 
-func (s *Service) buildRepoUpdate(repoID, repoPath, category string, refreshRemotes bool) (RepoSnapshotUpdate, error) {
+func (executor gitExecutor) buildRepoSnapshot(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
+	return executor.buildRepoSnapshotWithRemoteMode(entry, scanTime, false)
+}
+
+func (executor gitExecutor) buildRepoUpdate(repoID, repoPath, category string, refreshRemotes bool) (RepoSnapshotUpdate, error) {
 	scanTime := time.Now()
-	snapshot, err := buildRepoSnapshotWithRemoteMode(repoEntry{
+	snapshot, err := executor.buildRepoSnapshotWithRemoteMode(repoEntry{
 		repoPath: repoPath,
 		category: category,
 	}, scanTime, refreshRemotes)
@@ -211,12 +215,12 @@ func (s *Service) buildRepoUpdate(repoID, repoPath, category string, refreshRemo
 	}, nil
 }
 
-func buildRepoSnapshotWithRemoteMode(entry repoEntry, scanTime time.Time, refreshRemotes bool) (repoSnapshot, error) {
+func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, scanTime time.Time, refreshRemotes bool) (repoSnapshot, error) {
 	repoPath := normalizePath(entry.repoPath)
 	repoName := filepath.Base(repoPath)
-	parsed, statusErr := loadRepoStatus(repoPath, refreshRemotes)
-	files, filesErr := buildFileChanges(repoPath, parsed.entries)
-	history, historyTotal, historyHasMore, historyErr := buildHistory(repoPath)
+	parsed, statusErr := executor.loadRepoStatus(repoPath, refreshRemotes)
+	files, filesErr := executor.buildFileChanges(repoPath, parsed.entries)
+	history, historyTotal, historyHasMore, historyErr := executor.buildHistory(repoPath)
 	scanError := ""
 	if err := firstGitError(statusErr, filesErr, historyErr); err != nil {
 		scanError = err.Error()

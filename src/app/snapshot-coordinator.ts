@@ -27,11 +27,23 @@ type SnapshotCoordinatorOptions = {
 
 type TaskSuccessHandler<T> = (result: T, options: SnapshotCoordinatorOptions) => void;
 
+export type ProgressiveSnapshotLease = {
+  isCurrent: () => boolean;
+  applySnapshot: (snapshot: AppSnapshot) => boolean;
+  reportError: (message: string | null) => boolean;
+};
+
 export type SnapshotCoordinator = ReturnType<typeof createSnapshotCoordinator>;
 
 export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
   const queue: QueueEntry[] = [];
   let activePromise: Promise<void> | null = null;
+  let progressiveRevision = 0;
+
+  const invalidateProgressiveScan = () => {
+    progressiveRevision += 1;
+    return progressiveRevision;
+  };
 
   const processQueue = () => {
     if (activePromise) return activePromise;
@@ -43,16 +55,35 @@ export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
   };
 
   return {
+    beginProgressiveScan(): ProgressiveSnapshotLease {
+      const revision = invalidateProgressiveScan();
+      return {
+        isCurrent: () => revision === progressiveRevision,
+        applySnapshot: snapshot => {
+          if (revision !== progressiveRevision) return false;
+          options.applySnapshot(snapshot);
+          return true;
+        },
+        reportError: message => {
+          if (revision !== progressiveRevision) return false;
+          options.reportError?.(message);
+          return true;
+        },
+      };
+    },
     requestRefresh(settings: AppSettings, fetchOptions?: SnapshotFetchOptions) {
+      invalidateProgressiveScan();
       return enqueueRefresh(queue, settings, fetchOptions, processQueue);
     },
     runSnapshotTask<T>(task: () => Promise<T>, readSnapshot: (result: T) => AppSnapshot | null | undefined) {
+      invalidateProgressiveScan();
       return enqueueTask(queue, task, (result, nextOptions) => {
         const snapshot = readSnapshot(result);
         if (snapshot) nextOptions.applySnapshot(snapshot);
       }, options, processQueue);
     },
     runTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
+      invalidateProgressiveScan();
       return enqueueTask(queue, task, result => {
         onSuccess?.(result);
       }, options, processQueue);

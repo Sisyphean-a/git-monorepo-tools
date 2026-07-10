@@ -65,6 +65,12 @@ export function useSnapshotRefresh(
   }, [settings.gitBehavior.autoScanEnabled, settings.gitBehavior.autoScanIntervalSeconds]);
 
   return {
+    beginProgressiveScan() {
+      return coordinatorRef.current.beginProgressiveScan();
+    },
+    requestRefresh(nextSettings: AppSettings, fetchOptions?: Parameters<typeof fetchSnapshot>[1]) {
+      return coordinatorRef.current.requestRefresh(nextSettings, fetchOptions);
+    },
     refreshSnapshot(nextSettings = settingsRef.current) {
       return coordinatorRef.current.requestRefresh(nextSettings, { refreshRemotes: true });
     },

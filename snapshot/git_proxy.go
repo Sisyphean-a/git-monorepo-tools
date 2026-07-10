@@ -4,27 +4,32 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
+	"time"
 )
 
 const (
 	defaultGitProxyHost = "127.0.0.1"
 	defaultGitProxyPort = 7897
+	defaultGitTimeout   = 60 * time.Second
 )
 
-var (
-	runtimeGitProxyLock sync.RWMutex
-	runtimeGitProxy     = normalizedGitProxy(GitProxySettings{})
-)
-
-func SetRuntimeGitProxy(proxy GitProxySettings) {
-	runtimeGitProxyLock.Lock()
-	runtimeGitProxy = normalizedGitProxy(proxy)
-	runtimeGitProxyLock.Unlock()
+type gitExecutor struct {
+	proxy   GitProxySettings
+	timeout time.Duration
 }
 
-func buildGitProcessEnv() []string {
-	proxy := currentGitProxy()
+func newGitExecutor(request Request) gitExecutor {
+	return gitExecutor{
+		proxy:   normalizedGitProxy(request.Proxy),
+		timeout: normalizedGitTimeout(request.TimeoutSeconds),
+	}
+}
+
+func defaultGitExecutor() gitExecutor {
+	return newGitExecutor(Request{})
+}
+
+func buildGitProcessEnv(proxy GitProxySettings) []string {
 	env := os.Environ()
 	if !proxy.Enabled {
 		return env
@@ -41,12 +46,6 @@ func buildGitProcessEnv() []string {
 	)
 }
 
-func currentGitProxy() GitProxySettings {
-	runtimeGitProxyLock.RLock()
-	defer runtimeGitProxyLock.RUnlock()
-	return runtimeGitProxy
-}
-
 func normalizedGitProxy(proxy GitProxySettings) GitProxySettings {
 	host := strings.TrimSpace(proxy.Host)
 	if host == "" {
@@ -56,11 +55,14 @@ func normalizedGitProxy(proxy GitProxySettings) GitProxySettings {
 	if port < 1 || port > 65535 {
 		port = defaultGitProxyPort
 	}
-	return GitProxySettings{
-		Enabled: proxy.Enabled,
-		Host:    host,
-		Port:    port,
+	return GitProxySettings{Enabled: proxy.Enabled, Host: host, Port: port}
+}
+
+func normalizedGitTimeout(seconds int) time.Duration {
+	if seconds <= 0 {
+		return defaultGitTimeout
 	}
+	return time.Duration(seconds) * time.Second
 }
 
 func withoutProxyEnv(env []string) []string {

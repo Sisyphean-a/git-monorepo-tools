@@ -58,18 +58,26 @@ export default function App() {
     setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
   };
 
-  const { retryStartupScan } = useProgressiveStartupScan(settings, selectedRepoId, applySnapshot, setRefreshError);
-  const { refreshSnapshot, runQueuedTask, runSnapshotTask } = useSnapshotRefresh(
+  const applyRepoUpdate = (update: RepoSnapshotUpdate) => {
+    setSnapshot(current => (current ? mergeRepoSnapshotUpdate(current, update) : current));
+    setSelectedRepoId(current => current || update.repo.id);
+  };
+
+  const snapshotRefresh = useSnapshotRefresh(
     settings,
     applySnapshot,
     setRefreshError,
     { skipInitialRefresh: true },
   );
-
-  const applyRepoUpdate = (update: RepoSnapshotUpdate) => {
-    setSnapshot(current => (current ? mergeRepoSnapshotUpdate(current, update) : current));
-    setSelectedRepoId(current => current || update.repo.id);
-  };
+  const { refreshSnapshot, runQueuedTask, runSnapshotTask } = snapshotRefresh;
+  const { retryStartupScan } = useProgressiveStartupScan(
+    settings,
+    selectedRepoId,
+    applySnapshot,
+    applyRepoUpdate,
+    setRefreshError,
+    snapshotRefresh,
+  );
 
   const handleSidebarRefresh = async () => {
     if (sidebarRefreshing) return;
@@ -281,7 +289,7 @@ export default function App() {
           onRefresh={handleWorkspaceRefresh}
           onMutateRepo={handleMutateRepo}
           onInvokeLocalRepoAction={handleInvokeLocalRepoAction}
-          onRunCustomCommand={runRepoCommand}
+          onRunCustomCommand={(repoPath, command, streamId) => runRepoCommand(repoPath, command, streamId, settings)}
           onOpenSettings={(tab = 'git-behavior') => {
             setSettingsTab(tab);
             setShowSettings(true);

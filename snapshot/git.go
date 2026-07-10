@@ -18,8 +18,8 @@ var (
 	nonAlphaNum              = regexp.MustCompile(`[^a-z0-9]+`)
 	remoteFetchRetryDelays   = []time.Duration{0, 0, 5 * time.Second}
 	sleepForRemoteFetchRetry = time.Sleep
-	runRemoteFetch           = func(repoPath, remote string) error {
-		_, err := runGit(repoPath, []string{"fetch", "--prune", "--quiet", remote})
+	runRemoteFetch           = func(executor gitExecutor, repoPath, remote string) error {
+		_, err := executor.runGit(repoPath, []string{"fetch", "--prune", "--quiet", remote})
 		return err
 	}
 )
@@ -36,49 +36,62 @@ type parsedStatus struct {
 }
 
 func runGit(repoPath string, args []string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", repoPath}, args...)...)
+	return defaultGitExecutor().runGit(repoPath, args)
+}
+
+func (executor gitExecutor) runGit(repoPath string, args []string) (string, error) {
+	return executor.runGitCommand("git", repoPath, args)
+}
+
+func (executor gitExecutor) runGitCommand(executable, repoPath string, args []string) (string, error) {
+	cmd := exec.Command(executable, append([]string{"-C", repoPath}, args...)...)
 	applyBackgroundProcessAttrs(cmd)
-	cmd.Env = buildGitProcessEnv()
+	cmd.Env = buildGitProcessEnv(executor.proxy)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+	if err, timedOut := waitForCommand(cmd, executor.timeout); timedOut {
+		return "", fmt.Errorf("git %s 超时（%s）", strings.Join(args, " "), executor.timeout)
+	} else if err != nil {
 		return "", buildGitError(args, stdout.String(), stderr.String())
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-func readStatus(repoPath string) (parsedStatus, error) {
-	output, err := runGit(repoPath, []string{"status", "--porcelain=v1", "-b"})
+func (executor gitExecutor) readStatus(repoPath string) (parsedStatus, error) {
+	output, err := executor.runGit(repoPath, []string{"status", "--porcelain=v1", "-b"})
 	return parseStatus(output), err
 }
 
-func loadRepoStatus(repoPath string, refreshRemotes bool) (parsedStatus, error) {
+func (executor gitExecutor) loadRepoStatus(repoPath string, refreshRemotes bool) (parsedStatus, error) {
 	if refreshRemotes {
-		return readStatusAfterRemoteSync(repoPath)
+		return executor.readStatusAfterRemoteSync(repoPath)
 	}
-	return readStatus(repoPath)
+	return executor.readStatus(repoPath)
 }
 
-func readStatusAfterRemoteSync(repoPath string) (parsedStatus, error) {
-	parsed, err := readStatus(repoPath)
+func (executor gitExecutor) readStatusAfterRemoteSync(repoPath string) (parsedStatus, error) {
+	parsed, err := executor.readStatus(repoPath)
 	if err != nil || parsed.remote == "—" {
 		return parsed, err
 	}
-	if fetchErr := refreshRemoteWithRetry(repoPath, parsed.remote); fetchErr != nil {
+	if fetchErr := executor.refreshRemoteWithRetry(repoPath, parsed.remote); fetchErr != nil {
 		return parsed, fetchErr
 	}
-	return readStatus(repoPath)
+	return executor.readStatus(repoPath)
 }
 
-func refreshRemoteWithRetry(repoPath, remote string) error {
+func (executor gitExecutor) refreshRemoteWithRetry(repoPath, remote string) error {
 	var lastErr error
 	for _, delay := range remoteFetchRetryDelays {
 		if delay > 0 {
 			sleepForRemoteFetchRetry(delay)
 		}
-		lastErr = runRemoteFetch(repoPath, remote)
+		lastErr = runRemoteFetch(executor, repoPath, remote)
 		if lastErr == nil {
 			return nil
 		}
@@ -106,9 +119,9 @@ func parseStatus(output string) parsedStatus {
 	}
 }
 
-func buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
-	stagedOutput, stagedErr := runGit(repoPath, []string{"diff", "--cached", "--numstat", "--no-renames"})
-	unstagedOutput, unstagedErr := runGit(repoPath, []string{"diff", "--numstat", "--no-renames"})
+func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
+	stagedOutput, stagedErr := executor.runGit(repoPath, []string{"diff", "--cached", "--numstat", "--no-renames"})
+	unstagedOutput, unstagedErr := executor.runGit(repoPath, []string{"diff", "--numstat", "--no-renames"})
 	stagedStats := parseNumstat(stagedOutput)
 	unstagedStats := parseNumstat(unstagedOutput)
 	changes := buildTrackedChanges(repoPath, stagedStats, true)
@@ -118,8 +131,8 @@ func buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
 	return changes, firstGitError(stagedErr, unstagedErr)
 }
 
-func buildHistory(repoPath string) ([]CommitSummary, int, bool, error) {
-	history, hasMore, err := loadHistoryPage(repoPath, 0, defaultHistoryPageSize)
+func (executor gitExecutor) buildHistory(repoPath string) ([]CommitSummary, int, bool, error) {
+	history, hasMore, err := executor.loadHistoryPage(repoPath, 0, defaultHistoryPageSize)
 	if isNoCommitHistoryError(err) {
 		return nil, 0, false, nil
 	}
@@ -132,14 +145,14 @@ func buildHistory(repoPath string) ([]CommitSummary, int, bool, error) {
 	return history, len(history), false, nil
 }
 
-func loadHistoryPage(repoPath string, offset, limit int) ([]CommitSummary, bool, error) {
+func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) ([]CommitSummary, bool, error) {
 	if offset < 0 {
 		offset = 0
 	}
 	if limit <= 0 {
 		limit = defaultHistoryPageSize
 	}
-	output, err := runGit(repoPath, []string{
+	output, err := executor.runGit(repoPath, []string{
 		"log",
 		fmt.Sprintf("--skip=%d", offset),
 		fmt.Sprintf("-%d", limit+1),
@@ -214,8 +227,8 @@ func parseHistoryRefs(raw string) []string {
 	return refs
 }
 
-func loadCommitDetail(repoPath, hash string) (CommitDetail, error) {
-	metaOutput, err := runGit(repoPath, []string{
+func (executor gitExecutor) loadCommitDetail(repoPath, hash string) (CommitDetail, error) {
+	metaOutput, err := executor.runGit(repoPath, []string{
 		"show",
 		"--quiet",
 		"--decorate=short",
@@ -250,7 +263,7 @@ func loadCommitDetail(repoPath, hash string) (CommitDetail, error) {
 		AuthorEmail: parts[3],
 		CommittedAt: parts[5],
 	}
-	statsOutput, statsErr := runGit(repoPath, []string{"show", "--numstat", "--format=", hash})
+	statsOutput, statsErr := executor.runGit(repoPath, []string{"show", "--numstat", "--format=", hash})
 	if statsErr != nil {
 		return CommitDetail{}, statsErr
 	}

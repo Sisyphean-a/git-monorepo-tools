@@ -5,6 +5,7 @@ interface SnapshotRequest {
   concurrency: AppSettings['gitBehavior']['concurrency'];
   pullStrategy: AppSettings['gitBehavior']['pullStrategy'];
   pushStrategy: AppSettings['gitBehavior']['pushStrategy'];
+  timeoutSeconds: AppSettings['gitBehavior']['timeoutSeconds'];
   refreshRemotes: boolean;
   proxy: AppSettings['gitBehavior']['proxy'];
   repoPath?: string;
@@ -39,6 +40,8 @@ type WailsRepoCommandRequest = {
   repoPath: string;
   command: string;
   streamId?: string;
+  timeoutSeconds: AppSettings['gitBehavior']['timeoutSeconds'];
+  proxy: AppSettings['gitBehavior']['proxy'];
 };
 type WailsTerminalSessionRequest = {
   repoId: string;
@@ -93,6 +96,7 @@ function buildSnapshotRequest(
     concurrency: settings?.gitBehavior.concurrency ?? 5,
     pullStrategy: settings?.gitBehavior.pullStrategy ?? 'ff-only',
     pushStrategy: settings?.gitBehavior.pushStrategy ?? 'upstream-only',
+    timeoutSeconds: settings?.gitBehavior.timeoutSeconds ?? 60,
     refreshRemotes: options?.refreshRemotes ?? false,
     proxy: settings?.gitBehavior.proxy ?? {
       enabled: false,
@@ -178,8 +182,14 @@ export async function fetchCommitDetail(repoId: string, hash: string, settings?:
   return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
 }
 
-export async function runRepoCommand(repoPath: string, command: string, streamId?: string) {
-  return getWailsBindings().RunRepoCommand({ repoPath, command, streamId });
+export async function runRepoCommand(repoPath: string, command: string, streamId?: string, settings?: AppSettings) {
+  return getWailsBindings().RunRepoCommand({
+    repoPath,
+    command,
+    streamId,
+    timeoutSeconds: settings?.gitBehavior.timeoutSeconds ?? 60,
+    proxy: settings?.gitBehavior.proxy ?? buildSnapshotRequest().proxy,
+  });
 }
 
 export async function ensureTerminalSession(repoId: string, repoPath: string, cols?: number, rows?: number) {

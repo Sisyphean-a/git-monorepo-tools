@@ -3,14 +3,9 @@ package snapshot
 import "testing"
 
 func TestBuildGitProcessEnvAppliesManualProxyOverride(t *testing.T) {
-	previous := currentGitProxy()
-	SetRuntimeGitProxy(GitProxySettings{Enabled: true, Host: "127.0.0.1", Port: 7897})
-	t.Cleanup(func() {
-		SetRuntimeGitProxy(previous)
-	})
 	t.Setenv("HTTPS_PROXY", "http://old-proxy:8888")
 
-	env := buildGitProcessEnv()
+	env := buildGitProcessEnv(GitProxySettings{Enabled: true, Host: "127.0.0.1", Port: 7897})
 
 	assertEnvContains(t, env, "HTTP_PROXY=http://127.0.0.1:7897")
 	assertEnvContains(t, env, "HTTPS_PROXY=http://127.0.0.1:7897")
@@ -19,16 +14,28 @@ func TestBuildGitProcessEnvAppliesManualProxyOverride(t *testing.T) {
 }
 
 func TestBuildGitProcessEnvKeepsParentProxyWhenManualProxyDisabled(t *testing.T) {
-	previous := currentGitProxy()
-	SetRuntimeGitProxy(GitProxySettings{})
-	t.Cleanup(func() {
-		SetRuntimeGitProxy(previous)
-	})
 	t.Setenv("HTTPS_PROXY", "http://parent-proxy:8888")
 
-	env := buildGitProcessEnv()
+	env := buildGitProcessEnv(GitProxySettings{})
 
 	assertEnvContains(t, env, "HTTPS_PROXY=http://parent-proxy:8888")
+}
+
+func TestGitExecutorsKeepProxyAndTimeoutPerRequest(t *testing.T) {
+	first := newGitExecutor(Request{
+		Proxy:          GitProxySettings{Enabled: true, Host: "proxy-one", Port: 1080},
+		TimeoutSeconds: 30,
+	})
+	second := newGitExecutor(Request{
+		Proxy:          GitProxySettings{Enabled: true, Host: "proxy-two", Port: 2080},
+		TimeoutSeconds: 120,
+	})
+
+	assertEnvContains(t, buildGitProcessEnv(first.proxy), "HTTPS_PROXY=http://proxy-one:1080")
+	assertEnvContains(t, buildGitProcessEnv(second.proxy), "HTTPS_PROXY=http://proxy-two:2080")
+	if first.timeout.Seconds() != 30 || second.timeout.Seconds() != 120 {
+		t.Fatalf("expected request timeouts to stay isolated, got %s and %s", first.timeout, second.timeout)
+	}
 }
 
 func assertEnvContains(t *testing.T, env []string, expected string) {

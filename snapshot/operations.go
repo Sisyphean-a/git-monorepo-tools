@@ -11,10 +11,11 @@ func (s *Service) MutateRepo(repoID, action string, request Request, body RepoAc
 	if err != nil {
 		return RepoSnapshotUpdate{}, err
 	}
-	if err := mutateRepo(repo, action, request, body); err != nil {
+	executor := newGitExecutor(request)
+	if err := executor.mutateRepo(repo, action, request, body); err != nil {
 		return RepoSnapshotUpdate{}, err
 	}
-	return s.buildRepoUpdate(repo.ID, repo.Path, repo.Category, request.RefreshRemotes)
+	return executor.buildRepoUpdate(repo.ID, repo.Path, repo.Category, request.RefreshRemotes)
 }
 
 func (s *Service) RefreshRepo(repoID string, request Request) (RepoSnapshotUpdate, error) {
@@ -26,7 +27,7 @@ func (s *Service) RunBatch(operation string, request Request) (BatchResult, erro
 	if err != nil {
 		return BatchResult{}, err
 	}
-	results, err := runBatch(snapshot, operation, request)
+	results, err := newGitExecutor(request).runBatch(snapshot, operation, request)
 	if err != nil {
 		return BatchResult{}, err
 	}
@@ -42,7 +43,7 @@ func (s *Service) GetRepoLog(repoID string, request Request) (RepoLog, error) {
 	if err != nil {
 		return RepoLog{}, err
 	}
-	content, err := runGitStrict(repo.Path, []string{"log", "--decorate", "--stat", "-10"})
+	content, err := newGitExecutor(request).runGit(repo.Path, []string{"log", "--decorate", "--stat", "-10"})
 	if err != nil {
 		return RepoLog{}, err
 	}
@@ -57,7 +58,7 @@ func (s *Service) GetRepoHistory(repoID string, request Request, offset, limit i
 	if err != nil {
 		return RepoHistoryPage{}, err
 	}
-	commits, hasMore, err := loadHistoryPage(repo.Path, offset, limit)
+	commits, hasMore, err := newGitExecutor(request).loadHistoryPage(repo.Path, offset, limit)
 	if isNoCommitHistoryError(err) {
 		return RepoHistoryPage{
 			RepoID:   repo.ID,
@@ -94,61 +95,61 @@ func (s *Service) GetCommitDetail(repoID string, request Request, hash string) (
 	if strings.TrimSpace(hash) == "" {
 		return CommitDetail{}, errors.New("缺少提交哈希")
 	}
-	return loadCommitDetail(repo.Path, hash)
+	return newGitExecutor(request).loadCommitDetail(repo.Path, hash)
 }
 
-func mutateRepo(repo RepoDetail, action string, request Request, body RepoActionRequest) error {
+func (executor gitExecutor) mutateRepo(repo RepoDetail, action string, request Request, body RepoActionRequest) error {
 	switch action {
 	case "stage-all":
-		_, err := runGitStrict(repo.Path, []string{"add", "-A"})
+		_, err := executor.runGit(repo.Path, []string{"add", "-A"})
 		return err
 	case "unstage-all":
-		_, err := runGitStrict(repo.Path, []string{"restore", "--staged", "."})
+		_, err := executor.runGit(repo.Path, []string{"restore", "--staged", "."})
 		return err
 	case "stage-file":
 		filePath, err := parseFilePath(body)
 		if err != nil {
 			return err
 		}
-		_, err = runGitStrict(repo.Path, []string{"add", "--", filePath})
+		_, err = executor.runGit(repo.Path, []string{"add", "--", filePath})
 		return err
 	case "unstage-file":
 		filePath, err := parseFilePath(body)
 		if err != nil {
 			return err
 		}
-		_, err = runGitStrict(repo.Path, []string{"restore", "--staged", "--", filePath})
+		_, err = executor.runGit(repo.Path, []string{"restore", "--staged", "--", filePath})
 		return err
 	case "commit":
 		if err := ensureCommitMessage(body.Message); err != nil {
 			return err
 		}
-		_, err := runGitStrict(repo.Path, []string{"commit", "-m", body.Message})
+		_, err := executor.runGit(repo.Path, []string{"commit", "-m", body.Message})
 		return err
 	case "pull":
 		if err := ensurePullReady(repo); err != nil {
 			return err
 		}
-		_, err := runGitStrict(repo.Path, pullArgs(request.PullStrategy))
+		_, err := executor.runGit(repo.Path, pullArgs(request.PullStrategy))
 		return err
 	case "push":
 		if repo.Remote == "—" {
 			return errors.New("当前分支没有 upstream，暂不支持自动 push")
 		}
-		_, err := runGitStrict(repo.Path, []string{"push"})
+		_, err := executor.runGit(repo.Path, []string{"push"})
 		return err
 	case "discard-all":
-		if _, err := runGitStrict(repo.Path, []string{"reset", "--hard", "HEAD"}); err != nil {
+		if _, err := executor.runGit(repo.Path, []string{"reset", "--hard", "HEAD"}); err != nil {
 			return err
 		}
-		_, err := runGitStrict(repo.Path, []string{"clean", "-fd"})
+		_, err := executor.runGit(repo.Path, []string{"clean", "-fd"})
 		return err
 	default:
 		return fmt.Errorf("未找到操作：%s", action)
 	}
 }
 
-func runBatch(snapshot AppSnapshot, operation string, request Request) ([]PullResult, error) {
+func (executor gitExecutor) runBatch(snapshot AppSnapshot, operation string, request Request) ([]PullResult, error) {
 	results := make([]PullResult, 0, len(snapshot.Repos))
 	for _, repo := range snapshot.Repos {
 		detail, ok := snapshot.RepoDetails[repo.ID]
@@ -157,9 +158,9 @@ func runBatch(snapshot AppSnapshot, operation string, request Request) ([]PullRe
 		}
 		switch operation {
 		case "pull":
-			results = append(results, executePullAll(detail, request.PullStrategy))
+			results = append(results, executor.executePullAll(detail, request.PullStrategy))
 		case "push":
-			results = append(results, executePushAll(detail, request.PushStrategy))
+			results = append(results, executor.executePushAll(detail, request.PushStrategy))
 		default:
 			return nil, fmt.Errorf("未找到批量操作：%s", operation)
 		}
@@ -167,7 +168,7 @@ func runBatch(snapshot AppSnapshot, operation string, request Request) ([]PullRe
 	return results, nil
 }
 
-func executePullAll(repo RepoDetail, strategy string) PullResult {
+func (executor gitExecutor) executePullAll(repo RepoDetail, strategy string) PullResult {
 	if repo.ScanError != "" {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: "仓库扫描失败：" + repo.ScanError}
 	}
@@ -186,13 +187,13 @@ func executePullAll(repo RepoDetail, strategy string) PullResult {
 	if repo.Behind == 0 {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "uptodate", Detail: "工作区干净，已与远端同步"}
 	}
-	if _, err := runGitStrict(repo.Path, pullArgs(strategy)); err != nil {
+	if _, err := executor.runGit(repo.Path, pullArgs(strategy)); err != nil {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: err.Error()}
 	}
 	return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "pulled", Detail: fmt.Sprintf("已拉取 %d 个提交", repo.Behind), Commits: repo.Behind}
 }
 
-func executePushAll(repo RepoDetail, strategy string) PullResult {
+func (executor gitExecutor) executePushAll(repo RepoDetail, strategy string) PullResult {
 	if repo.Remote == "—" {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：当前分支没有 upstream"}
 	}
@@ -202,7 +203,7 @@ func executePushAll(repo RepoDetail, strategy string) PullResult {
 	if repo.Ahead == 0 {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "uptodate", Detail: "没有需要推送的提交"}
 	}
-	if _, err := runGitStrict(repo.Path, []string{"push"}); err != nil {
+	if _, err := executor.runGit(repo.Path, []string{"push"}); err != nil {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: err.Error()}
 	}
 	return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "pushed", Detail: fmt.Sprintf("已推送 %d 个提交", repo.Ahead), Commits: repo.Ahead}

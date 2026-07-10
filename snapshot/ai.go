@@ -16,7 +16,7 @@ func (s *Service) GenerateCommitMessage(repoID string, request Request, settings
 	if err != nil {
 		return "", err
 	}
-	context, err := buildAIContext(repo, settings)
+	context, err := newGitExecutor(request).buildAIContext(repo, settings)
 	if err != nil {
 		return "", err
 	}
@@ -45,7 +45,7 @@ type aiContext struct {
 	diff  string
 }
 
-func buildAIContext(repo RepoDetail, settings AICommitSettings) (aiContext, error) {
+func (executor gitExecutor) buildAIContext(repo RepoDetail, settings AICommitSettings) (aiContext, error) {
 	sourceFiles := filterSourceFiles(repo.Files, settings.StagedOnly)
 	if len(sourceFiles) == 0 {
 		if settings.StagedOnly {
@@ -54,7 +54,7 @@ func buildAIContext(repo RepoDetail, settings AICommitSettings) (aiContext, erro
 		return aiContext{}, errors.New("当前没有可用于生成的变更")
 	}
 
-	paths, diff := buildDiffBlocks(repo.Path, sourceFiles, settings.MaxDiffChars)
+	paths, diff := executor.buildDiffBlocks(repo.Path, sourceFiles, settings.MaxDiffChars)
 	if diff == "" {
 		return aiContext{}, errors.New("没有可发送给 AI 的 Diff 内容")
 	}
@@ -72,7 +72,7 @@ func filterSourceFiles(files []FileChange, stagedOnly bool) []FileChange {
 	return filtered
 }
 
-func buildDiffBlocks(repoPath string, files []FileChange, maxChars int) ([]string, string) {
+func (executor gitExecutor) buildDiffBlocks(repoPath string, files []FileChange, maxChars int) ([]string, string) {
 	paths := uniquePaths(files)
 	blocks := []string{}
 	totalChars := 0
@@ -81,7 +81,7 @@ func buildDiffBlocks(repoPath string, files []FileChange, maxChars int) ([]strin
 		limit = 12000
 	}
 	for _, file := range files {
-		diffLines := buildFilePreviewLines(repoPath, file)
+		diffLines := executor.buildFilePreviewLines(repoPath, file)
 		if len(diffLines) == 0 {
 			continue
 		}
@@ -112,7 +112,7 @@ func uniquePaths(files []FileChange) []string {
 	return paths
 }
 
-func buildFilePreviewLines(repoPath string, file FileChange) []string {
+func (executor gitExecutor) buildFilePreviewLines(repoPath string, file FileChange) []string {
 	if file.Status == "A" && !file.Staged {
 		lines := safeReadLines(filepath.Join(repoPath, filepath.FromSlash(file.Path)))
 		limit := min(160, len(lines))
@@ -126,7 +126,7 @@ func buildFilePreviewLines(repoPath string, file FileChange) []string {
 	if file.Staged {
 		args = []string{"diff", "--cached", "--no-color", "--", file.Path}
 	}
-	diff, err := runGitStrict(repoPath, args)
+	diff, err := executor.runGit(repoPath, args)
 	if err != nil {
 		return nil
 	}
