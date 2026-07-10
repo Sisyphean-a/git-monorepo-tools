@@ -441,7 +441,7 @@ export namespace snapshot {
 	        this.timeoutSeconds = source["timeoutSeconds"];
 	        this.proxy = this.convertValues(source["proxy"], GitProxySettings);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -678,3 +678,4 @@ export namespace snapshot {
 	}
 
 }
+
