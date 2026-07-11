@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { EventsOn } from '../../frontend/wailsjs/runtime/runtime.js';
 import type { TerminalSessionInfo } from './types';
+import { recordTerminalOutput, shouldSettleTerminalActivity } from './repo-terminal-activity';
 
 export type RepoTerminalState = 'idle' | 'starting' | 'running' | 'active' | 'exited' | 'failed';
 
@@ -107,11 +108,13 @@ function markTerminalOutput(sessionId: string) {
     return;
   }
 
-  setEntry(repoId, {
-    sessionId,
-    state: 'active',
-    lastOutputAt: Date.now(),
-  });
+  const activity = recordTerminalOutput(current, sessionId, Date.now());
+  if (!activity.shouldPublish) {
+    entries.set(repoId, activity.entry);
+    scheduleDecay();
+    return;
+  }
+  setEntry(repoId, activity.entry);
 }
 
 function markTerminalExit(sessionId: string) {
@@ -177,10 +180,7 @@ function settleActiveStates() {
   let changed = false;
 
   for (const [repoId, entry] of entries.entries()) {
-    if (entry.state !== 'active' || entry.lastOutputAt === null) {
-      continue;
-    }
-    if (now - entry.lastOutputAt < ACTIVE_WINDOW_MS) {
+    if (!shouldSettleTerminalActivity(entry, now, ACTIVE_WINDOW_MS)) {
       continue;
     }
 

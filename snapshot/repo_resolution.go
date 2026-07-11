@@ -38,10 +38,11 @@ func (s *Service) resolveRepoEntry(repoID string, request Request) (repoEntry, e
 func resolveRepoByPath(
 	repoID string,
 	repoPath string,
+	category string,
 	scanTime time.Time,
 	loadSnapshot func(repoEntry, time.Time) (repoSnapshot, error),
 ) (RepoDetail, error) {
-	snapshot, err := loadSnapshot(repoEntry{repoPath: repoPath}, scanTime)
+	snapshot, err := loadSnapshot(repoEntry{repoPath: repoPath, category: category}, scanTime)
 	if err != nil {
 		return RepoDetail{}, err
 	}
@@ -95,15 +96,16 @@ func resolveRepoEntryHint(repoID, repoPath, category string) (repoEntry, bool, e
 	return repoEntry{repoPath: hintedPath, category: strings.TrimSpace(category)}, true, nil
 }
 
-func resolveRepoPathHint(repoID, action, repoPath string) (RepoDetail, bool) {
-	if !actionUsesRepoPathOnly(action) {
+func resolveRepoPathHint(repoID, action, repoPath, category string) (RepoDetail, bool) {
+	trimmedCategory := strings.TrimSpace(category)
+	if !actionUsesRepoPathOnly(action) || trimmedCategory == "" {
 		return RepoDetail{}, false
 	}
 	hintedPath, ok := validRepoPathHint(repoID, repoPath)
 	if !ok {
 		return RepoDetail{}, false
 	}
-	return RepoDetail{Repo: Repo{ID: repoID, Path: hintedPath}}, true
+	return RepoDetail{Repo: Repo{ID: repoID, Path: hintedPath, Category: trimmedCategory}}, true
 }
 
 func resolveRepoForActionWithLoad(
@@ -114,11 +116,13 @@ func resolveRepoForActionWithLoad(
 	scanTime time.Time,
 	loadSnapshot func(repoEntry, time.Time) (repoSnapshot, error),
 ) (RepoDetail, error) {
-	if hinted, ok := resolveRepoPathHint(repoID, action, body.RepoPath); ok {
+	if hinted, ok := resolveRepoPathHint(repoID, action, body.RepoPath, body.RepoCategory); ok {
 		return hinted, nil
 	}
-	if hintedPath, ok := validRepoPathHint(repoID, body.RepoPath); ok {
-		return resolveRepoByPath(repoID, hintedPath, scanTime, loadSnapshot)
+	if category := strings.TrimSpace(body.RepoCategory); category != "" {
+		if hintedPath, ok := validRepoPathHint(repoID, body.RepoPath); ok {
+			return resolveRepoByPath(repoID, hintedPath, category, scanTime, loadSnapshot)
+		}
 	}
 	return resolveRepoFromEntries(repoID, discoverEntries(), scanTime, loadSnapshot)
 }

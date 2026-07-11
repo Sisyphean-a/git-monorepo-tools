@@ -228,17 +228,20 @@ func TestResolveRepoPathHintBuildsMinimalRepoForCommit(t *testing.T) {
 	repoPath := "E:/workspace/repo-a"
 	repoID := repoIDForPath(repoPath)
 
-	repo, ok := resolveRepoPathHint(repoID, "commit", repoPath)
+	repo, ok := resolveRepoPathHint(repoID, "commit", repoPath, "测试")
 	if !ok {
 		t.Fatal("expected commit action to use path hint")
 	}
 	if repo.Path != normalizePath(repoPath) {
 		t.Fatalf("expected normalized repo path %q, got %q", normalizePath(repoPath), repo.Path)
 	}
+	if repo.Category != "测试" {
+		t.Fatalf("expected category to be preserved, got %q", repo.Category)
+	}
 }
 
 func TestResolveRepoPathHintRejectsMismatchedRepoID(t *testing.T) {
-	_, ok := resolveRepoPathHint(repoIDForPath("E:/workspace/repo-a"), "commit", "E:/workspace/repo-b")
+	_, ok := resolveRepoPathHint(repoIDForPath("E:/workspace/repo-a"), "commit", "E:/workspace/repo-b", "测试")
 	if ok {
 		t.Fatal("expected mismatched path hint to be rejected")
 	}
@@ -249,12 +252,12 @@ func TestResolveRepoByPathLoadsTargetSnapshot(t *testing.T) {
 	targetID := repoIDForPath(targetPath)
 	loadCalls := 0
 
-	repo, err := resolveRepoByPath(targetID, targetPath, time.Unix(0, 0), func(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
+	repo, err := resolveRepoByPath(targetID, targetPath, "测试", time.Unix(0, 0), func(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
 		loadCalls++
 		return repoSnapshot{
 			repo: Repo{ID: targetID},
 			detail: RepoDetail{
-				Repo: Repo{ID: targetID, Path: targetPath},
+				Repo: Repo{ID: targetID, Path: targetPath, Category: entry.category},
 			},
 		}, nil
 	})
@@ -267,6 +270,9 @@ func TestResolveRepoByPathLoadsTargetSnapshot(t *testing.T) {
 	if repo.Path != targetPath {
 		t.Fatalf("expected resolved repo path %q, got %q", targetPath, repo.Path)
 	}
+	if repo.Category != "测试" {
+		t.Fatalf("expected resolved category to be preserved, got %q", repo.Category)
+	}
 }
 
 func TestResolveRepoForActionWithLoadUsesPathHintForPull(t *testing.T) {
@@ -278,7 +284,7 @@ func TestResolveRepoForActionWithLoadUsesPathHintForPull(t *testing.T) {
 	repo, err := resolveRepoForActionWithLoad(
 		targetID,
 		"pull",
-		RepoActionRequest{RepoPath: targetPath},
+		RepoActionRequest{RepoPath: targetPath, RepoCategory: "测试"},
 		func() []repoEntry { return entries },
 		time.Unix(0, 0),
 		func(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
@@ -286,7 +292,7 @@ func TestResolveRepoForActionWithLoadUsesPathHintForPull(t *testing.T) {
 			return repoSnapshot{
 				repo: Repo{ID: targetID},
 				detail: RepoDetail{
-					Repo: Repo{ID: targetID, Path: normalizePath(entry.repoPath)},
+					Repo: Repo{ID: targetID, Path: normalizePath(entry.repoPath), Category: entry.category},
 				},
 			}, nil
 		},
@@ -299,6 +305,9 @@ func TestResolveRepoForActionWithLoadUsesPathHintForPull(t *testing.T) {
 	}
 	if repo.Path != targetPath {
 		t.Fatalf("expected pull path hint to resolve %q, got %q", targetPath, repo.Path)
+	}
+	if repo.Category != "测试" {
+		t.Fatalf("expected pull category to be preserved, got %q", repo.Category)
 	}
 }
 
@@ -337,6 +346,34 @@ func TestResolveRepoForActionWithLoadFallsBackToEntriesWhenHintInvalid(t *testin
 	}
 }
 
+func TestResolveRepoForActionWithLoadRestoresMissingCategoryFromEntries(t *testing.T) {
+	targetPath := normalizePath("E:/workspace/repo-a")
+	targetID := repoIDForPath(targetPath)
+	discoverCalls := 0
+
+	repo, err := resolveRepoForActionWithLoad(
+		targetID,
+		"discard-all",
+		RepoActionRequest{RepoPath: targetPath},
+		func() []repoEntry {
+			discoverCalls++
+			return []repoEntry{{repoPath: targetPath, category: "测试"}}
+		},
+		time.Unix(0, 0),
+		func(entry repoEntry, scanTime time.Time) (repoSnapshot, error) {
+			return repoSnapshot{detail: RepoDetail{Repo: Repo{
+				ID: repoIDForPath(entry.repoPath), Path: normalizePath(entry.repoPath), Category: entry.category,
+			}}}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected missing category to fall back to discovery, got %v", err)
+	}
+	if discoverCalls != 1 || repo.Category != "测试" {
+		t.Fatalf("expected discovered category, calls=%d category=%q", discoverCalls, repo.Category)
+	}
+}
+
 func TestResolveRepoForActionWithLoadSkipsDiscoveryWhenCommitHintValid(t *testing.T) {
 	targetPath := normalizePath("E:/workspace/repo-a")
 	targetID := repoIDForPath(targetPath)
@@ -346,7 +383,7 @@ func TestResolveRepoForActionWithLoadSkipsDiscoveryWhenCommitHintValid(t *testin
 	repo, err := resolveRepoForActionWithLoad(
 		targetID,
 		"commit",
-		RepoActionRequest{RepoPath: targetPath},
+		RepoActionRequest{RepoPath: targetPath, RepoCategory: "测试"},
 		func() []repoEntry {
 			discoverCalls++
 			return []repoEntry{{repoPath: "E:/workspace/repo-b", category: "测试"}}
@@ -368,6 +405,9 @@ func TestResolveRepoForActionWithLoadSkipsDiscoveryWhenCommitHintValid(t *testin
 	}
 	if repo.Path != targetPath {
 		t.Fatalf("expected commit hint path %q, got %q", targetPath, repo.Path)
+	}
+	if repo.Category != "测试" {
+		t.Fatalf("expected commit category to be preserved, got %q", repo.Category)
 	}
 }
 

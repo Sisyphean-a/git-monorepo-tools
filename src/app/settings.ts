@@ -81,9 +81,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   const proxy: Partial<AppSettings['gitBehavior']['proxy']> = gitBehavior.proxy ?? {};
 
   draft.scanRoots = sanitizeScanRoots(source.scanRoots);
-  draft.customCategories = Array.isArray(source.customCategories)
-    ? source.customCategories.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
-    : [];
+  draft.customCategories = sanitizeCategories(source.customCategories);
   draft.aiCommit.apiKey = typeof aiCommit.apiKey === 'string' ? aiCommit.apiKey : draft.aiCommit.apiKey;
   draft.aiCommit.baseUrl = sanitizeText(aiCommit.baseUrl, draft.aiCommit.baseUrl);
   draft.aiCommit.model = sanitizeText(aiCommit.model, draft.aiCommit.model);
@@ -107,6 +105,15 @@ export function sanitizeSettings(value: unknown): AppSettings {
   draft.gitBehavior.proxy.port = sanitizePort(proxy.port, draft.gitBehavior.proxy.port);
   draft.commandCenter = sanitizeCommandCenter(source.commandCenter);
   return draft;
+}
+
+function sanitizeCategories(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const categories = value
+    .filter((item): item is string => typeof item === 'string')
+    .map(item => item.trim())
+    .filter(Boolean);
+  return [...new Set(categories)];
 }
 
 export function loadSettings() {

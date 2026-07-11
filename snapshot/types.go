@@ -13,10 +13,11 @@ type Request struct {
 }
 
 type RepoActionRequest struct {
-	FileID   string `json:"fileId"`
-	FilePath string `json:"filePath"`
-	Message  string `json:"message"`
-	RepoPath string `json:"repoPath"`
+	FileID       string `json:"fileId"`
+	FilePath     string `json:"filePath"`
+	Message      string `json:"message"`
+	RepoPath     string `json:"repoPath"`
+	RepoCategory string `json:"repoCategory"`
 }
 
 type RepoCommandRequest struct {

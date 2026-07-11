@@ -38,6 +38,15 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+.sidebar-category-button:hover,
+.sidebar-repo-item[data-selected='false']:hover {
+  background: rgba(221, 235, 255, 0.04) !important;
+}
+
+.sidebar-repo-item[data-selected='false']:hover {
+  border-color: rgba(37, 50, 68, 0.33) !important;
+}
+
 .repo-terminal-viewport .xterm-viewport {
   overflow-x: hidden !important;
 }

@@ -22,6 +22,8 @@
     "src/app/pull-results.test.ts",
     "src/app/repo-status.ts",
     "src/app/repo-status.test.ts",
+    "src/app/repo-terminal-activity.ts",
+    "src/app/repo-terminal-activity.test.ts",
     "src/app/settings.ts",
     "src/app/settings.test.ts",
     "src/app/snapshot-coordinator.ts",

@@ -9,7 +9,7 @@
     "web:dev": "vite",
     "web:build": "vite build",
     "preview": "vite preview",
-    "test:snapshot-coordinator": "tsc -p tsconfig.snapshot-tests.json && node --test .tmp/snapshot-tests/snapshot-coordinator.test.js .tmp/snapshot-tests/api.test.js .tmp/snapshot-tests/repo-snapshot-merge.test.js .tmp/snapshot-tests/repo-status.test.js .tmp/snapshot-tests/repo-log.test.js .tmp/snapshot-tests/pull-results.test.js .tmp/snapshot-tests/settings.test.js .tmp/snapshot-tests/terminal-event-bus.test.js .tmp/snapshot-tests/terminal-output-writer.test.js .tmp/snapshot-tests/components/repo-terminal-shortcuts.test.js",
+    "test:snapshot-coordinator": "tsc -p tsconfig.snapshot-tests.json && node --test .tmp/snapshot-tests/snapshot-coordinator.test.js .tmp/snapshot-tests/api.test.js .tmp/snapshot-tests/repo-snapshot-merge.test.js .tmp/snapshot-tests/repo-status.test.js .tmp/snapshot-tests/repo-terminal-activity.test.js .tmp/snapshot-tests/repo-log.test.js .tmp/snapshot-tests/pull-results.test.js .tmp/snapshot-tests/settings.test.js .tmp/snapshot-tests/terminal-event-bus.test.js .tmp/snapshot-tests/terminal-output-writer.test.js .tmp/snapshot-tests/components/repo-terminal-shortcuts.test.js",
     "wails:dev": "wails dev",
     "wails:build": "wails build"
   },

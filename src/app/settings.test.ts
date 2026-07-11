@@ -27,3 +27,11 @@ test('sanitizeSettings keeps proxy host and normalizes invalid port', () => {
     port: 7897,
   });
 });
+
+test('sanitizeSettings trims and deduplicates custom categories', () => {
+  const settings = sanitizeSettings({
+    customCategories: [' 团队 ', '团队', '', '个人'],
+  });
+
+  assert.deepEqual(settings.customCategories, ['团队', '个人']);
+});

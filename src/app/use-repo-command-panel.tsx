@@ -44,7 +44,11 @@ export function useRepoCommandPanel({
     setCommandConsole(null);
   }, [repo.id]);
 
-  const repoActionBody = (body?: Record<string, unknown>) => ({ repoPath: repo.path, ...(body ?? {}) });
+  const repoActionBody = (body?: Record<string, unknown>) => ({
+    ...(body ?? {}),
+    repoPath: repo.path,
+    repoCategory: repo.category,
+  });
   const hasChanges = files.length > 0;
   const hasStaged = stagedIds.size > 0;
   const hasCommitMsg = commitMessage.trim().length > 0;

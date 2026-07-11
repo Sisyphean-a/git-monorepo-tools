@@ -129,27 +129,35 @@ export default function App() {
   };
 
   const handleAddScanRoot = async () => {
-    const folder = await pickFolder();
-    if (!folder) return;
-    const exists = settings.scanRoots.some(item => item.path.toLowerCase() === folder.toLowerCase());
-    if (exists) return;
-    const rootName = folder.split('/').at(-1) ?? '自定义工作区';
-    const nextSettings = sanitizeSettings({
-      ...settings,
-      scanRoots: [...settings.scanRoots, { path: folder, category: `${rootName} 工作区` }],
-    });
-    setSettings(nextSettings);
-    saveSettings(nextSettings);
-    await refreshSnapshot(nextSettings).catch(() => {});
-    setShowAddMenu(false);
+    try {
+      const folder = await pickFolder();
+      if (!folder) return;
+      const exists = settings.scanRoots.some(item => item.path.toLowerCase() === folder.toLowerCase());
+      if (exists) return;
+      const rootName = folder.split('/').at(-1) ?? '自定义工作区';
+      const nextSettings = sanitizeSettings({
+        ...settings,
+        scanRoots: [...settings.scanRoots, { path: folder, category: `${rootName} 工作区` }],
+      });
+      setSettings(nextSettings);
+      saveSettings(nextSettings);
+      await refreshSnapshot(nextSettings);
+      setShowAddMenu(false);
+      setActionError(null);
+    } catch (error) {
+      setActionError(formatActionError(error, '添加目录失败'));
+    }
   };
 
   const handleAddCategory = () => {
     const name = window.prompt('输入新分类名称');
     if (!name?.trim()) return;
+    const category = name.trim();
+    const exists = settings.customCategories.includes(category) || snapshot?.categories.includes(category);
+    if (exists) return;
     const nextSettings = sanitizeSettings({
       ...settings,
-      customCategories: [...settings.customCategories, name.trim()],
+      customCategories: [...settings.customCategories, category],
     });
     setSettings(nextSettings);
     saveSettings(nextSettings);

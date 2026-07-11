@@ -36,6 +36,7 @@ interface Window {
             filePath?: string;
             message?: string;
             repoPath?: string;
+            repoCategory?: string;
           },
         ) => Promise<import('./app/types').AppSnapshot>;
         RunBatch: (

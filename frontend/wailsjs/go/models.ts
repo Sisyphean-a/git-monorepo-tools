@@ -444,6 +444,7 @@ export namespace snapshot {
 	    filePath: string;
 	    message: string;
 	    repoPath: string;
+	    repoCategory: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RepoActionRequest(source);
@@ -455,6 +456,7 @@ export namespace snapshot {
 	        this.filePath = source["filePath"];
 	        this.message = source["message"];
 	        this.repoPath = source["repoPath"];
+	        this.repoCategory = source["repoCategory"];
 	    }
 	}
 	export class RepoCommandRequest {
@@ -680,4 +682,3 @@ export namespace snapshot {
 	}
 
 }
-

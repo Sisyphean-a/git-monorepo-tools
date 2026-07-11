@@ -29,10 +29,11 @@ export type RepoRefreshTarget = {
   category: string;
 };
 type WailsRepoActionRequest = {
-	fileId?: string;
-	filePath?: string;
-	message?: string;
-	repoPath?: string;
+  fileId?: string;
+  filePath?: string;
+  message?: string;
+  repoPath?: string;
+  repoCategory?: string;
 };
 type WailsRepoCommandRequest = {
   repoPath: string;
