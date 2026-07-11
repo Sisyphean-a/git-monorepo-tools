@@ -67,7 +67,7 @@ test('coalesces queued refreshes and keeps latest settings', async () => {
     ]);
     assert.deepEqual(applied, ['refresh-1', 'refresh-5']);
 });
-test('serializes refreshes and snapshot tasks', async () => {
+test('runs snapshot tasks without waiting for an active refresh', async () => {
     const order = [];
     const gate = deferred();
     const coordinator = createSnapshotCoordinator({
@@ -85,51 +85,65 @@ test('serializes refreshes and snapshot tasks', async () => {
         order.push('task-run');
         return snapshot('task-snapshot');
     }, result => result);
-    const queuedRefresh = coordinator.requestRefresh(settings(5));
-    gate.resolve();
-    await Promise.all([refresh, task, queuedRefresh]);
+    await task;
     assert.deepEqual(order, [
         'fetch-1-start',
-        'fetch-1-end',
-        'refresh-1',
         'task-run',
         'task-snapshot',
-        'fetch-5-start',
-        'fetch-5-end',
-        'refresh-5',
     ]);
+    gate.resolve();
+    await refresh;
+    assert.deepEqual(order, ['fetch-1-start', 'task-run', 'task-snapshot', 'fetch-1-end']);
 });
-test('does not merge refresh across queued snapshot task boundaries', async () => {
+test('serializes foreground tasks independently from refreshes', async () => {
     const order = [];
     const gate = deferred();
     const coordinator = createSnapshotCoordinator({
         applySnapshot: next => order.push(next.scannedAt),
-        fetchSnapshot: async (nextSettings) => {
-            order.push(`refresh-${nextSettings.gitBehavior.concurrency}-start`);
-            if (nextSettings.gitBehavior.concurrency === 1)
-                await gate.promise;
-            order.push(`refresh-${nextSettings.gitBehavior.concurrency}-end`);
-            return snapshot(`refresh-${nextSettings.gitBehavior.concurrency}`);
+        fetchSnapshot: async (nextSettings) => snapshot(`refresh-${nextSettings.gitBehavior.concurrency}`),
+    });
+    const firstTask = coordinator.runSnapshotTask(async () => {
+        order.push('first-task-start');
+        await gate.promise;
+        order.push('first-task-end');
+        return snapshot('first-task');
+    }, result => result);
+    const secondTask = coordinator.runSnapshotTask(async () => {
+        order.push('second-task');
+        return snapshot('second-task');
+    }, result => result);
+    gate.resolve();
+    await Promise.all([firstTask, secondTask]);
+    assert.deepEqual(order, [
+        'first-task-start',
+        'first-task-end',
+        'first-task',
+        'second-task',
+        'second-task',
+    ]);
+});
+test('drops a refresh that started while an interaction was running', async () => {
+    const applied = [];
+    const taskGate = deferred();
+    const refreshGate = deferred();
+    const coordinator = createSnapshotCoordinator({
+        applySnapshot: next => applied.push(next.scannedAt),
+        fetchSnapshot: async () => {
+            await refreshGate.promise;
+            return snapshot('background-refresh');
         },
     });
-    const firstRefresh = coordinator.requestRefresh(settings(1));
-    const queuedTask = coordinator.runSnapshotTask(async () => {
-        order.push('task-run');
-        return snapshot('task-snapshot');
+    const task = coordinator.runSnapshotTask(async () => {
+        await taskGate.promise;
+        return snapshot('interaction-update');
     }, result => result);
-    const laterRefresh = coordinator.requestRefresh(settings(5));
-    gate.resolve();
-    await Promise.all([firstRefresh, queuedTask, laterRefresh]);
-    assert.deepEqual(order, [
-        'refresh-1-start',
-        'refresh-1-end',
-        'refresh-1',
-        'task-run',
-        'task-snapshot',
-        'refresh-5-start',
-        'refresh-5-end',
-        'refresh-5',
-    ]);
+    await Promise.resolve();
+    const refresh = coordinator.requestRefresh(settings(1));
+    taskGate.resolve();
+    await task;
+    refreshGate.resolve();
+    await refresh;
+    assert.deepEqual(applied, ['interaction-update']);
 });
 test('continues after refresh failure and reports error visibility', async () => {
     const messages = [];
@@ -165,7 +179,26 @@ test('continues after snapshot task failure and reports error visibility', async
     await assert.rejects(failedTask, /task-boom/);
     await refresh;
     assert.deepEqual(applied, ['refresh-5']);
-    assert.deepEqual(messages, ['task-boom', null]);
+    assert.ok(messages.includes('task-boom'));
+    assert.ok(messages.includes(null));
+});
+test('invalidates progressive scan writes as soon as normal refresh is queued', async () => {
+    const applied = [];
+    const errors = [];
+    const coordinator = createSnapshotCoordinator({
+        applySnapshot: next => applied.push(next.scannedAt),
+        fetchSnapshot: async () => snapshot('manual-refresh'),
+        reportError: message => errors.push(message),
+    });
+    const startup = coordinator.beginProgressiveScan();
+    assert.equal(startup.applySnapshot(snapshot('bootstrap')), true);
+    const refresh = coordinator.requestRefresh(settings(5));
+    assert.equal(startup.isCurrent(), false);
+    assert.equal(startup.applySnapshot(snapshot('late-startup-result')), false);
+    assert.equal(startup.reportError('late-startup-error'), false);
+    await refresh;
+    assert.deepEqual(applied, ['bootstrap', 'manual-refresh']);
+    assert.deepEqual(errors, [null]);
 });
 function deferred() {
     let resolve;

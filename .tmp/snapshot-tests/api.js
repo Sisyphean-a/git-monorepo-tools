@@ -14,6 +14,7 @@ function buildSnapshotRequest(settings, options, target) {
         concurrency: settings?.gitBehavior.concurrency ?? 5,
         pullStrategy: settings?.gitBehavior.pullStrategy ?? 'ff-only',
         pushStrategy: settings?.gitBehavior.pushStrategy ?? 'upstream-only',
+        timeoutSeconds: settings?.gitBehavior.timeoutSeconds ?? 60,
         refreshRemotes: options?.refreshRemotes ?? false,
         proxy: settings?.gitBehavior.proxy ?? {
             enabled: false,
@@ -82,8 +83,14 @@ export async function fetchRepoHistory(repoId, offset, limit, settings) {
 export async function fetchCommitDetail(repoId, hash, settings) {
     return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
 }
-export async function runRepoCommand(repoPath, command, streamId) {
-    return getWailsBindings().RunRepoCommand({ repoPath, command, streamId });
+export async function runRepoCommand(repoPath, command, streamId, settings) {
+    return getWailsBindings().RunRepoCommand({
+        repoPath,
+        command,
+        streamId,
+        timeoutSeconds: settings?.gitBehavior.timeoutSeconds ?? 60,
+        proxy: settings?.gitBehavior.proxy ?? buildSnapshotRequest().proxy,
+    });
 }
 export async function ensureTerminalSession(repoId, repoPath, cols, rows) {
     return getWailsBindings().EnsureTerminalSession({ repoId, repoPath, cols, rows });

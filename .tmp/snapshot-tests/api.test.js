@@ -13,6 +13,7 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
                 refreshRemotes: request.refreshRemotes,
                 proxyEnabled: request.proxy.enabled,
                 proxyPort: request.proxy.port,
+                timeoutSeconds: request.timeoutSeconds,
             });
             return {
                 scannedAt: '',
@@ -86,8 +87,8 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
         });
     }
     assert.deepEqual(calls, [
-        { refreshRemotes: false, proxyEnabled: false, proxyPort: 7897 },
-        { refreshRemotes: true, proxyEnabled: false, proxyPort: 7897 },
+        { refreshRemotes: false, proxyEnabled: false, proxyPort: 7897, timeoutSeconds: 60 },
+        { refreshRemotes: true, proxyEnabled: false, proxyPort: 7897, timeoutSeconds: 60 },
     ]);
 });
 test('fetchWorkspaceBootstrap uses dedicated binding', async () => {
@@ -448,7 +449,7 @@ test('mutateRepo accepts discard-all action', async () => {
     }
     assert.deepEqual(calls, ['MutateRepo:discard-all']);
 });
-test('runRepoCommand uses dedicated binding', async () => {
+test('runRepoCommand uses dedicated binding with current execution settings', async () => {
     const calls = [];
     const originalWindow = globalThis.window;
     const bindings = {
@@ -476,8 +477,8 @@ test('runRepoCommand uses dedicated binding', async () => {
         GetCommitDetail: async () => {
             throw new Error('unused');
         },
-        RunRepoCommand: async ({ repoPath, command }) => {
-            calls.push(`RunRepoCommand:${repoPath}:${command}`);
+        RunRepoCommand: async ({ repoPath, command, timeoutSeconds, proxy }) => {
+            calls.push({ repoPath, command, timeoutSeconds, proxyPort: proxy.port });
             return {
                 repoPath,
                 command,
@@ -518,7 +519,13 @@ test('runRepoCommand uses dedicated binding', async () => {
         value: { go: { main: { App: bindings } } },
     });
     try {
-        const result = await runRepoCommand('/repo/a', 'wails build');
+        const settings = {
+            gitBehavior: {
+                timeoutSeconds: 120,
+                proxy: { enabled: true, host: 'proxy.test', port: 2080 },
+            },
+        };
+        const result = await runRepoCommand('/repo/a', 'wails build', undefined, settings);
         assert.equal(result.output, 'build ok');
         assert.equal(result.exitCode, 0);
     }
@@ -528,7 +535,7 @@ test('runRepoCommand uses dedicated binding', async () => {
             value: originalWindow,
         });
     }
-    assert.deepEqual(calls, ['RunRepoCommand:/repo/a:wails build']);
+    assert.deepEqual(calls, [{ repoPath: '/repo/a', command: 'wails build', timeoutSeconds: 120, proxyPort: 2080 }]);
 });
 test('terminal bindings use dedicated Wails bridge', async () => {
     const calls = [];

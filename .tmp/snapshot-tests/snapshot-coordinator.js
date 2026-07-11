@@ -1,52 +1,84 @@
 export function createSnapshotCoordinator(options) {
-    const queue = [];
-    let activePromise = null;
-    const processQueue = () => {
-        if (activePromise)
-            return activePromise;
-        activePromise = runQueue(queue, options, () => {
-            activePromise = null;
-            if (queue.length > 0)
-                void processQueue();
-        }).catch(() => { });
-        return activePromise;
+    const refreshQueue = [];
+    let activeRefresh = null;
+    let foregroundTail = Promise.resolve();
+    let progressiveRevision = 0;
+    let interactionRevision = 0;
+    const invalidateProgressiveScan = () => {
+        progressiveRevision += 1;
+        return progressiveRevision;
+    };
+    const beginInteraction = () => {
+        invalidateProgressiveScan();
+        interactionRevision += 1;
+    };
+    const finishInteraction = () => {
+        interactionRevision += 1;
+    };
+    const processRefreshQueue = () => {
+        if (activeRefresh)
+            return activeRefresh;
+        activeRefresh = runRefreshQueue(refreshQueue, options, () => interactionRevision, () => {
+            activeRefresh = null;
+            if (refreshQueue.length > 0)
+                void processRefreshQueue();
+        });
+        return activeRefresh;
     };
     return {
+        beginProgressiveScan() {
+            const revision = invalidateProgressiveScan();
+            return {
+                isCurrent: () => revision === progressiveRevision,
+                applySnapshot: snapshot => {
+                    if (revision !== progressiveRevision)
+                        return false;
+                    options.applySnapshot(snapshot);
+                    return true;
+                },
+                reportError: message => {
+                    if (revision !== progressiveRevision)
+                        return false;
+                    options.reportError?.(message);
+                    return true;
+                },
+            };
+        },
         requestRefresh(settings, fetchOptions) {
-            return enqueueRefresh(queue, settings, fetchOptions, processQueue);
+            invalidateProgressiveScan();
+            return enqueueRefresh(refreshQueue, settings, fetchOptions, processRefreshQueue);
         },
         runSnapshotTask(task, readSnapshot) {
-            return enqueueTask(queue, task, (result, nextOptions) => {
+            beginInteraction();
+            const queued = enqueueForegroundTask(task, (result, nextOptions) => {
                 const snapshot = readSnapshot(result);
                 if (snapshot)
                     nextOptions.applySnapshot(snapshot);
-            }, options, processQueue);
+            }, options, finishInteraction, foregroundTail);
+            foregroundTail = queued.settled;
+            return queued.promise;
         },
         runTask(task, onSuccess) {
-            return enqueueTask(queue, task, result => {
-                onSuccess?.(result);
-            }, options, processQueue);
+            beginInteraction();
+            const queued = enqueueForegroundTask(task, result => onSuccess?.(result), options, finishInteraction, foregroundTail);
+            foregroundTail = queued.settled;
+            return queued.promise;
         },
     };
 }
-function runQueue(queue, options, onDone) {
-    return (async () => {
-        try {
-            while (queue.length > 0) {
-                const entry = queue.shift();
-                if (!entry)
-                    continue;
-                if (entry.kind === 'refresh') {
-                    await runRefreshEntry(entry, options);
-                    continue;
-                }
-                await runTaskEntry(entry, options);
-            }
+async function runRefreshQueue(queue, options, currentInteractionRevision, onDone) {
+    try {
+        while (queue.length > 0) {
+            const entry = queue.shift();
+            if (!entry)
+                continue;
+            const revision = currentInteractionRevision();
+            await runRefreshEntry(entry, options, () => revision === currentInteractionRevision());
         }
-        finally {
-            onDone();
-        }
-    })();
+    }
+    finally {
+        onDone();
+    }
 }
 function enqueueRefresh(queue, settings, fetchOptions, processQueue) {
     const existing = findTrailingRefresh(queue);
@@ -55,50 +87,40 @@ function enqueueRefresh(queue, settings, fetchOptions, processQueue) {
         existing.fetchOptions = mergeFetchOptions(existing.fetchOptions, fetchOptions);
         return createRefreshPromise(existing);
     }
-    const entry = { kind: 'refresh', settings, fetchOptions, waiters: [] };
+    const entry = { settings, fetchOptions, waiters: [] };
     const promise = createRefreshPromise(entry);
     queue.push(entry);
     void processQueue();
     return promise;
 }
-function enqueueTask(queue, task, onSuccess, options, processQueue) {
-    let resolvedValue;
-    const promise = new Promise((resolve, reject) => {
-        queue.push({
-            kind: 'task',
-            run: async () => {
-                resolvedValue = await task();
-                onSuccess(resolvedValue, options);
-                options.reportError?.(null);
-            },
-            resolve: () => resolve(resolvedValue),
-            reject,
-        });
-    });
-    void processQueue();
-    return promise;
-}
-function runRefreshEntry(entry, options) {
-    return options.fetchSnapshot(entry.settings, entry.fetchOptions)
-        .then(snapshot => {
-        options.applySnapshot(snapshot);
+function enqueueForegroundTask(task, onSuccess, options, finishInteraction, tail) {
+    const pending = tail.then(async () => {
+        const result = await task();
+        finishInteraction();
+        onSuccess(result, options);
         options.reportError?.(null);
-        entry.waiters.forEach(waiter => waiter.resolve());
-    })
-        .catch(error => {
+        return result;
+    });
+    const promise = pending.catch(error => {
         options.reportError?.(formatError(error));
-        entry.waiters.forEach(waiter => waiter.reject(error));
         throw error;
     });
+    return { promise, settled: promise.then(() => undefined, () => undefined) };
 }
-function runTaskEntry(entry, options) {
-    return entry.run()
-        .then(() => entry.resolve())
-        .catch(error => {
-        options.reportError?.(formatError(error));
-        entry.reject(error);
-        throw error;
-    });
+async function runRefreshEntry(entry, options, isCurrent) {
+    try {
+        const snapshot = await options.fetchSnapshot(entry.settings, entry.fetchOptions);
+        if (isCurrent()) {
+            options.applySnapshot(snapshot);
+            options.reportError?.(null);
+        }
+        entry.waiters.forEach(waiter => waiter.resolve());
+    }
+    catch (error) {
+        if (isCurrent())
+            options.reportError?.(formatError(error));
+        entry.waiters.forEach(waiter => waiter.reject(error));
+    }
 }
 function createRefreshPromise(entry) {
     return new Promise((resolve, reject) => {
@@ -106,8 +128,7 @@ function createRefreshPromise(entry) {
     });
 }
 function findTrailingRefresh(queue) {
-    const lastEntry = queue.at(-1);
-    return lastEntry?.kind === 'refresh' ? lastEntry : null;
+    return queue.at(-1) ?? null;
 }
 function mergeFetchOptions(current, next) {
     if (!current && !next)

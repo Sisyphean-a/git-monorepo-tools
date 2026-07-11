@@ -5,8 +5,66 @@ package main
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestPowerShellTerminalBootstrapConfiguresVTInputAndAddLine(t *testing.T) {
+	bootstrap := buildPowerShellTerminalBootstrapCommand()
+	vtInput := `$env:PSREADLINE_VTINPUT = '1'`
+	moduleImport := `Import-Module PSReadLine -ErrorAction Stop`
+	addLineBinding := `Set-PSReadLineKeyHandler -Chord Shift+Ctrl+Alt+F4 -Function AddLine -ErrorAction Stop`
+
+	if vtInputIndex := strings.Index(bootstrap, vtInput); vtInputIndex < 0 {
+		t.Fatalf("bootstrap does not enable PSReadLine VT input: %q", bootstrap)
+	} else if vtInputIndex > strings.Index(bootstrap, moduleImport) {
+		t.Fatalf("bootstrap enables VT input after loading PSReadLine: %q", bootstrap)
+	}
+	if !strings.Contains(bootstrap, addLineBinding) {
+		t.Fatalf("bootstrap does not bind proxy key to AddLine: %q", bootstrap)
+	}
+}
+
+func TestWindowsPowerShellTerminalEnvironmentUsesBuiltInPSReadLine(t *testing.T) {
+	environment, err := powerShellTerminalProcessEnvironment("powershell", []string{
+		"PSModulePath=C:\\Program Files\\PowerShell\\7\\Modules",
+		"Path=C:\\Windows\\System32",
+	}, func(name string) string {
+		switch name {
+		case "ProgramFiles":
+			return `C:\Program Files`
+		case "SystemRoot":
+			return `C:\Windows`
+		default:
+			return ""
+		}
+	})
+	if err != nil {
+		t.Fatalf("build PowerShell environment: %v", err)
+	}
+
+	var modulePath, vtInput string
+	for _, entry := range environment {
+		parts := strings.SplitN(entry, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		switch parts[0] {
+		case "PSModulePath":
+			modulePath = parts[1]
+		case "PSREADLINE_VTINPUT":
+			vtInput = parts[1]
+		}
+	}
+
+	expectedModulePath := `C:\Program Files\WindowsPowerShell\Modules;C:\Windows\System32\WindowsPowerShell\v1.0\Modules`
+	if modulePath != expectedModulePath {
+		t.Fatalf("unexpected Windows PowerShell module path %q", modulePath)
+	}
+	if vtInput != "1" {
+		t.Fatalf("expected process VT input flag, got %q", vtInput)
+	}
+}
 
 func TestResolveWindowsTerminalShellPrefersPwshAndLoadsProfile(t *testing.T) {
 	t.Parallel()

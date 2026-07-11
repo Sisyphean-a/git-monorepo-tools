@@ -10,7 +10,11 @@ import { TerminalOutputWriter } from '../terminal-output-writer';
 import { C } from '../theme';
 import type { RepoDetail, TerminalSessionInfo } from '../types';
 import { ClipboardGetText } from '../../../frontend/wailsjs/runtime/runtime.js';
-import { getWindowsTerminalShortcutAction } from './repo-terminal-shortcuts';
+import {
+  handleWindowsTerminalShortcutEvent,
+  pasteTerminalClipboard,
+  queueTerminalInput,
+} from './repo-terminal-shortcuts';
 
 type TerminalStatus = 'idle' | 'connecting' | 'running' | 'failed' | 'exited';
 type TerminalToast = { id: number; text: string } | null;
@@ -24,6 +28,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   const [sessionId, setSessionId] = useState<string | null>(null);
   const sessionBindingRef = useRef<{ bindSession: (sessionId: string) => void; dispose: () => void } | null>(null);
   const outputWriterRef = useRef<TerminalOutputWriter | null>(null);
+  const terminalPasteDataRef = useRef<((data: string) => void) | null>(null);
   const inputQueueRef = useRef(Promise.resolve());
   const resizeFrameRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -94,8 +99,11 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     if (!session) {
       return;
     }
-    inputQueueRef.current = inputQueueRef.current
-      .then(() => writeTerminalInput(session.sessionId, data))
+    inputQueueRef.current = queueTerminalInput(
+      inputQueueRef.current,
+      input => writeTerminalInput(session.sessionId, input),
+      data,
+    )
       .catch(() => {});
   };
 
@@ -182,14 +190,53 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       return true;
     };
 
-    const pasteClipboard = async (terminal: Terminal) => {
-      const text = await ClipboardGetText();
-      if (!text) {
-        return false;
+    const pasteClipboard = (terminal: Terminal) => {
+      const session = sessionRef.current;
+      if (!session) {
+        return Promise.resolve(false);
       }
-      terminal.paste(text);
-      terminal.focus();
-      return true;
+
+      const paste = inputQueueRef.current.then(async () => {
+        const pasted = await pasteTerminalClipboard(
+          ClipboardGetText,
+          text => {
+            let pasteData = '';
+            terminalPasteDataRef.current = data => {
+              pasteData += data;
+            };
+            try {
+              terminal.paste(text);
+            } finally {
+              terminalPasteDataRef.current = null;
+            }
+            return pasteData;
+          },
+          data => writeTerminalInput(session.sessionId, data),
+        );
+        if (pasted) {
+          terminal.focus();
+        }
+        return pasted;
+      });
+      inputQueueRef.current = paste.then(
+        () => undefined,
+        pasteError => {
+          console.error('终端粘贴失败', pasteError);
+        },
+      );
+      return paste;
+    };
+
+    const pasteAndNotify = (terminal: Terminal) => {
+      void pasteClipboard(terminal)
+        .then(pasted => {
+          if (pasted) {
+            showToast('已粘贴');
+          }
+        })
+        .catch(() => {
+          showToast('粘贴失败');
+        });
     };
 
     const terminal = new Terminal({
@@ -230,21 +277,20 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     fitAddonRef.current = fitAddon;
     outputWriterRef.current = new TerminalOutputWriter(terminal);
     outputWriterRef.current.setEnabled(active);
-    terminal.attachCustomKeyEventHandler(event => {
-      switch (getWindowsTerminalShortcutAction(event, terminal.hasSelection(), shortcutPlatform)) {
-        case 'copy-selection':
-          void copySelection(terminal)
-            .then(copied => {
-              if (copied) {
-                showToast('已复制');
-              }
-            })
-            .catch(() => {});
-          return false;
-        default:
-          return true;
-      }
-    });
+    terminal.attachCustomKeyEventHandler(event => handleWindowsTerminalShortcutEvent(event, {
+      hasSelection: () => terminal.hasSelection(),
+      copySelection: () => {
+        void copySelection(terminal)
+          .then(copied => {
+            if (copied) {
+              showToast('已复制');
+            }
+          })
+          .catch(() => {});
+      },
+      insertLine: data => enqueueTerminalInput(data),
+      pasteClipboard: () => pasteAndNotify(terminal),
+    }, shortcutPlatform));
     const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');
 
     const contextMenuHandler = (event: MouseEvent) => {
@@ -259,19 +305,18 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
           .catch(() => {});
         return;
       }
-      void pasteClipboard(terminal)
-        .then(pasted => {
-          if (pasted) {
-            showToast('已粘贴');
-          }
-        })
-        .catch(() => {});
+      pasteAndNotify(terminal);
     };
     const scrollGuard = () => resetViewportScroll();
     viewportRef.current.addEventListener('contextmenu', contextMenuHandler);
     xtermViewport?.addEventListener('scroll', scrollGuard, { passive: true });
 
     const inputDisposable = terminal.onData(data => {
+      const capturePasteData = terminalPasteDataRef.current;
+      if (capturePasteData) {
+        capturePasteData(data);
+        return;
+      }
       enqueueTerminalInput(data);
     });
 
@@ -287,6 +332,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       sessionBindingRef.current = null;
       outputWriterRef.current?.dispose();
       outputWriterRef.current = null;
+      terminalPasteDataRef.current = null;
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;

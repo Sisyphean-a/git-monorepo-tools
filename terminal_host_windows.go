@@ -5,8 +5,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -29,6 +31,10 @@ func newTerminalHost(repoPath string, cols, rows int) (terminalHost, string, err
 	if err != nil {
 		return nil, "", err
 	}
+	processEnvironment, err := powerShellTerminalProcessEnvironment(shellLabel, os.Environ(), os.Getenv)
+	if err != nil {
+		return nil, "", err
+	}
 
 	pty, err := conpty.New(cols, rows, 0)
 	if err != nil {
@@ -36,7 +42,10 @@ func newTerminalHost(repoPath string, cols, rows int) (terminalHost, string, err
 	}
 
 	argv := append([]string{shellPath}, shellArgs...)
-	_, processHandle, err := pty.Spawn(shellPath, argv, &syscall.ProcAttr{Dir: workingDir})
+	_, processHandle, err := pty.Spawn(shellPath, argv, &syscall.ProcAttr{
+		Dir: workingDir,
+		Env: processEnvironment,
+	})
 	if err != nil {
 		_ = pty.Close()
 		return nil, "", fmt.Errorf("启动终端进程失败: %w", err)
@@ -107,8 +116,48 @@ func (h *conptyHost) Close() error {
 	return closeErr
 }
 
+func powerShellTerminalProcessEnvironment(
+	shellLabel string,
+	environ []string,
+	lookupEnv func(string) string,
+) ([]string, error) {
+	if shellLabel != "pwsh" && shellLabel != "powershell" {
+		return environ, nil
+	}
+
+	environment := replaceEnvironmentVariable(environ, "PSREADLINE_VTINPUT", "1")
+	if shellLabel != "powershell" {
+		return environment, nil
+	}
+
+	programFiles := lookupEnv("ProgramFiles")
+	systemRoot := lookupEnv("SystemRoot")
+	if programFiles == "" || systemRoot == "" {
+		return nil, errors.New("启动 Windows PowerShell 时缺少系统模块目录环境变量")
+	}
+	modulePath := strings.Join([]string{
+		filepath.Join(programFiles, "WindowsPowerShell", "Modules"),
+		filepath.Join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
+	}, ";")
+	return replaceEnvironmentVariable(environment, "PSModulePath", modulePath), nil
+}
+
+func replaceEnvironmentVariable(environ []string, name, value string) []string {
+	environment := make([]string, 0, len(environ)+1)
+	for _, entry := range environ {
+		key, _, found := strings.Cut(entry, "=")
+		if found && strings.EqualFold(key, name) {
+			continue
+		}
+		environment = append(environment, entry)
+	}
+	return append(environment, name+"="+value)
+}
+
 func buildPowerShellTerminalBootstrapCommand() string {
-	return `Import-Module PSReadLine -ErrorAction SilentlyContinue; ` +
+	return `$env:PSREADLINE_VTINPUT = '1'; ` +
+		`Import-Module PSReadLine -ErrorAction Stop; ` +
+		`Set-PSReadLineKeyHandler -Chord Shift+Ctrl+Alt+F4 -Function AddLine -ErrorAction Stop; ` +
 		`$__codexCtrlLHandler = $null; ` +
 		`if (Get-Command Get-PSReadLineKeyHandler -ErrorAction SilentlyContinue) { ` +
 		`$__codexCtrlLHandler = Get-PSReadLineKeyHandler | Where-Object { $_.Key -eq 'Ctrl+l' } | Select-Object -First 1; ` +

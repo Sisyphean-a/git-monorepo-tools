@@ -253,6 +253,62 @@ export namespace snapshot {
 		    return a;
 		}
 	}
+	export class CommitCandidate {
+	    id: string;
+	    style: string;
+	    icon: string;
+	    title: string;
+	    body: string;
+	    full: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommitCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.style = source["style"];
+	        this.icon = source["icon"];
+	        this.title = source["title"];
+	        this.body = source["body"];
+	        this.full = source["full"];
+	    }
+	}
+	export class RepoSnapshotUpdate {
+	    repo: RepoDetail;
+	    commitCandidates: CommitCandidate[];
+	    scannedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoSnapshotUpdate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repo = this.convertValues(source["repo"], RepoDetail);
+	        this.commitCandidates = this.convertValues(source["commitCandidates"], CommitCandidate);
+	        this.scannedAt = source["scannedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class BatchResult {
 	    updates?: RepoSnapshotUpdate[];
 	    results?: PullResult[];
@@ -289,28 +345,7 @@ export namespace snapshot {
 		    return a;
 		}
 	}
-	export class CommitCandidate {
-	    id: string;
-	    style: string;
-	    icon: string;
-	    title: string;
-	    body: string;
-	    full: string;
 	
-	    static createFrom(source: any = {}) {
-	        return new CommitCandidate(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.style = source["style"];
-	        this.icon = source["icon"];
-	        this.title = source["title"];
-	        this.body = source["body"];
-	        this.full = source["full"];
-	    }
-	}
 	export class CommitDetail {
 	    hash: string;
 	    shortHash: string;
@@ -545,40 +580,7 @@ export namespace snapshot {
 	        this.content = source["content"];
 	    }
 	}
-	export class RepoSnapshotUpdate {
-	    repo: RepoDetail;
-	    commitCandidates: CommitCandidate[];
-	    scannedAt: string;
 	
-	    static createFrom(source: any = {}) {
-	        return new RepoSnapshotUpdate(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.repo = this.convertValues(source["repo"], RepoDetail);
-	        this.commitCandidates = this.convertValues(source["commitCandidates"], CommitCandidate);
-	        this.scannedAt = source["scannedAt"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class ScanRoot {
 	    path: string;
 	    category: string;
