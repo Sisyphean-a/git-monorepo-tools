@@ -30,6 +30,7 @@ export function handleWindowsTerminalShortcutEvent(event, bindings, platform) {
             bindings.insertLine?.(powerShellAddLineSequence);
             return false;
         case 'paste-clipboard':
+            event.preventDefault();
             bindings.pasteClipboard();
             return false;
         default:

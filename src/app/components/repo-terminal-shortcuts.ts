@@ -11,6 +11,10 @@ interface RepoTerminalShortcutEvent {
   readonly key: string;
 }
 
+interface RepoTerminalShortcutHandlerEvent extends RepoTerminalShortcutEvent {
+  readonly preventDefault: () => void;
+}
+
 interface TerminalShortcutBindings {
   readonly hasSelection: () => boolean;
   readonly copySelection: () => void;
@@ -44,7 +48,7 @@ export function getWindowsTerminalShortcutAction(
 }
 
 export function handleWindowsTerminalShortcutEvent(
-  event: RepoTerminalShortcutEvent,
+  event: RepoTerminalShortcutHandlerEvent,
   bindings: TerminalShortcutBindings,
   platform: string,
 ) {
@@ -59,6 +63,7 @@ export function handleWindowsTerminalShortcutEvent(
       bindings.insertLine?.(powerShellAddLineSequence);
       return false;
     case 'paste-clipboard':
+      event.preventDefault();
       bindings.pasteClipboard();
       return false;
     default:

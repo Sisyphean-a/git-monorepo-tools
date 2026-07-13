@@ -1,14 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getWindowsTerminalShortcutAction, handleWindowsTerminalShortcutEvent, pasteTerminalClipboard, powerShellAddLineSequence, queueTerminalInput, } from './repo-terminal-shortcuts.js';
-test('windows ctrl+c copies when terminal selection exists', () => {
-    assert.equal(getWindowsTerminalShortcutAction({
+test('windows ctrl+c copies selection without blocking browser fallback', () => {
+    let copyCalls = 0;
+    let preventDefaultCalls = 0;
+    const allowsDefault = handleWindowsTerminalShortcutEvent({
         type: 'keydown',
         ctrlKey: true,
         altKey: false,
         metaKey: false,
         key: 'c',
-    }, true, 'Win32'), 'copy-selection');
+        preventDefault: () => {
+            preventDefaultCalls += 1;
+        },
+    }, {
+        hasSelection: () => true,
+        copySelection: () => {
+            copyCalls += 1;
+        },
+        pasteClipboard: () => { },
+    }, 'Win32');
+    assert.equal(allowsDefault, false);
+    assert.equal(copyCalls, 1);
+    assert.equal(preventDefaultCalls, 0);
 });
 test('windows ctrl+c without selection passes through to terminal', () => {
     assert.equal(getWindowsTerminalShortcutAction({
@@ -30,7 +44,7 @@ test('windows shift+enter selects the insert-line action', () => {
     };
     assert.equal(getWindowsTerminalShortcutAction(event, false, 'Win32'), 'insert-line');
 });
-test('windows shift+enter inserts one line and prevents default handling', () => {
+test('windows shift+enter inserts one line and blocks xterm handling', () => {
     let insertLineCalls = 0;
     let insertLineData;
     const event = {
@@ -40,6 +54,7 @@ test('windows shift+enter inserts one line and prevents default handling', () =>
         metaKey: false,
         shiftKey: true,
         key: 'Enter',
+        preventDefault: () => { },
     };
     const bindings = {
         hasSelection: () => false,
@@ -55,7 +70,7 @@ test('windows shift+enter inserts one line and prevents default handling', () =>
     assert.equal(insertLineCalls, 1);
     assert.equal(insertLineData, powerShellAddLineSequence);
 });
-test('windows shift+enter keypress prevents default handling without inserting a second line', () => {
+test('windows shift+enter keypress blocks xterm handling without inserting a second line', () => {
     let insertLineCalls = 0;
     const event = {
         type: 'keypress',
@@ -64,6 +79,7 @@ test('windows shift+enter keypress prevents default handling without inserting a
         metaKey: false,
         shiftKey: true,
         key: 'Enter',
+        preventDefault: () => { },
     };
     const bindings = {
         hasSelection: () => false,
@@ -94,6 +110,7 @@ test('windows shift+enter keydown and keypress send one proxy sequence', () => {
         metaKey: false,
         shiftKey: true,
         key: 'Enter',
+        preventDefault: () => { },
     };
     const keypress = { ...keydown, type: 'keypress' };
     assert.equal(handleWindowsTerminalShortcutEvent(keydown, bindings, 'Win32'), false);
@@ -152,12 +169,16 @@ test('non-windows shift+enter passes through to terminal', () => {
 });
 test('windows ctrl+v invokes application paste and prevents default handling', () => {
     let pasteCalls = 0;
+    let preventDefaultCalls = 0;
     const allowsDefault = handleWindowsTerminalShortcutEvent({
         type: 'keydown',
         ctrlKey: true,
         altKey: false,
         metaKey: false,
         key: 'V',
+        preventDefault: () => {
+            preventDefaultCalls += 1;
+        },
     }, {
         hasSelection: () => false,
         copySelection: () => { },
@@ -166,6 +187,7 @@ test('windows ctrl+v invokes application paste and prevents default handling', (
         },
     }, 'Win32');
     assert.equal(allowsDefault, false);
+    assert.equal(preventDefaultCalls, 1);
     assert.equal(pasteCalls, 1);
 });
 test('application clipboard paste preserves terminal-transformed text', async () => {
