@@ -99,25 +99,55 @@ func TestRefreshRemoteWithRetryReturnsLastFailure(t *testing.T) {
 	}
 }
 
-func TestBuildUntrackedChangesKeepsDirectoryWithoutExpandingFiles(t *testing.T) {
+func TestBuildRepoSnapshotListsEveryChangedFile(t *testing.T) {
 	repoPath := t.TempDir()
-	directoryPath := filepath.Join(repoPath, "generated")
-	if err := os.MkdirAll(directoryPath, 0o755); err != nil {
-		t.Fatalf("create directory: %v", err)
+	initTestRepo(t, repoPath)
+	if _, err := runGitStrict(repoPath, []string{"config", "status.showUntrackedFiles", "no"}); err != nil {
+		t.Fatalf("disable untracked files in repo config: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(directoryPath, "nested.txt"), []byte("one\ntwo\n"), 0o644); err != nil {
-		t.Fatalf("write nested file: %v", err)
+	commitTestFile(t, repoPath, "tracked.txt", "before\n", "seed")
+	if err := os.WriteFile(filepath.Join(repoPath, "tracked.txt"), []byte("before\nafter\n"), 0o644); err != nil {
+		t.Fatalf("modify tracked file: %v", err)
+	}
+	files := map[string]string{
+		"generated/evidence.json":             "{}\n",
+		"generated/public-issue-context.json": "{}\n",
+		"generated/triage.json":               "{}\n",
+		"generated/report.md":                 "report\n",
+	}
+	for relativePath, content := range files {
+		absolutePath := filepath.Join(repoPath, filepath.FromSlash(relativePath))
+		if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
+			t.Fatalf("create parent directory: %v", err)
+		}
+		if err := os.WriteFile(absolutePath, []byte(content), 0o644); err != nil {
+			t.Fatalf("write untracked file: %v", err)
+		}
 	}
 
-	changes := buildUntrackedChanges(repoPath, []string{"?? generated/"}, nil)
-	if len(changes) != 1 {
-		t.Fatalf("expected one directory change, got %#v", changes)
+	snapshot, err := defaultGitExecutor().buildRepoSnapshot(
+		repoEntry{repoPath: repoPath, category: "测试"},
+		time.Unix(0, 0),
+	)
+	if err != nil {
+		t.Fatalf("build repo snapshot: %v", err)
 	}
-	change := changes[0]
-	if change.Path != "generated/" {
-		t.Fatalf("expected directory path, got %q", change.Path)
+	expected := map[string]bool{"tracked.txt": true}
+	for relativePath := range files {
+		expected[relativePath] = true
 	}
-	if change.Additions != 0 || change.Size != "—" {
-		t.Fatalf("expected no nested file statistics, got %#v", change)
+	if len(snapshot.detail.Files) != len(expected) {
+		t.Fatalf("expected %d file changes, got %#v", len(expected), snapshot.detail.Files)
+	}
+	for _, change := range snapshot.detail.Files {
+		if !expected[change.Path] {
+			t.Fatalf("unexpected change path %q", change.Path)
+		}
+		if change.Staged {
+			t.Fatalf("expected unstaged file, got %#v", change)
+		}
+	}
+	if snapshot.repo.Modified != len(expected) || snapshot.detail.UnstagedCount != len(expected) {
+		t.Fatalf("expected file-level counts, got repo=%d unstaged=%d", snapshot.repo.Modified, snapshot.detail.UnstagedCount)
 	}
 }

@@ -1,0 +1,23 @@
+{
+  "privacy": "public-preview",
+  "source": "derived-from-local-private-evidence",
+  "allowed_fields": [
+    "provider",
+    "session_label",
+    "timestamp_bucket",
+    "failure_type",
+    "match_type",
+    "tool_name",
+    "skill_or_reference",
+    "sanitized_excerpt",
+    "incident_kind",
+    "target_skill",
+    "stage_hint",
+    "expected_behavior",
+    "actual_behavior",
+    "impact",
+    "proposed_fix"
+  ],
+  "events": [],
+  "incidents": []
+}

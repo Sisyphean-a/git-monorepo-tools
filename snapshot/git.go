@@ -63,7 +63,7 @@ func (executor gitExecutor) runGitCommand(executable, repoPath string, args []st
 }
 
 func (executor gitExecutor) readStatus(repoPath string) (parsedStatus, error) {
-	output, err := executor.runGit(repoPath, []string{"status", "--porcelain=v1", "-b"})
+	output, err := executor.runGit(repoPath, []string{"status", "--porcelain=v1", "-b", "--untracked-files=all"})
 	return parseStatus(output), err
 }
 
@@ -376,32 +376,19 @@ func buildUntrackedChanges(repoPath string, entries []string, existing []FileCha
 		if !strings.HasPrefix(entry, "?? ") {
 			continue
 		}
-		filePath, directory := untrackedPath(repoPath, strings.TrimSpace(strings.TrimPrefix(entry, "?? ")))
+		filePath := normalizePath(strings.TrimSpace(strings.TrimPrefix(entry, "?? ")))
 		id := filePath + "::unstaged"
 		if seen[id] {
 			continue
 		}
 		seen[id] = true
 		absolute := filepath.Join(repoPath, filepath.FromSlash(filePath))
-		additions := 0
-		if !directory {
-			additions = countFileLines(absolute)
-		}
 		changes = append(changes, FileChange{
-			ID: id, Status: "A", Path: filePath, Additions: additions,
+			ID: id, Status: "A", Path: filePath, Additions: countFileLines(absolute),
 			Deletions: 0, Size: formatSize(resolveSize(absolute)), Staged: false,
 		})
 	}
 	return changes
-}
-
-func untrackedPath(repoPath, rawPath string) (string, bool) {
-	absolute := filepath.Join(repoPath, filepath.FromSlash(rawPath))
-	info, err := os.Stat(absolute)
-	if err != nil || !info.IsDir() {
-		return normalizePath(rawPath), false
-	}
-	return strings.TrimSuffix(normalizePath(rawPath), "/") + "/", true
 }
 
 func extractBranch(line string) string {

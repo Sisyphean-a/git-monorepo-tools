@@ -1,8 +1,9 @@
 ---
 id: 001
 title: 分离交互操作与后台 Git 刷新
-status: accepted
+status: partially-superseded
 date: 2026-07-10
+superseded_by: [002]
 relates_to: [2026-07-10-git-performance]
 ---
 

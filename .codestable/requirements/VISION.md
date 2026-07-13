@@ -316,10 +316,10 @@ class GitService {
 
 ### 6.2 推荐命令
 
-读取状态：
+读取状态（未跟踪项按文件展开）：
 
 ```bash
-git status --porcelain=v1 -b
+git status --porcelain=v1 -b --untracked-files=all
 ```
 
 读取暂存 diff：
@@ -396,7 +396,7 @@ git push
 
 ### 6.3 ahead / behind 解析
 
-通过 `git status --porcelain=v1 -b` 的第一行解析，例如：
+通过 `git status --porcelain=v1 -b --untracked-files=all` 的第一行解析，例如：
 
 ```text
 ## main...origin/main [ahead 2, behind 1]
@@ -419,7 +419,7 @@ git push
 
 刷新分两类：
 
-1. 轻量刷新：只执行 `git status --porcelain=v1 -b` 和本地 diff 列表。
+1. 轻量刷新：只执行 `git status --porcelain=v1 -b --untracked-files=all` 和本地 diff 列表。
 2. 远端刷新：执行 `git fetch --prune --quiet` 后再读取 ahead / behind。
 
 MVP 策略：

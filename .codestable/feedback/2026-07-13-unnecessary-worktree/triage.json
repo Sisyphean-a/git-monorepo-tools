@@ -1,0 +1,82 @@
+{
+  "schema_version": 2,
+  "privacy": "local-private",
+  "incident_id": "",
+  "incident_fingerprint": "",
+  "observation_ids": [],
+  "trigger_cutoff": "unknown",
+  "target": {
+    "skill": "unknown",
+    "stage_hint": "unknown",
+    "suspected_area": "unknown"
+  },
+  "incident_kind": "unknown",
+  "assessment": {
+    "expected_behavior": {
+      "value": "unknown",
+      "source": "unknown",
+      "evidence_refs": []
+    },
+    "actual_behavior": {
+      "value": "unknown",
+      "source": "unknown",
+      "evidence_refs": []
+    },
+    "impact": {
+      "value": "unknown",
+      "source": "unknown",
+      "evidence_refs": []
+    },
+    "proposed_fix": {
+      "value": "unknown",
+      "source": "unknown",
+      "evidence_refs": []
+    },
+    "cause_status": "unclassified"
+  },
+  "reproduction": {
+    "eval_profile": "unknown",
+    "task_kind": "unknown",
+    "input": null,
+    "oracle": null,
+    "evidence_refs": []
+  },
+  "environment_context": {
+    "provider": "unknown",
+    "session": "unknown"
+  },
+  "repo_context": {
+    "runtime": {
+      "status": "unknown"
+    },
+    "artifacts": [],
+    "git_status": []
+  },
+  "quality": {
+    "triage_ready": false,
+    "regression_ready": false,
+    "missing_fields": [
+      "incident",
+      "trigger_cutoff",
+      "target.skill",
+      "assessment.expected_behavior",
+      "assessment.expected_behavior.source",
+      "assessment.expected_behavior.evidence_refs",
+      "assessment.actual_behavior",
+      "assessment.actual_behavior.source",
+      "assessment.actual_behavior.evidence_refs",
+      "reproduction.eval_profile",
+      "reproduction.input",
+      "reproduction.oracle"
+    ],
+    "reasons": [
+      "regression_requires_replayable_input_and_oracle"
+    ],
+    "next_questions": [
+      "incident"
+    ]
+  },
+  "privacy_review": {
+    "status": "pending"
+  }
+}
