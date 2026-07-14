@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   ensureTerminalSession,
   fetchCommitDetail,
+  fetchFileDiff,
   fetchRepoHistory,
   fetchSnapshot,
   fetchWorkspaceBootstrap,
@@ -869,6 +870,15 @@ test('history bindings use dedicated Wails bridge', async () => {
         filesChanged: ['src/app/components/repo-history-tab.tsx'],
       };
     },
+    GetFileDiff: async (request: { repoId: string; filePath: string; staged: boolean; snapshot: { repoPath?: string } }) => {
+      calls.push(`GetFileDiff:${request.repoId}:${request.filePath}:${request.staged}:${request.snapshot.repoPath}`);
+      return {
+        repoId: request.repoId,
+        path: request.filePath,
+        staged: request.staged,
+        content: '@@ -1 +1 @@\n-old\n+new',
+      };
+    },
     RunRepoCommand: async () => {
       throw new Error('unused');
     },
@@ -911,6 +921,8 @@ test('history bindings use dedicated Wails bridge', async () => {
     const detail = await fetchCommitDetail('repo-1', 'abc');
     assert.equal(detail.authorEmail, 'test@example.com');
     assert.equal(detail.filesChanged[0], 'src/app/components/repo-history-tab.tsx');
+    const diff = await fetchFileDiff('repo-1', 'src/app/api.ts', false, undefined, { path: '/repo/a', category: '测试' });
+    assert.equal(diff.content, '@@ -1 +1 @@\n-old\n+new');
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -921,5 +933,6 @@ test('history bindings use dedicated Wails bridge', async () => {
   assert.deepEqual(calls, [
     'GetRepoHistory:repo-1:50:50',
     'GetCommitDetail:repo-1:abc',
+    'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a',
   ]);
 });

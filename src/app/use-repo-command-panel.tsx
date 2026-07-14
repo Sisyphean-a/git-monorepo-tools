@@ -175,18 +175,6 @@ export function useRepoCommandPanel({
     });
   };
 
-  const handleToggleStaged = (id: string) => {
-    const file = files.find(item => item.id === id);
-    if (!file) return;
-    triggerBusyAction('toggle-stage', async () => {
-      await onMutateRepo(
-        repo.id,
-        file.staged ? 'unstage-file' : 'stage-file',
-        repoActionBody({ fileId: file.id, filePath: file.path }),
-      );
-    });
-  };
-
   const handleDiscardAll = () => {
     const confirmed = window.confirm('这会放弃当前仓库的全部本地改动，包括已暂存、未暂存和未跟踪文件，且无法恢复。确认继续？');
     if (!confirmed) return;
@@ -287,7 +275,6 @@ export function useRepoCommandPanel({
     actionGroups,
     commandSections,
     commandConsole,
-    handleToggleStaged,
     setCommitMessage,
     clearCommandConsole: () => setCommandConsole(null),
   };

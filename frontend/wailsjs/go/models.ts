@@ -386,6 +386,24 @@ export namespace snapshot {
 	}
 	
 	
+	export class FileDiff {
+	    repoId: string;
+	    path: string;
+	    staged: boolean;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileDiff(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repoId = source["repoId"];
+	        this.path = source["path"];
+	        this.staged = source["staged"];
+	        this.content = source["content"];
+	    }
+	}
 	export class GitProxySettings {
 	    enabled: boolean;
 	    host: string;
@@ -402,6 +420,103 @@ export namespace snapshot {
 	        this.port = source["port"];
 	    }
 	}
+	export class ScanRoot {
+	    path: string;
+	    category: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScanRoot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.category = source["category"];
+	    }
+	}
+	export class Request {
+	    scanRoots: ScanRoot[];
+	    concurrency: number;
+	    pullStrategy: string;
+	    pushStrategy: string;
+	    timeoutSeconds: number;
+	    refreshRemotes?: boolean;
+	    proxy: GitProxySettings;
+	    repoPath?: string;
+	    repoCategory?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Request(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scanRoots = this.convertValues(source["scanRoots"], ScanRoot);
+	        this.concurrency = source["concurrency"];
+	        this.pullStrategy = source["pullStrategy"];
+	        this.pushStrategy = source["pushStrategy"];
+	        this.timeoutSeconds = source["timeoutSeconds"];
+	        this.refreshRemotes = source["refreshRemotes"];
+	        this.proxy = this.convertValues(source["proxy"], GitProxySettings);
+	        this.repoPath = source["repoPath"];
+	        this.repoCategory = source["repoCategory"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class FileDiffRequest {
+	    repoId: string;
+	    snapshot: Request;
+	    filePath: string;
+	    staged: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileDiffRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repoId = source["repoId"];
+	        this.snapshot = this.convertValues(source["snapshot"], Request);
+	        this.filePath = source["filePath"];
+	        this.staged = source["staged"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	
 	export class Repo {
 	    id: string;
@@ -583,66 +698,7 @@ export namespace snapshot {
 	    }
 	}
 	
-	export class ScanRoot {
-	    path: string;
-	    category: string;
 	
-	    static createFrom(source: any = {}) {
-	        return new ScanRoot(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.path = source["path"];
-	        this.category = source["category"];
-	    }
-	}
-	export class Request {
-	    scanRoots: ScanRoot[];
-	    concurrency: number;
-	    pullStrategy: string;
-	    pushStrategy: string;
-	    timeoutSeconds: number;
-	    refreshRemotes?: boolean;
-	    proxy: GitProxySettings;
-	    repoPath?: string;
-	    repoCategory?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Request(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.scanRoots = this.convertValues(source["scanRoots"], ScanRoot);
-	        this.concurrency = source["concurrency"];
-	        this.pullStrategy = source["pullStrategy"];
-	        this.pushStrategy = source["pushStrategy"];
-	        this.timeoutSeconds = source["timeoutSeconds"];
-	        this.refreshRemotes = source["refreshRemotes"];
-	        this.proxy = this.convertValues(source["proxy"], GitProxySettings);
-	        this.repoPath = source["repoPath"];
-	        this.repoCategory = source["repoCategory"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	
 	export class WorkspaceBootstrap {
 	    repos: Repo[];

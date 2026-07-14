@@ -20,6 +20,13 @@ type RepoActionRequest struct {
 	RepoCategory string `json:"repoCategory"`
 }
 
+type FileDiffRequest struct {
+	RepoID   string  `json:"repoId"`
+	Snapshot Request `json:"snapshot"`
+	FilePath string  `json:"filePath"`
+	Staged   bool    `json:"staged"`
+}
+
 type RepoCommandRequest struct {
 	RepoPath       string           `json:"repoPath"`
 	Command        string           `json:"command"`
@@ -173,6 +180,13 @@ type RepoLog struct {
 	RepoName string `json:"repoName"`
 	Path     string `json:"path"`
 	Content  string `json:"content"`
+}
+
+type FileDiff struct {
+	RepoID  string `json:"repoId"`
+	Path    string `json:"path"`
+	Staged  bool   `json:"staged"`
+	Content string `json:"content"`
 }
 
 type BatchResult struct {

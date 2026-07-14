@@ -1,6 +1,4 @@
-export type RepoTerminalShortcutAction = 'copy-selection' | 'insert-line' | 'paste-clipboard' | 'pass-through';
-
-export const powerShellAddLineSequence = '\x1b[1;8S';
+export type RepoTerminalShortcutAction = 'copy-selection' | 'paste-clipboard' | 'pass-through';
 
 interface RepoTerminalShortcutEvent {
   readonly type: string;
@@ -18,7 +16,6 @@ interface RepoTerminalShortcutHandlerEvent extends RepoTerminalShortcutEvent {
 interface TerminalShortcutBindings {
   readonly hasSelection: () => boolean;
   readonly copySelection: () => void;
-  readonly insertLine?: (data: string) => void;
   readonly pasteClipboard: () => void;
 }
 
@@ -29,9 +26,6 @@ export function getWindowsTerminalShortcutAction(
 ): RepoTerminalShortcutAction {
   if (!isWindowsPlatform(platform) || event.type !== 'keydown') {
     return 'pass-through';
-  }
-  if (isWindowsShiftEnter(event, platform)) {
-    return 'insert-line';
   }
   if (!event.ctrlKey || event.altKey || event.metaKey) {
     return 'pass-through';
@@ -52,15 +46,9 @@ export function handleWindowsTerminalShortcutEvent(
   bindings: TerminalShortcutBindings,
   platform: string,
 ) {
-  if (event.type === 'keypress' && isWindowsShiftEnter(event, platform)) {
-    return false;
-  }
   switch (getWindowsTerminalShortcutAction(event, bindings.hasSelection(), platform)) {
     case 'copy-selection':
       bindings.copySelection();
-      return false;
-    case 'insert-line':
-      bindings.insertLine?.(powerShellAddLineSequence);
       return false;
     case 'paste-clipboard':
       event.preventDefault();
@@ -98,13 +86,4 @@ export function queueTerminalInput(
 
 function isWindowsPlatform(platform: string) {
   return platform.toLowerCase().startsWith('win');
-}
-
-function isWindowsShiftEnter(event: RepoTerminalShortcutEvent, platform: string) {
-  return isWindowsPlatform(platform)
-    && event.shiftKey
-    && !event.ctrlKey
-    && !event.altKey
-    && !event.metaKey
-    && event.key === 'Enter';
 }

@@ -86,6 +86,20 @@ interface Window {
           },
           hash: string,
         ) => Promise<import('./app/types').CommitDetail>;
+        GetFileDiff: (request: {
+          repoId: string;
+          snapshot: {
+            scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
+            pullStrategy: 'ff-only' | 'rebase' | 'merge';
+            pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
+            repoPath?: string;
+            repoCategory?: string;
+          };
+          filePath: string;
+          staged: boolean;
+        }) => Promise<import('./app/types').FileDiff>;
         EnsureTerminalSession: (request: {
           repoId: string;
           repoPath: string;

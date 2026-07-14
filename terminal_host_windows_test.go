@@ -9,19 +9,10 @@ import (
 	"testing"
 )
 
-func TestPowerShellTerminalBootstrapConfiguresVTInputAndAddLine(t *testing.T) {
+func TestPowerShellTerminalBootstrapDoesNotBindShiftEnter(t *testing.T) {
 	bootstrap := buildPowerShellTerminalBootstrapCommand()
-	vtInput := `$env:PSREADLINE_VTINPUT = '1'`
-	moduleImport := `Import-Module PSReadLine -ErrorAction Stop`
-	addLineBinding := `Set-PSReadLineKeyHandler -Chord Shift+Ctrl+Alt+F4 -Function AddLine -ErrorAction Stop`
-
-	if vtInputIndex := strings.Index(bootstrap, vtInput); vtInputIndex < 0 {
-		t.Fatalf("bootstrap does not enable PSReadLine VT input: %q", bootstrap)
-	} else if vtInputIndex > strings.Index(bootstrap, moduleImport) {
-		t.Fatalf("bootstrap enables VT input after loading PSReadLine: %q", bootstrap)
-	}
-	if !strings.Contains(bootstrap, addLineBinding) {
-		t.Fatalf("bootstrap does not bind proxy key to AddLine: %q", bootstrap)
+	if strings.Contains(bootstrap, "PSREADLINE_VTINPUT") || strings.Contains(bootstrap, "AddLine") {
+		t.Fatalf("bootstrap still contains Shift+Enter support: %q", bootstrap)
 	}
 }
 
@@ -61,8 +52,8 @@ func TestWindowsPowerShellTerminalEnvironmentUsesBuiltInPSReadLine(t *testing.T)
 	if modulePath != expectedModulePath {
 		t.Fatalf("unexpected Windows PowerShell module path %q", modulePath)
 	}
-	if vtInput != "1" {
-		t.Fatalf("expected process VT input flag, got %q", vtInput)
+	if vtInput != "" {
+		t.Fatalf("expected no process VT input flag, got %q", vtInput)
 	}
 }
 

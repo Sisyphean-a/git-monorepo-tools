@@ -35,6 +35,13 @@ type parsedStatus struct {
 	entries   []string
 }
 
+type gitCommandSpec struct {
+	executable       string
+	repoPath         string
+	args             []string
+	allowedExitCodes map[int]bool
+}
+
 func runGit(repoPath string, args []string) (string, error) {
 	return defaultGitExecutor().runGit(repoPath, args)
 }
@@ -44,7 +51,17 @@ func (executor gitExecutor) runGit(repoPath string, args []string) (string, erro
 }
 
 func (executor gitExecutor) runGitCommand(executable, repoPath string, args []string) (string, error) {
-	cmd := exec.Command(executable, append([]string{"-C", repoPath}, args...)...)
+	return executor.runCommand(gitCommandSpec{executable: executable, repoPath: repoPath, args: args})
+}
+
+func (executor gitExecutor) runGitAllowingExitCodeOne(repoPath string, args []string) (string, error) {
+	return executor.runCommand(gitCommandSpec{
+		executable: "git", repoPath: repoPath, args: args, allowedExitCodes: map[int]bool{1: true},
+	})
+}
+
+func (executor gitExecutor) runCommand(spec gitCommandSpec) (string, error) {
+	cmd := exec.Command(spec.executable, append([]string{"-C", spec.repoPath}, spec.args...)...)
 	applyBackgroundProcessAttrs(cmd)
 	cmd.Env = buildGitProcessEnv(executor.proxy)
 	var stdout bytes.Buffer
@@ -55,9 +72,9 @@ func (executor gitExecutor) runGitCommand(executable, repoPath string, args []st
 		return "", err
 	}
 	if err, timedOut := waitForCommand(cmd, executor.timeout); timedOut {
-		return "", fmt.Errorf("git %s 超时（%s）", strings.Join(args, " "), executor.timeout)
-	} else if err != nil {
-		return "", buildGitError(args, stdout.String(), stderr.String())
+		return "", fmt.Errorf("git %s 超时（%s）", strings.Join(spec.args, " "), executor.timeout)
+	} else if err != nil && !spec.allowedExitCodes[cmd.ProcessState.ExitCode()] {
+		return "", buildGitError(spec.args, stdout.String(), stderr.String())
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }

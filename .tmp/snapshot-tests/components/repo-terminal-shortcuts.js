@@ -1,10 +1,6 @@
-export const powerShellAddLineSequence = '\x1b[1;8S';
 export function getWindowsTerminalShortcutAction(event, hasSelection, platform) {
     if (!isWindowsPlatform(platform) || event.type !== 'keydown') {
         return 'pass-through';
-    }
-    if (isWindowsShiftEnter(event, platform)) {
-        return 'insert-line';
     }
     if (!event.ctrlKey || event.altKey || event.metaKey) {
         return 'pass-through';
@@ -19,15 +15,9 @@ export function getWindowsTerminalShortcutAction(event, hasSelection, platform) 
     }
 }
 export function handleWindowsTerminalShortcutEvent(event, bindings, platform) {
-    if (event.type === 'keypress' && isWindowsShiftEnter(event, platform)) {
-        return false;
-    }
     switch (getWindowsTerminalShortcutAction(event, bindings.hasSelection(), platform)) {
         case 'copy-selection':
             bindings.copySelection();
-            return false;
-        case 'insert-line':
-            bindings.insertLine?.(powerShellAddLineSequence);
             return false;
         case 'paste-clipboard':
             event.preventDefault();
@@ -54,12 +44,4 @@ export function queueTerminalInput(inputQueue, writeInput, data) {
 }
 function isWindowsPlatform(platform) {
     return platform.toLowerCase().startsWith('win');
-}
-function isWindowsShiftEnter(event, platform) {
-    return isWindowsPlatform(platform)
-        && event.shiftKey
-        && !event.ctrlKey
-        && !event.altKey
-        && !event.metaKey
-        && event.key === 'Enter';
 }

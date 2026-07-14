@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, CommitDetail, PullResult, RepoCommandResult, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo, WorkspaceBootstrap } from './types.js';
+import type { AppSettings, AppSnapshot, CommitDetail, FileDiff, PullResult, RepoCommandResult, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo, WorkspaceBootstrap } from './types.js';
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
@@ -48,6 +48,12 @@ type WailsTerminalSessionRequest = {
   cols?: number;
   rows?: number;
 };
+type WailsFileDiffRequest = {
+  repoId: string;
+  snapshot: SnapshotRequest;
+  filePath: string;
+  staged: boolean;
+};
 
 type WailsBindings = {
   GetWorkspaceBootstrap: WailsBootstrapBinding;
@@ -58,6 +64,7 @@ type WailsBindings = {
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
   GetRepoHistory: (repoId: string, request: SnapshotRequest, offset: number, limit: number) => Promise<RepoHistoryPage>;
   GetCommitDetail: (repoId: string, request: SnapshotRequest, hash: string) => Promise<CommitDetail>;
+  GetFileDiff: (request: WailsFileDiffRequest) => Promise<FileDiff>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
   EnsureTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
   RestartTerminalSession: (sessionId: string, cols: number, rows: number) => Promise<TerminalSessionInfo>;
@@ -179,6 +186,25 @@ export async function fetchRepoHistory(repoId: string, offset: number, limit: nu
 
 export async function fetchCommitDetail(repoId: string, hash: string, settings?: AppSettings) {
   return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
+}
+
+export async function fetchFileDiff(
+  repoId: string,
+  filePath: string,
+  staged: boolean,
+  settings?: AppSettings,
+  target?: RepoRefreshTarget,
+) {
+  const binding = getWailsBindings().GetFileDiff;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 文件差异绑定不可用');
+  }
+  return binding({
+    repoId,
+    snapshot: buildSnapshotRequest(settings, undefined, target),
+    filePath,
+    staged,
+  });
 }
 
 export async function runRepoCommand(repoPath: string, command: string, streamId?: string, settings?: AppSettings) {

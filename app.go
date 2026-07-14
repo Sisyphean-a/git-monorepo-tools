@@ -73,6 +73,10 @@ func (a *App) GetCommitDetail(repoID string, request snapshot.Request, hash stri
 	return a.service.GetCommitDetail(repoID, request, hash)
 }
 
+func (a *App) GetFileDiff(request snapshot.FileDiffRequest) (snapshot.FileDiff, error) {
+	return a.service.GetFileDiff(request)
+}
+
 func (a *App) GenerateCommitMessage(repoID string, request snapshot.Request, settings snapshot.AICommitSettings) (string, error) {
 	return a.service.GenerateCommitMessage(repoID, request, settings)
 }

@@ -9,6 +9,8 @@ export function GenerateCommitMessage(arg1:string,arg2:snapshot.Request,arg3:sna
 
 export function GetCommitDetail(arg1:string,arg2:snapshot.Request,arg3:string):Promise<snapshot.CommitDetail>;
 
+export function GetFileDiff(arg1:snapshot.FileDiffRequest):Promise<snapshot.FileDiff>;
+
 export function GetRepoHistory(arg1:string,arg2:snapshot.Request,arg3:number,arg4:number):Promise<snapshot.RepoHistoryPage>;
 
 export function GetRepoLog(arg1:string,arg2:snapshot.Request):Promise<snapshot.RepoLog>;

@@ -83,6 +83,18 @@ export async function fetchRepoHistory(repoId, offset, limit, settings) {
 export async function fetchCommitDetail(repoId, hash, settings) {
     return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
 }
+export async function fetchFileDiff(repoId, filePath, staged, settings, target) {
+    const binding = getWailsBindings().GetFileDiff;
+    if (typeof binding !== 'function') {
+        throw new Error('Wails 文件差异绑定不可用');
+    }
+    return binding({
+        repoId,
+        snapshot: buildSnapshotRequest(settings, undefined, target),
+        filePath,
+        staged,
+    });
+}
 export async function runRepoCommand(repoPath, command, streamId, settings) {
     return getWailsBindings().RunRepoCommand({
         repoPath,

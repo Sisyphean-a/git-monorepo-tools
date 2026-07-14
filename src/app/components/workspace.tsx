@@ -1,11 +1,11 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
 import { ConflictBanner, RepoHeader, summarizeFiles } from './workspace-parts';
 import { RepoHistoryTab } from './repo-history-tab';
 import { useRepoCommandPanel } from '../use-repo-command-panel';
-import { ensureTerminalSession, writeTerminalInput } from '../api';
+import { ensureTerminalSession, fetchFileDiff, writeTerminalInput } from '../api';
 import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../repo-terminal-status';
 import type {
   AppSettings,
@@ -121,14 +121,12 @@ export function Workspace({
   const isChecking = repo.status === 'checking';
 
   const {
-    stagedIds,
     commitMessage,
     aiError,
     topAction,
     actionGroups,
     commandSections,
     commandConsole,
-    handleToggleStaged,
     setCommitMessage,
     clearCommandConsole,
   } = useRepoCommandPanel({
@@ -144,6 +142,16 @@ export function Workspace({
   const handleOpenTerminal = () => void onInvokeLocalRepoAction('open-terminal', repo.path).catch(() => {});
   const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(() => {});
   const handleViewLog = () => void onViewLog(repo.id).catch(() => {});
+  const handleLoadDiff = useCallback(
+    (file: RepoDetail['files'][number]) => fetchFileDiff(
+      repo.id,
+      file.path,
+      file.staged,
+      settings,
+      { path: repo.path, category: repo.category },
+    ),
+    [repo.category, repo.id, repo.path, settings],
+  );
   const handleSendToTerminal = async (command: string) => {
     setRepoTerminalStarting(repo.id);
     try {
@@ -216,7 +224,7 @@ export function Workspace({
                 pointerEvents: mainTab === 'changes' ? 'auto' : 'none',
               }}
             >
-              <DiffList files={repo.files} stagedIds={stagedIds} onToggleStaged={handleToggleStaged} />
+              <DiffList key={repo.id} files={repo.files} revision={repo.scannedAt} onLoadDiff={handleLoadDiff} />
               <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
                 <AiCommitPanel
                   topAction={topAction}

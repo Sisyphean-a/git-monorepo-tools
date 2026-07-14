@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureTerminalSession, fetchCommitDetail, fetchRepoHistory, fetchSnapshot, fetchWorkspaceBootstrap, generateCommitMessage, invokeLocalRepoAction, mutateRepo, refreshRepo, resizeTerminal, restartTerminalSession, runRepoCommand, writeTerminalInput, } from './api.js';
+import { ensureTerminalSession, fetchCommitDetail, fetchFileDiff, fetchRepoHistory, fetchSnapshot, fetchWorkspaceBootstrap, generateCommitMessage, invokeLocalRepoAction, mutateRepo, refreshRepo, resizeTerminal, restartTerminalSession, runRepoCommand, writeTerminalInput, } from './api.js';
 test('fetchSnapshot can opt into remote refresh after page load', async () => {
     const calls = [];
     const originalWindow = globalThis.window;
@@ -807,6 +807,15 @@ test('history bindings use dedicated Wails bridge', async () => {
                 filesChanged: ['src/app/components/repo-history-tab.tsx'],
             };
         },
+        GetFileDiff: async (request) => {
+            calls.push(`GetFileDiff:${request.repoId}:${request.filePath}:${request.staged}:${request.snapshot.repoPath}`);
+            return {
+                repoId: request.repoId,
+                path: request.filePath,
+                staged: request.staged,
+                content: '@@ -1 +1 @@\n-old\n+new',
+            };
+        },
         RunRepoCommand: async () => {
             throw new Error('unused');
         },
@@ -847,6 +856,8 @@ test('history bindings use dedicated Wails bridge', async () => {
         const detail = await fetchCommitDetail('repo-1', 'abc');
         assert.equal(detail.authorEmail, 'test@example.com');
         assert.equal(detail.filesChanged[0], 'src/app/components/repo-history-tab.tsx');
+        const diff = await fetchFileDiff('repo-1', 'src/app/api.ts', false, undefined, { path: '/repo/a', category: '测试' });
+        assert.equal(diff.content, '@@ -1 +1 @@\n-old\n+new');
     }
     finally {
         Object.defineProperty(globalThis, 'window', {
@@ -857,5 +868,6 @@ test('history bindings use dedicated Wails bridge', async () => {
     assert.deepEqual(calls, [
         'GetRepoHistory:repo-1:50:50',
         'GetCommitDetail:repo-1:abc',
+        'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a',
     ]);
 });

@@ -288,7 +288,6 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
           })
           .catch(() => {});
       },
-      insertLine: data => enqueueTerminalInput(data),
       pasteClipboard: () => pasteAndNotify(terminal),
     }, shortcutPlatform));
     const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');

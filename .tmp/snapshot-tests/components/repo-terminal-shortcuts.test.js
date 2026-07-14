@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getWindowsTerminalShortcutAction, handleWindowsTerminalShortcutEvent, pasteTerminalClipboard, powerShellAddLineSequence, queueTerminalInput, } from './repo-terminal-shortcuts.js';
+import { getWindowsTerminalShortcutAction, handleWindowsTerminalShortcutEvent, pasteTerminalClipboard, queueTerminalInput, } from './repo-terminal-shortcuts.js';
 test('windows ctrl+c copies selection without blocking browser fallback', () => {
     let copyCalls = 0;
     let preventDefaultCalls = 0;
@@ -33,116 +33,12 @@ test('windows ctrl+c without selection passes through to terminal', () => {
         key: 'c',
     }, false, 'Win32'), 'pass-through');
 });
-test('windows shift+enter selects the insert-line action', () => {
-    const event = {
-        type: 'keydown',
-        ctrlKey: false,
-        altKey: false,
-        metaKey: false,
-        shiftKey: true,
-        key: 'Enter',
-    };
-    assert.equal(getWindowsTerminalShortcutAction(event, false, 'Win32'), 'insert-line');
-});
-test('windows shift+enter inserts one line and blocks xterm handling', () => {
-    let insertLineCalls = 0;
-    let insertLineData;
-    const event = {
-        type: 'keydown',
-        ctrlKey: false,
-        altKey: false,
-        metaKey: false,
-        shiftKey: true,
-        key: 'Enter',
-        preventDefault: () => { },
-    };
-    const bindings = {
-        hasSelection: () => false,
-        copySelection: () => { },
-        insertLine: (data) => {
-            insertLineCalls += 1;
-            insertLineData = data;
-        },
-        pasteClipboard: () => { },
-    };
-    const allowsDefault = handleWindowsTerminalShortcutEvent(event, bindings, 'Win32');
-    assert.equal(allowsDefault, false);
-    assert.equal(insertLineCalls, 1);
-    assert.equal(insertLineData, powerShellAddLineSequence);
-});
-test('windows shift+enter keypress blocks xterm handling without inserting a second line', () => {
-    let insertLineCalls = 0;
-    const event = {
-        type: 'keypress',
-        ctrlKey: false,
-        altKey: false,
-        metaKey: false,
-        shiftKey: true,
-        key: 'Enter',
-        preventDefault: () => { },
-    };
-    const bindings = {
-        hasSelection: () => false,
-        copySelection: () => { },
-        insertLine: () => {
-            insertLineCalls += 1;
-        },
-        pasteClipboard: () => { },
-    };
-    const allowsDefault = handleWindowsTerminalShortcutEvent(event, bindings, 'Win32');
-    assert.equal(allowsDefault, false);
-    assert.equal(insertLineCalls, 0);
-});
-test('windows shift+enter keydown and keypress send one proxy sequence', () => {
-    const sent = [];
-    const bindings = {
-        hasSelection: () => false,
-        copySelection: () => { },
-        insertLine: (data) => {
-            sent.push(data);
-        },
-        pasteClipboard: () => { },
-    };
-    const keydown = {
-        type: 'keydown',
-        ctrlKey: false,
-        altKey: false,
-        metaKey: false,
-        shiftKey: true,
-        key: 'Enter',
-        preventDefault: () => { },
-    };
-    const keypress = { ...keydown, type: 'keypress' };
-    assert.equal(handleWindowsTerminalShortcutEvent(keydown, bindings, 'Win32'), false);
-    assert.equal(handleWindowsTerminalShortcutEvent(keypress, bindings, 'Win32'), false);
-    assert.deepEqual(sent, [powerShellAddLineSequence]);
-});
-test('windows ctrl+shift+enter passes through to terminal', () => {
-    assert.equal(getWindowsTerminalShortcutAction({
-        type: 'keydown',
-        ctrlKey: true,
-        altKey: false,
-        metaKey: false,
-        shiftKey: true,
-        key: 'Enter',
-    }, false, 'Win32'), 'pass-through');
-});
-test('windows alt+shift+enter passes through to terminal', () => {
-    assert.equal(getWindowsTerminalShortcutAction({
-        type: 'keydown',
-        ctrlKey: false,
-        altKey: true,
-        metaKey: false,
-        shiftKey: true,
-        key: 'Enter',
-    }, false, 'Win32'), 'pass-through');
-});
-test('windows meta+shift+enter passes through to terminal', () => {
+test('windows shift+enter passes through to terminal', () => {
     assert.equal(getWindowsTerminalShortcutAction({
         type: 'keydown',
         ctrlKey: false,
         altKey: false,
-        metaKey: true,
+        metaKey: false,
         shiftKey: true,
         key: 'Enter',
     }, false, 'Win32'), 'pass-through');
@@ -208,7 +104,7 @@ test('application clipboard paste preserves terminal-transformed text', async ()
     assert.deepEqual(transformed, ['first line\nsecond line']);
     assert.deepEqual(pasted, ['\x1b[200~first line\rsecond line\x1b[201~']);
 });
-test('terminal input queue sends the PowerShell add-line sequence before enter', async () => {
+test('terminal input queue preserves write order', async () => {
     const writes = [];
     let startFirstWrite;
     let releaseFirstWrite;
@@ -219,18 +115,18 @@ test('terminal input queue sends the PowerShell add-line sequence before enter',
         releaseFirstWrite = resolve;
     });
     const writeInput = async (data) => {
-        if (data === powerShellAddLineSequence) {
+        if (data === 'first') {
             startFirstWrite();
             await firstWriteReleased;
         }
         writes.push(data);
     };
-    let inputQueue = queueTerminalInput(Promise.resolve(), writeInput, powerShellAddLineSequence);
+    let inputQueue = queueTerminalInput(Promise.resolve(), writeInput, 'first');
     await firstWriteStarted;
-    inputQueue = queueTerminalInput(inputQueue, writeInput, '\r');
+    inputQueue = queueTerminalInput(inputQueue, writeInput, 'second');
     releaseFirstWrite();
     await inputQueue;
-    assert.deepEqual(writes, [powerShellAddLineSequence, '\r']);
+    assert.deepEqual(writes, ['first', 'second']);
 });
 test('non-windows platforms keep default terminal shortcuts', () => {
     assert.equal(getWindowsTerminalShortcutAction({

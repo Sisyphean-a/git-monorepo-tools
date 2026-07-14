@@ -3,11 +3,6 @@
 package main
 
 import (
-	"errors"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -128,72 +123,6 @@ func TestTerminalManagerSupportsCtrlC(t *testing.T) {
 		return strings.Contains(strings.ToLower(chunk), "after-interrupt")
 	}) {
 		t.Fatal("terminal did not continue processing commands after Ctrl+C")
-	}
-}
-
-func TestTerminalManagerShiftEnterAddsLineBeforeExecution(t *testing.T) {
-	assertTerminalManagerShiftEnterAddsLineBeforeExecution(t, "pwsh")
-}
-
-func TestTerminalManagerShiftEnterAddsLineBeforeExecutionWithWindowsPowerShell(t *testing.T) {
-	powershellPath, err := exec.LookPath("powershell.exe")
-	if err != nil {
-		t.Fatalf("find powershell.exe: %v", err)
-	}
-	t.Setenv("PATH", filepath.Dir(powershellPath))
-	assertTerminalManagerShiftEnterAddsLineBeforeExecution(t, "powershell")
-}
-
-func assertTerminalManagerShiftEnterAddsLineBeforeExecution(t *testing.T, expectedShell string) {
-	t.Helper()
-
-	outputs := make(chan string, 64)
-	manager := newTerminalManager(func(name string, payload any) {
-		if name == terminalOutputEventName {
-			outputs <- payload.(terminalOutputEvent).Chunk
-		}
-	})
-	defer manager.CloseAll()
-
-	target := filepath.Join(t.TempDir(), "shift-enter.txt")
-	path := strings.ReplaceAll(toWindowsPath(target), "'", "''")
-	firstLine := fmt.Sprintf("[IO.File]::WriteAllText('%s','first')", path)
-	secondLine := fmt.Sprintf("[IO.File]::AppendAllText('%s','second')", path)
-	session, err := manager.EnsureSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: t.TempDir()})
-	if err != nil {
-		t.Fatalf("ensure session: %v", err)
-	}
-	if session.Shell != expectedShell {
-		t.Fatalf("expected %s shell, got %s", expectedShell, session.Shell)
-	}
-	if err := manager.WriteInput(session.SessionID, firstLine+"\x1b[1;8S"+secondLine); err != nil {
-		t.Fatalf("write shift+enter input: %v", err)
-	}
-
-	time.Sleep(500 * time.Millisecond)
-	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("commands executed before Enter: %v", err)
-	}
-	if err := manager.WriteInput(session.SessionID, "\r"); err != nil {
-		t.Fatalf("write enter: %v", err)
-	}
-
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		content, err := os.ReadFile(target)
-		if err == nil && string(content) == "firstsecond" {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	var output strings.Builder
-	for {
-		select {
-		case chunk := <-outputs:
-			output.WriteString(chunk)
-		default:
-			t.Fatalf("Enter did not execute the complete multi-line command; terminal output: %q", output.String())
-		}
 	}
 }
 

@@ -29,6 +29,13 @@ export interface FileChange {
   staged: boolean;
 }
 
+export interface FileDiff {
+  repoId: string;
+  path: string;
+  staged: boolean;
+  content: string;
+}
+
 export interface PullResult {
   id: string;
   name: string;

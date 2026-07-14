@@ -121,13 +121,8 @@ func powerShellTerminalProcessEnvironment(
 	environ []string,
 	lookupEnv func(string) string,
 ) ([]string, error) {
-	if shellLabel != "pwsh" && shellLabel != "powershell" {
-		return environ, nil
-	}
-
-	environment := replaceEnvironmentVariable(environ, "PSREADLINE_VTINPUT", "1")
 	if shellLabel != "powershell" {
-		return environment, nil
+		return environ, nil
 	}
 
 	programFiles := lookupEnv("ProgramFiles")
@@ -139,7 +134,7 @@ func powerShellTerminalProcessEnvironment(
 		filepath.Join(programFiles, "WindowsPowerShell", "Modules"),
 		filepath.Join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules"),
 	}, ";")
-	return replaceEnvironmentVariable(environment, "PSModulePath", modulePath), nil
+	return replaceEnvironmentVariable(environ, "PSModulePath", modulePath), nil
 }
 
 func replaceEnvironmentVariable(environ []string, name, value string) []string {
@@ -155,9 +150,7 @@ func replaceEnvironmentVariable(environ []string, name, value string) []string {
 }
 
 func buildPowerShellTerminalBootstrapCommand() string {
-	return `$env:PSREADLINE_VTINPUT = '1'; ` +
-		`Import-Module PSReadLine -ErrorAction Stop; ` +
-		`Set-PSReadLineKeyHandler -Chord Shift+Ctrl+Alt+F4 -Function AddLine -ErrorAction Stop; ` +
+	return `Import-Module PSReadLine -ErrorAction Stop; ` +
 		`$__codexCtrlLHandler = $null; ` +
 		`if (Get-Command Get-PSReadLineKeyHandler -ErrorAction SilentlyContinue) { ` +
 		`$__codexCtrlLHandler = Get-PSReadLineKeyHandler | Where-Object { $_.Key -eq 'Ctrl+l' } | Select-Object -First 1; ` +
