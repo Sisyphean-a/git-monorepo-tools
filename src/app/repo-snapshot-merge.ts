@@ -22,18 +22,5 @@ export function mergeRepoSnapshotUpdate(snapshot: AppSnapshot, update: RepoSnaps
 }
 
 export function replaceRepoInList<T extends Repo>(repos: T[], nextRepo: T) {
-  const pinnedRepoPath = repos[0]?.path ?? '';
-  return repos
-    .map(repo => (repo.id === nextRepo.id ? nextRepo : repo))
-    .sort((left, right) => compareRepos(left, right, pinnedRepoPath));
-}
-
-export function compareRepos(left: Repo, right: Repo, pinnedRepoPath: string) {
-  if (pinnedRepoPath) {
-    if (left.path === pinnedRepoPath) return -1;
-    if (right.path === pinnedRepoPath) return 1;
-  }
-  if (left.modified !== right.modified) return right.modified - left.modified;
-  if (left.name !== right.name) return left.name.localeCompare(right.name);
-  return left.path.localeCompare(right.path);
+  return repos.map(repo => (repo.id === nextRepo.id ? nextRepo : repo));
 }

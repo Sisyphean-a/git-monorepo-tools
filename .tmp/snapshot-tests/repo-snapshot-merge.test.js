@@ -79,3 +79,33 @@ test('mergeSidebarRepoUpdate updates only sidebar summary fields', () => {
     assert.equal(next.repos[1]?.modified, 4);
     assert.deepEqual(next.categories, ['测试']);
 });
+test('mergeRepoSnapshotUpdate keeps sidebar order stable when repo status changes', () => {
+    const snapshot = {
+        scannedAt: 'old-scan',
+        categories: ['测试'],
+        repos: [repo('repo-a', 0), repo('repo-b', 1), repo('repo-c', 0)],
+        repoDetails: {
+            'repo-a': repo('repo-a', 0),
+            'repo-b': repo('repo-b', 1),
+            'repo-c': repo('repo-c', 0),
+        },
+        selectedRepoId: 'repo-a',
+        pullResults: [],
+        commitCandidates: {
+            'repo-a': [],
+            'repo-b': [],
+            'repo-c': [],
+        },
+    };
+    const next = mergeRepoSnapshotUpdate(snapshot, {
+        repo: {
+            ...repo('repo-c', 8),
+            lastScan: 'new',
+            scannedAt: 'new',
+        },
+        commitCandidates: [],
+        scannedAt: 'new-scan',
+    });
+    assert.deepEqual(next.repos.map(item => item.id), ['repo-a', 'repo-b', 'repo-c']);
+    assert.equal(next.repos[2]?.modified, 8);
+});

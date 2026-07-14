@@ -73,7 +73,7 @@ export function RepoHeader({
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
           <HeaderActionBtn icon={<FolderOpen size={11} />} label="文件夹" onClick={onOpenFolder} />
-          <HeaderActionBtn icon={<Terminal size={11} />} label="终端" onClick={onOpenTerminal} />
+          <HeaderActionBtn icon={<Terminal size={11} />} label="外部终端" onClick={onOpenTerminal} />
           <HeaderActionBtn icon={<Settings2 size={13} />} onClick={onOpenSettings} />
         </div>
       </div>

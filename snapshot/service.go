@@ -171,8 +171,8 @@ func (s *Service) compareRepoOrder(left, right Repo) int {
 	if right.Path == s.projectRoot {
 		return 1
 	}
-	if left.Modified != right.Modified {
-		return right.Modified - left.Modified
+	if categoryDiff := strings.Compare(left.Category, right.Category); categoryDiff != 0 {
+		return categoryDiff
 	}
 	if nameDiff := strings.Compare(left.Name, right.Name); nameDiff != 0 {
 		return nameDiff

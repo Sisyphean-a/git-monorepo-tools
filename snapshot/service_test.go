@@ -25,6 +25,32 @@ func TestSortSnapshotsUsesPathAsTieBreaker(t *testing.T) {
 	}
 }
 
+func TestSortSnapshotsIgnoresModifiedCountForStableOrder(t *testing.T) {
+	service := NewService("E:/workspace/project")
+	items := []repoSnapshot{
+		{repo: Repo{Name: "repo-b", Path: "E:/workspace/repo-b", Category: "测试", Modified: 99}},
+		{repo: Repo{Name: "repo-a", Path: "E:/workspace/repo-a", Category: "测试", Modified: 0}},
+	}
+
+	sorted := service.sortSnapshots(items)
+	if got := []string{sorted[0].repo.Name, sorted[1].repo.Name}; !slices.Equal(got, []string{"repo-a", "repo-b"}) {
+		t.Fatalf("expected alphabetical stable order, got %#v", got)
+	}
+}
+
+func TestSortSnapshotsGroupsCategoriesBeforeRepoNames(t *testing.T) {
+	service := NewService("E:/workspace/project")
+	items := []repoSnapshot{
+		{repo: Repo{Name: "aaa", Path: "E:/workspace/repo-b", Category: "分类-B"}},
+		{repo: Repo{Name: "zzz", Path: "E:/workspace/repo-a", Category: "分类-A"}},
+	}
+
+	sorted := service.sortSnapshots(items)
+	if got := []string{sorted[0].repo.Category, sorted[1].repo.Category}; !slices.Equal(got, []string{"分类-A", "分类-B"}) {
+		t.Fatalf("expected category-first stable order, got %#v", got)
+	}
+}
+
 func TestRepoStatusMarksScanError(t *testing.T) {
 	if got := repoStatus("boom", 0, 0); got != "error" {
 		t.Fatalf("expected error status, got %q", got)

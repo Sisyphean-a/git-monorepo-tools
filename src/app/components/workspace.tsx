@@ -141,7 +141,7 @@ export function Workspace({
   });
 
   const handleOpenFolder = () => void onInvokeLocalRepoAction('open-folder', repo.path).catch(() => {});
-  const handleOpenTerminal = () => setMainTab('terminal');
+  const handleOpenTerminal = () => void onInvokeLocalRepoAction('open-terminal', repo.path).catch(() => {});
   const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(() => {});
   const handleViewLog = () => void onViewLog(repo.id).catch(() => {});
   const handleSendToTerminal = async (command: string) => {
