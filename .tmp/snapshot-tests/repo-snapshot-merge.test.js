@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeRepoSnapshotUpdate } from './repo-snapshot-merge.js';
+import { mergeSidebarRepoUpdate } from './sidebar-snapshot.js';
 function repo(id, modified, path = `/repo/${id}`) {
     return {
         id,
@@ -57,4 +58,24 @@ test('mergeRepoSnapshotUpdate replaces only target repo fields and candidates', 
     assert.equal(next.repoDetails['repo-a'].modified, 0);
     assert.equal(next.commitCandidates['repo-b'][0]?.id, 'new');
     assert.deepEqual(next.repos.map(item => item.id), ['repo-a', 'repo-b']);
+});
+test('mergeSidebarRepoUpdate updates only sidebar summary fields', () => {
+    const update = {
+        repo: {
+            ...repo('repo-b', 4),
+            lastScan: 'new',
+            scannedAt: 'new',
+        },
+        commitCandidates: [],
+        scannedAt: 'sidebar-scan',
+    };
+    const next = mergeSidebarRepoUpdate({
+        scannedAt: 'old-scan',
+        categories: ['测试'],
+        repos: [repo('repo-a', 0), repo('repo-b', 1)],
+    }, update);
+    assert.equal(next.scannedAt, 'sidebar-scan');
+    assert.equal(next.repos[1]?.id, 'repo-b');
+    assert.equal(next.repos[1]?.modified, 4);
+    assert.deepEqual(next.categories, ['测试']);
 });

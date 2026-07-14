@@ -1,13 +1,10 @@
 export function mergeRepoSnapshotUpdate(snapshot, update) {
     const nextRepo = update.repo;
-    const pinnedRepoPath = snapshot.repos[0]?.path ?? '';
     const repoDetails = {
         ...snapshot.repoDetails,
         [nextRepo.id]: nextRepo,
     };
-    const repos = snapshot.repos
-        .map(repo => (repo.id === nextRepo.id ? nextRepo : repo))
-        .sort((left, right) => compareRepos(left, right, pinnedRepoPath));
+    const repos = replaceRepoInList(snapshot.repos, nextRepo);
     return {
         ...snapshot,
         scannedAt: update.scannedAt,
@@ -20,7 +17,13 @@ export function mergeRepoSnapshotUpdate(snapshot, update) {
         },
     };
 }
-function compareRepos(left, right, pinnedRepoPath) {
+export function replaceRepoInList(repos, nextRepo) {
+    const pinnedRepoPath = repos[0]?.path ?? '';
+    return repos
+        .map(repo => (repo.id === nextRepo.id ? nextRepo : repo))
+        .sort((left, right) => compareRepos(left, right, pinnedRepoPath));
+}
+export function compareRepos(left, right, pinnedRepoPath) {
     if (pinnedRepoPath) {
         if (left.path === pinnedRepoPath)
             return -1;

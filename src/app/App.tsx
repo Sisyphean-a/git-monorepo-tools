@@ -10,7 +10,9 @@ import { LogViewerModal } from './components/log-viewer-modal';
 import { loadSettings, saveSettings, sanitizeSettings } from './settings';
 import { viewRepoLog } from './repo-log';
 import type { AppSettings, AppSnapshot, PullResult, RepoLog, RepoMutationAction, RepoSnapshotUpdate, SettingsTab } from './types';
+import { buildSidebarSnapshot } from './sidebar-snapshot';
 import { mergeRepoSnapshotUpdate } from './repo-snapshot-merge';
+import { useSidebarScan } from './use-sidebar-scan';
 import { useSnapshotRefresh } from './use-snapshot-refresh';
 import { useProgressiveStartupScan } from './use-progressive-startup-scan';
 
@@ -52,15 +54,23 @@ export default function App() {
   const [drawerScannedAt, setDrawerScannedAt] = useState('');
   const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
   const [sidebarBatchAction, setSidebarBatchAction] = useState<'pull' | 'push' | null>(null);
-  const [sidebarRefreshing, setSidebarRefreshing] = useState(false);
+  const {
+    sidebarRefreshing,
+    sidebarSnapshot,
+    syncSidebarSnapshot,
+    applySidebarRepoUpdate,
+    refreshSidebar,
+  } = useSidebarScan(settings, selectedRepoId, setRefreshError);
 
   const applySnapshot = (nextSnapshot: AppSnapshot) => {
     setSnapshot(nextSnapshot);
+    syncSidebarSnapshot(nextSnapshot);
     setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
   };
 
   const applyRepoUpdate = (update: RepoSnapshotUpdate) => {
     setSnapshot(current => (current ? mergeRepoSnapshotUpdate(current, update) : current));
+    applySidebarRepoUpdate(update);
     setSelectedRepoId(current => current || update.repo.id);
   };
 
@@ -79,17 +89,6 @@ export default function App() {
     setRefreshError,
     snapshotRefresh,
   );
-
-  const handleSidebarRefresh = async () => {
-    if (sidebarRefreshing) return;
-    setSidebarRefreshing(true);
-    try {
-      await refreshSnapshot();
-    } catch {
-    } finally {
-      setSidebarRefreshing(false);
-    }
-  };
 
   const handleBatch = async (operation: 'pull' | 'push') => {
     setSidebarBatchAction(operation);
@@ -273,13 +272,15 @@ export default function App() {
     );
   }
 
+  const currentSidebar = sidebarSnapshot ?? buildSidebarSnapshot(snapshot);
+
   return (
     <AppFrame>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <Sidebar
-          repos={snapshot.repos}
-          categories={[...snapshot.categories, ...settings.customCategories.filter(category => !snapshot.categories.includes(category))]}
-          scannedAt={snapshot.scannedAt}
+          repos={currentSidebar.repos}
+          categories={[...currentSidebar.categories, ...settings.customCategories.filter(category => !currentSidebar.categories.includes(category))]}
+          scannedAt={currentSidebar.scannedAt}
           settings={settings}
           batchAction={sidebarBatchAction}
           isRefreshing={sidebarRefreshing}
@@ -288,7 +289,7 @@ export default function App() {
           onSelectRepo={id => setSelectedRepoId(id)}
           onPullAll={() => void handleBatch('pull')}
           onPushAll={() => void handleBatch('push')}
-          onRefresh={() => void handleSidebarRefresh()}
+          onRefresh={() => void refreshSidebar()}
           onOpenAddMenu={() => setShowAddMenu(true)}
           onToggleAutoScan={handleToggleAutoScan}
         />

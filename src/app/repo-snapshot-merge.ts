@@ -1,15 +1,12 @@
-import type { AppSnapshot, RepoSnapshotUpdate } from './types.js';
+import type { AppSnapshot, Repo, RepoSnapshotUpdate } from './types.js';
 
 export function mergeRepoSnapshotUpdate(snapshot: AppSnapshot, update: RepoSnapshotUpdate): AppSnapshot {
   const nextRepo = update.repo;
-  const pinnedRepoPath = snapshot.repos[0]?.path ?? '';
   const repoDetails = {
     ...snapshot.repoDetails,
     [nextRepo.id]: nextRepo,
   };
-  const repos = snapshot.repos
-    .map(repo => (repo.id === nextRepo.id ? nextRepo : repo))
-    .sort((left, right) => compareRepos(left, right, pinnedRepoPath));
+  const repos = replaceRepoInList(snapshot.repos, nextRepo);
 
   return {
     ...snapshot,
@@ -24,7 +21,14 @@ export function mergeRepoSnapshotUpdate(snapshot: AppSnapshot, update: RepoSnaps
   };
 }
 
-function compareRepos(left: AppSnapshot['repos'][number], right: AppSnapshot['repos'][number], pinnedRepoPath: string) {
+export function replaceRepoInList<T extends Repo>(repos: T[], nextRepo: T) {
+  const pinnedRepoPath = repos[0]?.path ?? '';
+  return repos
+    .map(repo => (repo.id === nextRepo.id ? nextRepo : repo))
+    .sort((left, right) => compareRepos(left, right, pinnedRepoPath));
+}
+
+export function compareRepos(left: Repo, right: Repo, pinnedRepoPath: string) {
   if (pinnedRepoPath) {
     if (left.path === pinnedRepoPath) return -1;
     if (right.path === pinnedRepoPath) return 1;
