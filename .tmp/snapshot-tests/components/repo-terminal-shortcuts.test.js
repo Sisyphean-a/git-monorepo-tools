@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getWindowsTerminalShortcutAction, handleWindowsTerminalShortcutEvent, pasteTerminalClipboard, queueTerminalInput, } from './repo-terminal-shortcuts.js';
+import { ctrlVInput, getWindowsTerminalShortcutAction, handleWindowsTerminalShortcutEvent, pasteTerminalClipboard, queueTerminalInput, } from './repo-terminal-shortcuts.js';
 test('windows ctrl+c copies selection without blocking browser fallback', () => {
     let copyCalls = 0;
     let preventDefaultCalls = 0;
@@ -90,19 +90,79 @@ test('application clipboard paste preserves terminal-transformed text', async ()
     let clipboardReads = 0;
     const transformed = [];
     const pasted = [];
-    const pastedClipboard = await pasteTerminalClipboard(async () => {
-        clipboardReads += 1;
-        return 'first line\nsecond line';
-    }, text => {
-        transformed.push(text);
-        return `\x1b[200~${text.replace('\n', '\r')}\x1b[201~`;
-    }, async (text) => {
-        pasted.push(text);
+    const pastedClipboard = await pasteTerminalClipboard({
+        source: 'context-menu',
+        getClipboardText: async () => {
+            clipboardReads += 1;
+            return 'first line\nsecond line';
+        },
+        transformPastedText: text => {
+            transformed.push(text);
+            return `\x1b[200~${text.replace('\n', '\r')}\x1b[201~`;
+        },
+        writeInput: async (text) => {
+            pasted.push(text);
+        },
     });
     assert.equal(pastedClipboard, true);
     assert.equal(clipboardReads, 1);
     assert.deepEqual(transformed, ['first line\nsecond line']);
     assert.deepEqual(pasted, ['\x1b[200~first line\rsecond line\x1b[201~']);
+});
+test('keyboard paste forwards ctrl+v when the clipboard has no text', async () => {
+    const pasted = [];
+    const pastedClipboard = await pasteTerminalClipboard({
+        source: 'keyboard',
+        getClipboardText: async () => '',
+        transformPastedText: () => assert.fail('empty clipboard must not be transformed'),
+        writeInput: async (text) => {
+            pasted.push(text);
+        },
+    });
+    assert.equal(pastedClipboard, true);
+    assert.deepEqual(pasted, [ctrlVInput]);
+});
+test('keyboard paste forwards ctrl+v when clipboard text cannot be read', async () => {
+    const pasted = [];
+    const pastedClipboard = await pasteTerminalClipboard({
+        source: 'keyboard',
+        getClipboardText: async () => {
+            throw new Error('clipboard text unavailable');
+        },
+        transformPastedText: () => assert.fail('unreadable clipboard must not be transformed'),
+        writeInput: async (text) => {
+            pasted.push(text);
+        },
+    });
+    assert.equal(pastedClipboard, true);
+    assert.deepEqual(pasted, [ctrlVInput]);
+});
+test('clipboard paste without a fallback ignores empty text', async () => {
+    const pasted = [];
+    const pastedClipboard = await pasteTerminalClipboard({
+        source: 'context-menu',
+        getClipboardText: async () => '',
+        transformPastedText: () => assert.fail('empty clipboard must not be transformed'),
+        writeInput: async (text) => {
+            pasted.push(text);
+        },
+    });
+    assert.equal(pastedClipboard, false);
+    assert.deepEqual(pasted, []);
+});
+test('clipboard paste without a fallback preserves read failures', async () => {
+    const pasted = [];
+    await assert.rejects(() => pasteTerminalClipboard({
+        source: 'context-menu',
+        getClipboardText: async () => {
+            throw new Error('clipboard read failed');
+        },
+        transformPastedText: () => assert.fail('unreadable clipboard must not be transformed'),
+        writeInput: async (text) => {
+            pasted.push(text);
+        },
+    }), /clipboard read failed/);
+    assert.deepEqual(pasted, []);
 });
 test('terminal input queue preserves write order', async () => {
     const writes = [];

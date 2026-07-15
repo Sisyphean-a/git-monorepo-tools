@@ -1,3 +1,4 @@
+export const ctrlVInput = '\x16';
 export function getWindowsTerminalShortcutAction(event, hasSelection, platform) {
     if (!isWindowsPlatform(platform) || event.type !== 'keydown') {
         return 'pass-through';
@@ -27,16 +28,26 @@ export function handleWindowsTerminalShortcutEvent(event, bindings, platform) {
             return true;
     }
 }
-export async function pasteTerminalClipboard(getClipboardText, transformPastedText, writeInput) {
-    const text = await getClipboardText();
-    if (!text) {
+export async function pasteTerminalClipboard(options) {
+    const fallbackInput = options.source === 'keyboard' ? ctrlVInput : undefined;
+    let text;
+    try {
+        text = await options.getClipboardText();
+    }
+    catch (error) {
+        if (!fallbackInput) {
+            throw error;
+        }
+        await options.writeInput(fallbackInput);
+        return true;
+    }
+    const input = text
+        ? options.transformPastedText(text)
+        : fallbackInput;
+    if (!input) {
         return false;
     }
-    const pastedText = transformPastedText(text);
-    if (!pastedText) {
-        return false;
-    }
-    await writeInput(pastedText);
+    await options.writeInput(input);
     return true;
 }
 export function queueTerminalInput(inputQueue, writeInput, data) {

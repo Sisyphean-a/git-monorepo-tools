@@ -13,6 +13,7 @@ import {
   handleWindowsTerminalShortcutEvent,
   pasteTerminalClipboard,
   queueTerminalInput,
+  type TerminalClipboardPasteSource,
 } from './repo-terminal-shortcuts';
 
 type TerminalStatus = 'idle' | 'connecting' | 'running' | 'failed' | 'exited';
@@ -197,16 +198,17 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       return true;
     };
 
-    const pasteClipboard = (terminal: Terminal) => {
+    const pasteClipboard = (terminal: Terminal, source: TerminalClipboardPasteSource) => {
       const session = sessionRef.current;
       if (!session) {
         return Promise.resolve(false);
       }
 
       const paste = inputQueueRef.current.then(async () => {
-        const pasted = await pasteTerminalClipboard(
-          backend.readClipboardText,
-          text => {
+        const pasted = await pasteTerminalClipboard({
+          source,
+          getClipboardText: backend.readClipboardText,
+          transformPastedText: text => {
             let pasteData = '';
             terminalPasteDataRef.current = data => {
               pasteData += data;
@@ -218,8 +220,8 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
             }
             return pasteData;
           },
-          data => backend.writeTerminalInput(session.sessionId, data),
-        );
+          writeInput: data => backend.writeTerminalInput(session.sessionId, data),
+        });
         if (pasted) {
           terminal.focus();
         }
@@ -234,8 +236,8 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       return paste;
     };
 
-    const pasteAndNotify = (terminal: Terminal) => {
-      void pasteClipboard(terminal)
+    const pasteAndNotify = (terminal: Terminal, source: TerminalClipboardPasteSource) => {
+      void pasteClipboard(terminal, source)
         .then(pasted => {
           if (pasted) {
             showToast('已粘贴');
@@ -295,7 +297,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
           })
           .catch(copyError => setError(copyError instanceof Error ? copyError.message : '复制失败'));
       },
-      pasteClipboard: () => pasteAndNotify(terminal),
+      pasteClipboard: () => pasteAndNotify(terminal, 'keyboard'),
     }, shortcutPlatform));
     const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');
 
@@ -311,7 +313,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
           .catch(copyError => setError(copyError instanceof Error ? copyError.message : '复制失败'));
         return;
       }
-      pasteAndNotify(terminal);
+      pasteAndNotify(terminal, 'context-menu');
     };
     const scrollGuard = () => resetViewportScroll();
     viewportRef.current.addEventListener('contextmenu', contextMenuHandler);

@@ -1,4 +1,7 @@
 export type RepoTerminalShortcutAction = 'copy-selection' | 'paste-clipboard' | 'pass-through';
+export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
+
+export const ctrlVInput = '\x16';
 
 interface RepoTerminalShortcutEvent {
   readonly type: string;
@@ -59,20 +62,32 @@ export function handleWindowsTerminalShortcutEvent(
   }
 }
 
-export async function pasteTerminalClipboard(
-  getClipboardText: () => Promise<string>,
-  transformPastedText: (text: string) => string,
-  writeInput: (text: string) => Promise<void>,
-) {
-  const text = await getClipboardText();
-  if (!text) {
+interface TerminalClipboardPasteOptions {
+  readonly source: TerminalClipboardPasteSource;
+  readonly getClipboardText: () => Promise<string>;
+  readonly transformPastedText: (text: string) => string;
+  readonly writeInput: (text: string) => Promise<void>;
+}
+
+export async function pasteTerminalClipboard(options: TerminalClipboardPasteOptions) {
+  const fallbackInput = options.source === 'keyboard' ? ctrlVInput : undefined;
+  let text: string;
+  try {
+    text = await options.getClipboardText();
+  } catch (error) {
+    if (!fallbackInput) {
+      throw error;
+    }
+    await options.writeInput(fallbackInput);
+    return true;
+  }
+  const input = text
+    ? options.transformPastedText(text)
+    : fallbackInput;
+  if (!input) {
     return false;
   }
-  const pastedText = transformPastedText(text);
-  if (!pastedText) {
-    return false;
-  }
-  await writeInput(pastedText);
+  await options.writeInput(input);
   return true;
 }
 
