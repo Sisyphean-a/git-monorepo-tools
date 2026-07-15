@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
@@ -7,6 +7,7 @@ import { RepoHistoryTab } from './repo-history-tab';
 import { useAppBackend } from '../application/backend-context';
 import { useRepoCommandPanel } from '../features/commands/use-repo-command-panel';
 import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../features/terminal/repo-terminal-status';
+import { createFileDiffLoader } from '../features/diff/file-diff-loader';
 import type {
   AppSettings,
   RepoCommandResult,
@@ -146,15 +147,16 @@ export function Workspace({
   const handleOpenTerminal = () => void onInvokeLocalRepoAction('open-terminal', repo.path).catch(error => onError(error, '打开终端失败'));
   const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(error => onError(error, '打开冲突工具失败'));
   const handleViewLog = () => void onViewLog(repo.id).catch(error => onError(error, '查看日志失败'));
-  const handleLoadDiff = useCallback(
-    (file: RepoDetail['files'][number]) => backend.fetchFileDiff({
+  // RepoDetail identity changes for every applied snapshot, even within the same second.
+  const fileDiffLoader = useMemo(
+    () => createFileDiffLoader(file => backend.fetchFileDiff({
       repoId: repo.id,
       filePath: file.path,
       staged: file.staged,
       settings,
       target: { path: repo.path, category: repo.category },
-    }),
-    [backend, repo.category, repo.id, repo.path, settings],
+    })),
+    [backend, repo, settings],
   );
   const handleSendToTerminal = async (command: string) => {
     setRepoTerminalStarting(repo.id);
@@ -228,7 +230,7 @@ export function Workspace({
                 pointerEvents: mainTab === 'changes' ? 'auto' : 'none',
               }}
             >
-              <DiffList key={repo.id} files={repo.files} revision={repo.scannedAt} onLoadDiff={handleLoadDiff} />
+              <DiffList key={repo.id} files={repo.files} revision={repo.scannedAt} diffLoader={fileDiffLoader} />
               <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
                 <AiCommitPanel
                   topAction={topAction}

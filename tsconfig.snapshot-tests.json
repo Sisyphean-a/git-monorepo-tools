@@ -35,6 +35,10 @@
     "src/app/features/terminal/terminal-event-bus.test.ts",
     "src/app/features/terminal/terminal-output-writer.ts",
     "src/app/features/terminal/terminal-output-writer.test.ts",
+    "src/app/features/diff/file-diff-loader.ts",
+    "src/app/features/diff/file-diff-loader.test.ts",
+    "src/app/features/diff/diff-viewport.ts",
+    "src/app/features/diff/diff-viewport.test.ts",
     "src/app/domain/types.ts",
     "src/app/components/repo-terminal-shortcuts.ts",
     "src/app/components/repo-terminal-shortcuts.test.ts"
