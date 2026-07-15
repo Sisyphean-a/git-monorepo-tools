@@ -1,355 +1,184 @@
 import { useState } from 'react';
-import { fetchRepoLog, invokeLocalRepoAction, mutateRepo, pickFolder, refreshRepo, runBatch, runRepoCommand } from './api';
-import { C } from './theme';
-import { Sidebar } from './components/sidebar';
-import { Workspace } from './components/workspace';
+import { AddRepoMenu } from './components/add-repo-menu';
+import { AppFrame } from './components/common';
+import { LogViewerModal } from './components/log-viewer-modal';
 import { PullAllDrawer } from './components/pull-all-drawer';
 import { SettingsModal } from './components/settings-modal';
-import { AddRepoMenu } from './components/add-repo-menu';
-import { LogViewerModal } from './components/log-viewer-modal';
-import { loadSettings, saveSettings, sanitizeSettings } from './settings';
-import { viewRepoLog } from './repo-log';
-import type { AppSettings, AppSnapshot, PullResult, RepoLog, RepoMutationAction, RepoSnapshotUpdate, SettingsTab } from './types';
-import { buildSidebarSnapshot } from './sidebar-snapshot';
-import { mergeRepoSnapshotUpdate } from './repo-snapshot-merge';
-import { useSidebarScan } from './use-sidebar-scan';
-import { useSnapshotRefresh } from './use-snapshot-refresh';
-import { useProgressiveStartupScan } from './use-progressive-startup-scan';
+import { Sidebar } from './components/sidebar';
+import { Workspace } from './components/workspace';
+import { BackendProvider } from './application/backend-context';
+import { useBatchController } from './application/use-batch-controller';
+import { useWorkspaceController } from './application/use-workspace-controller';
+import type { SettingsTab } from './domain/types';
+import { settingsStore } from './infrastructure/settings-store';
+import { wailsAppBackend } from './infrastructure/wails-app-backend';
+import { C } from './theme';
 
-function AppFrame({ children }: { children: React.ReactNode }) {
+type WorkspaceController = ReturnType<typeof useWorkspaceController>;
+type BatchController = ReturnType<typeof useBatchController>;
+type DialogController = ReturnType<typeof useDialogs>;
+
+export default function App() {
+  const dialogs = useDialogs();
+  const workspace = useWorkspaceController({ backend: wailsAppBackend, settingsStore });
+  const batch = useBatchController({
+    backend: wailsAppBackend,
+    settings: workspace.settings,
+    runQueuedTask: workspace.runQueuedTask,
+    applyRepoUpdate: workspace.applyRepoUpdate,
+    mutateRepo: workspace.mutateRepo,
+    openRepo: path => workspace.invokeLocalRepoAction('open-folder', path),
+    openRepoLog: workspace.openRepoLog,
+    reportError: workspace.reportActionError,
+  });
+
+  if (!workspace.snapshot) {
+    return <LoadingState error={workspace.visibleError} onRetry={workspace.retryStartupScan} />;
+  }
+
   return (
-    <div
-      style={{
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        background: C.appBg,
-        color: C.textPrimary,
-        fontFamily: 'Inter, system-ui, sans-serif',
-        overflow: 'hidden',
-        fontSize: 14,
-      }}
-    >
-      {children}
+    <BackendProvider backend={wailsAppBackend}>
+      <AppFrame>
+        <WorkspaceLayout workspace={workspace} batch={batch} dialogs={dialogs} />
+        <AppDialogs workspace={workspace} batch={batch} dialogs={dialogs} />
+      </AppFrame>
+    </BackendProvider>
+  );
+}
+
+function WorkspaceLayout({
+  workspace,
+  batch,
+  dialogs,
+}: {
+  workspace: WorkspaceController;
+  batch: BatchController;
+  dialogs: DialogController;
+}) {
+  const snapshot = workspace.snapshot!;
+  const sidebar = workspace.sidebar.sidebarSnapshot ?? {
+    scannedAt: snapshot.scannedAt,
+    categories: snapshot.categories,
+    repos: snapshot.repos,
+  };
+
+  return (
+    <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <Sidebar
+        repos={sidebar.repos}
+        categories={mergeCategories(sidebar.categories, workspace.settings.customCategories)}
+        scannedAt={sidebar.scannedAt}
+        settings={workspace.settings}
+        batchAction={batch.activeAction}
+        isRefreshing={workspace.sidebar.sidebarRefreshing}
+        recentError={workspace.visibleError}
+        selectedRepoId={workspace.selectedRepoId}
+        onSelectRepo={workspace.setSelectedRepoId}
+        onPullAll={() => void batch.runBatch('pull')}
+        onPushAll={() => void batch.runBatch('push')}
+        onRefresh={() => void workspace.sidebar.refreshSidebar()}
+        onOpenAddMenu={dialogs.openAddMenu}
+        onToggleAutoScan={workspace.toggleAutoScan}
+      />
+      <Workspace
+        repoDetails={snapshot.repoDetails}
+        settings={workspace.settings}
+        selectedRepoId={workspace.selectedRepoId}
+        onRefresh={async repoId => { await workspace.refreshWorkspace(repoId); }}
+        onMutateRepo={async (repoId, action, body) => { await workspace.mutateRepo(repoId, action, body); }}
+        onInvokeLocalRepoAction={workspace.invokeLocalRepoAction}
+        onRunCustomCommand={workspace.runRepoCommand}
+        onOpenSettings={dialogs.openSettings}
+        onViewLog={workspace.openRepoLog}
+        onError={workspace.reportActionError}
+      />
     </div>
   );
 }
 
-function formatActionError(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
-}
-
-export default function App() {
-  const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
-  const [selectedRepoId, setSelectedRepoId] = useState('');
-  const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
-  const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [showPullDrawer, setShowPullDrawer] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai-commit');
-  const [showAddMenu, setShowAddMenu] = useState(false);
-  const [drawerOperation, setDrawerOperation] = useState<'pullAll' | 'pushAll'>('pullAll');
-  const [drawerResults, setDrawerResults] = useState<PullResult[]>([]);
-  const [drawerScannedAt, setDrawerScannedAt] = useState('');
-  const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
-  const [sidebarBatchAction, setSidebarBatchAction] = useState<'pull' | 'push' | null>(null);
-  const {
-    sidebarRefreshing,
-    sidebarSnapshot,
-    syncSidebarSnapshot,
-    applySidebarRepoUpdate,
-    refreshSidebar,
-  } = useSidebarScan(settings, selectedRepoId, setRefreshError);
-
-  const applySnapshot = (nextSnapshot: AppSnapshot) => {
-    setSnapshot(nextSnapshot);
-    syncSidebarSnapshot(nextSnapshot);
-    setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
+function AppDialogs({
+  workspace,
+  batch,
+  dialogs,
+}: {
+  workspace: WorkspaceController;
+  batch: BatchController;
+  dialogs: DialogController;
+}) {
+  const snapshot = workspace.snapshot!;
+  const addFolder = async () => {
+    if (await workspace.addScanRoot()) dialogs.closeAddMenu();
   };
-
-  const applyRepoUpdate = (update: RepoSnapshotUpdate) => {
-    setSnapshot(current => (current ? mergeRepoSnapshotUpdate(current, update) : current));
-    applySidebarRepoUpdate(update);
-    setSelectedRepoId(current => current || update.repo.id);
-  };
-
-  const snapshotRefresh = useSnapshotRefresh(
-    settings,
-    applySnapshot,
-    setRefreshError,
-    { skipInitialRefresh: true },
-  );
-  const { refreshSnapshot, runQueuedTask } = snapshotRefresh;
-  const { retryStartupScan } = useProgressiveStartupScan(
-    settings,
-    selectedRepoId,
-    applySnapshot,
-    applyRepoUpdate,
-    setRefreshError,
-    snapshotRefresh,
-  );
-
-  const handleBatch = async (operation: 'pull' | 'push') => {
-    setSidebarBatchAction(operation);
-    try {
-      const result = await runQueuedTask(
-        () => runBatch(operation, settings),
-        response => response.updates?.forEach(applyRepoUpdate),
-      );
-      setDrawerOperation(result.operation ?? (operation === 'pull' ? 'pullAll' : 'pushAll'));
-      setDrawerResults(result.results ?? []);
-      setDrawerScannedAt(result.scannedAt);
-      setShowPullDrawer(true);
-    } catch {
-    } finally {
-      setSidebarBatchAction(null);
-    }
-  };
-
-  const handleSaveSettings = (nextSettings: AppSettings) => {
-    const sanitized = sanitizeSettings(nextSettings);
-    setSettings(sanitized);
-    saveSettings(sanitized);
-    setShowSettings(false);
-    void refreshSnapshot(sanitized).catch(() => {});
-  };
-
-  const handleToggleAutoScan = () => {
-    const nextSettings = sanitizeSettings({
-      ...settings,
-      gitBehavior: {
-        ...settings.gitBehavior,
-        autoScanEnabled: !settings.gitBehavior.autoScanEnabled,
-      },
-    });
-    setSettings(nextSettings);
-    saveSettings(nextSettings);
-  };
-
-  const handleAddScanRoot = async () => {
-    try {
-      const folder = await pickFolder();
-      if (!folder) return;
-      const exists = settings.scanRoots.some(item => item.path.toLowerCase() === folder.toLowerCase());
-      if (exists) return;
-      const rootName = folder.split('/').at(-1) ?? '自定义工作区';
-      const nextSettings = sanitizeSettings({
-        ...settings,
-        scanRoots: [...settings.scanRoots, { path: folder, category: `${rootName} 工作区` }],
-      });
-      setSettings(nextSettings);
-      saveSettings(nextSettings);
-      await refreshSnapshot(nextSettings);
-      setShowAddMenu(false);
-      setActionError(null);
-    } catch (error) {
-      setActionError(formatActionError(error, '添加目录失败'));
-    }
-  };
-
-  const handleAddCategory = () => {
+  const addCategory = () => {
     const name = window.prompt('输入新分类名称');
-    if (!name?.trim()) return;
-    const category = name.trim();
-    const exists = settings.customCategories.includes(category) || snapshot?.categories.includes(category);
-    if (exists) return;
-    const nextSettings = sanitizeSettings({
-      ...settings,
-      customCategories: [...settings.customCategories, category],
-    });
-    setSettings(nextSettings);
-    saveSettings(nextSettings);
-    setShowAddMenu(false);
+    if (name && workspace.addCategory(name)) dialogs.closeAddMenu();
   };
-
-  const handleRemoveScanRoot = (path: string) => {
-    const nextSettings = sanitizeSettings({
-      ...settings,
-      scanRoots: settings.scanRoots.filter(item => item.path !== path),
-    });
-    setSettings(nextSettings);
-    saveSettings(nextSettings);
-    void refreshSnapshot(nextSettings).catch(() => {});
-  };
-
-  const handleRetryRepo = async (repoId: string, operation: 'pullAll' | 'pushAll') => {
-    try {
-      await runQueuedTask(
-        () => mutateRepo(repoId, operation === 'pullAll' ? 'pull' : 'push', settings),
-        applyRepoUpdate,
-      );
-      setDrawerResults(current => current.map(result => (
-        result.id === repoId
-          ? {
-              ...result,
-              result: operation === 'pullAll' ? 'pulled' : 'pushed',
-              detail: operation === 'pullAll' ? '已完成重试拉取' : '已完成重试推送',
-            }
-          : result
-      )));
-    } catch (error) {
-      setDrawerResults(current => current.map(result => (
-        result.id === repoId
-          ? {
-              ...result,
-              result: 'failed',
-              detail: error instanceof Error ? error.message : '重试失败',
-            }
-          : result
-      )));
-    }
-  };
-
-  const handleOpenRepoFromDrawer = async (path: string) => {
-    try {
-      await invokeLocalRepoAction('open-folder', path);
-      setActionError(null);
-    } catch (error) {
-      setActionError(formatActionError(error, '打开目录失败'));
-    }
-  };
-
-  const handleMutateRepo = (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => (
-    runQueuedTask(
-      () => mutateRepo(repoId, action, settings, body),
-      applyRepoUpdate,
-    )
-  );
-
-  const handleWorkspaceRefresh = (repoId: string) => (
-    runQueuedTask(
-      () => refreshRepo(
-        repoId,
-        settings,
-        { refreshRemotes: false },
-        readRepoRefreshTarget(snapshot, repoId),
-      ),
-      applyRepoUpdate,
-    )
-  );
-
-  const handleInvokeLocalRepoAction = async (action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) => {
-    try {
-      await invokeLocalRepoAction(action, path);
-      setActionError(null);
-    } catch (error) {
-      setActionError(formatActionError(error, '本地操作失败'));
-      throw error;
-    }
-  };
-
-  const visibleError = actionError ?? refreshError;
-
-  const handleViewRepoLog = async (repoId: string) => {
-    await viewRepoLog(repoId, settings, {
-      onSuccess: log => setRepoLog(log),
-      onError: setActionError,
-      fetchLog: fetchRepoLog,
-    });
-  };
-
-  const handleViewRepoLogFromDrawer = (repoId: string) => {
-    // Drawer actions already surface failures via actionError; avoid an extra unhandled rejection.
-    void handleViewRepoLog(repoId).catch(() => {});
-  };
-
-  if (!snapshot) {
-    return (
-      <AppFrame>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12, gap: 10 }}>
-          <div>{refreshError ? `扫描失败：${refreshError}` : '正在扫描仓库...'}</div>
-          {refreshError && (
-            <button
-              onClick={() => retryStartupScan()}
-              style={{ background: C.panel2, color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12 }}
-            >
-              重试扫描
-            </button>
-          )}
-        </div>
-      </AppFrame>
-    );
-  }
-
-  const currentSidebar = sidebarSnapshot ?? buildSidebarSnapshot(snapshot);
 
   return (
-    <AppFrame>
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <Sidebar
-          repos={currentSidebar.repos}
-          categories={[...currentSidebar.categories, ...settings.customCategories.filter(category => !currentSidebar.categories.includes(category))]}
-          scannedAt={currentSidebar.scannedAt}
-          settings={settings}
-          batchAction={sidebarBatchAction}
-          isRefreshing={sidebarRefreshing}
-          recentError={visibleError}
-          selectedRepoId={selectedRepoId}
-          onSelectRepo={id => setSelectedRepoId(id)}
-          onPullAll={() => void handleBatch('pull')}
-          onPushAll={() => void handleBatch('push')}
-          onRefresh={() => void refreshSidebar()}
-          onOpenAddMenu={() => setShowAddMenu(true)}
-          onToggleAutoScan={handleToggleAutoScan}
-        />
-        <Workspace
-          repoDetails={snapshot.repoDetails}
-          settings={settings}
-          selectedRepoId={selectedRepoId}
-          onRefresh={handleWorkspaceRefresh}
-          onMutateRepo={handleMutateRepo}
-          onInvokeLocalRepoAction={handleInvokeLocalRepoAction}
-          onRunCustomCommand={(repoPath, command, streamId) => runRepoCommand(repoPath, command, streamId, settings)}
-          onOpenSettings={(tab = 'git-behavior') => {
-            setSettingsTab(tab);
-            setShowSettings(true);
-          }}
-          onViewLog={handleViewRepoLog}
-        />
-      </div>
-      <AddRepoMenu
-        open={showAddMenu}
-        onClose={() => setShowAddMenu(false)}
-        onAddFolder={() => void handleAddScanRoot()}
-        onAddCategory={handleAddCategory}
-      />
+    <>
+      <AddRepoMenu open={dialogs.addMenuOpen} onClose={dialogs.closeAddMenu} onAddFolder={() => void addFolder()} onAddCategory={addCategory} />
       <PullAllDrawer
-        open={showPullDrawer}
-        operation={drawerOperation}
-        results={drawerResults}
-        scannedAt={drawerScannedAt || snapshot.scannedAt}
-        onClose={() => setShowPullDrawer(false)}
-        onOpenRepo={path => void handleOpenRepoFromDrawer(path)}
-        onViewLog={handleViewRepoLogFromDrawer}
-        onRetry={(repoId, operation) => void handleRetryRepo(repoId, operation)}
+        open={batch.open}
+        operation={batch.operation}
+        results={batch.results}
+        scannedAt={batch.scannedAt || snapshot.scannedAt}
+        onClose={batch.close}
+        onOpenRepo={path => void batch.openRepo(path).catch(error => workspace.reportActionError(error, '打开目录失败'))}
+        onViewLog={repoId => void batch.openRepoLog(repoId).catch(error => workspace.reportActionError(error, '查看日志失败'))}
+        onRetry={(repoId, operation) => void batch.retryRepo(repoId, operation)}
       />
       <SettingsModal
         repos={snapshot.repos}
-        settings={settings}
-        open={showSettings}
-        initialTab={settingsTab}
-        onClose={() => setShowSettings(false)}
-        onSave={handleSaveSettings}
-        onAddScanRoot={handleAddScanRoot}
-        onAddCategory={handleAddCategory}
-        onRemoveScanRoot={handleRemoveScanRoot}
+        settings={workspace.settings}
+        open={dialogs.settingsOpen}
+        initialTab={dialogs.settingsTab}
+        onClose={dialogs.closeSettings}
+        onSave={settings => {
+          workspace.saveSettings(settings);
+          dialogs.closeSettings();
+        }}
+        onAddScanRoot={async () => { await workspace.addScanRoot(); }}
+        onAddCategory={addCategory}
+        onRemoveScanRoot={workspace.removeScanRoot}
       />
-      <LogViewerModal log={repoLog} onClose={() => setRepoLog(null)} />
+      <LogViewerModal log={workspace.repoLog} onClose={workspace.closeRepoLog} />
+    </>
+  );
+}
+
+function LoadingState({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  return (
+    <AppFrame>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12, gap: 10 }}>
+        <div>{error ? `扫描失败：${error}` : '正在扫描仓库...'}</div>
+        {error && (
+          <button onClick={onRetry} style={{ background: C.panel2, color: C.textSecondary, border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12 }}>
+            重试扫描
+          </button>
+        )}
+      </div>
     </AppFrame>
   );
 }
 
-function readRepoRefreshTarget(snapshot: AppSnapshot | null, repoId: string) {
-  if (!snapshot) {
-    return undefined;
-  }
-  const repo = snapshot.repoDetails[repoId] ?? snapshot.repos.find(item => item.id === repoId);
-  if (!repo) {
-    return undefined;
-  }
+function useDialogs() {
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai-commit');
   return {
-    path: repo.path,
-    category: repo.category,
+    addMenuOpen,
+    openAddMenu: () => setAddMenuOpen(true),
+    closeAddMenu: () => setAddMenuOpen(false),
+    settingsOpen,
+    settingsTab,
+    openSettings: (tab: SettingsTab = 'git-behavior') => {
+      setSettingsTab(tab);
+      setSettingsOpen(true);
+    },
+    closeSettings: () => setSettingsOpen(false),
   };
+}
+
+function mergeCategories(base: string[], custom: string[]) {
+  return [...base, ...custom.filter(category => !base.includes(category))];
 }

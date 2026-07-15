@@ -175,7 +175,7 @@ function CommandConsole({
   const handleCopy = () => {
     if (!commandConsole) return;
     const text = [`$ ${commandConsole.command}`, commandConsole.output].filter(Boolean).join('\n');
-    navigator.clipboard.writeText(text).catch(() => {});
+    navigator.clipboard.writeText(text).catch(error => console.error('复制提交信息失败', error));
   };
 
   const statusColor = commandConsole?.status === 'failed'

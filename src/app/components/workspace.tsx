@@ -4,16 +4,16 @@ import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
 import { ConflictBanner, RepoHeader, summarizeFiles } from './workspace-parts';
 import { RepoHistoryTab } from './repo-history-tab';
-import { useRepoCommandPanel } from '../use-repo-command-panel';
-import { ensureTerminalSession, fetchFileDiff, writeTerminalInput } from '../api';
-import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../repo-terminal-status';
+import { useAppBackend } from '../application/backend-context';
+import { useRepoCommandPanel } from '../features/commands/use-repo-command-panel';
+import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../features/terminal/repo-terminal-status';
 import type {
   AppSettings,
   RepoCommandResult,
   RepoDetail,
   RepoMutationAction,
   SettingsTab,
-} from '../types';
+} from '../domain/types';
 
 type MainTab = 'changes' | 'history' | 'terminal';
 const RepoTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).RepoTerminalTab }));
@@ -28,6 +28,7 @@ interface WorkspaceProps {
   onRunCustomCommand: (repoPath: string, command: string, streamId?: string) => Promise<RepoCommandResult>;
   onOpenSettings: (tab?: SettingsTab) => void;
   onViewLog: (repoId: string) => Promise<void>;
+  onError: (error: unknown, fallback: string) => void;
 }
 
 function ScanningPlaceholderCard({
@@ -97,7 +98,9 @@ export function Workspace({
   onRunCustomCommand,
   onOpenSettings,
   onViewLog,
+  onError,
 }: WorkspaceProps) {
+  const backend = useAppBackend();
   const repoIds = Object.keys(repoDetails);
   const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
   const [mainTab, setMainTab] = useState<MainTab>('changes');
@@ -136,28 +139,29 @@ export function Workspace({
     onMutateRepo,
     onRunCustomCommand,
     onOpenCommandsSettings: () => onOpenSettings('commands'),
+    backend,
   });
 
-  const handleOpenFolder = () => void onInvokeLocalRepoAction('open-folder', repo.path).catch(() => {});
-  const handleOpenTerminal = () => void onInvokeLocalRepoAction('open-terminal', repo.path).catch(() => {});
-  const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(() => {});
-  const handleViewLog = () => void onViewLog(repo.id).catch(() => {});
+  const handleOpenFolder = () => void onInvokeLocalRepoAction('open-folder', repo.path).catch(error => onError(error, '打开目录失败'));
+  const handleOpenTerminal = () => void onInvokeLocalRepoAction('open-terminal', repo.path).catch(error => onError(error, '打开终端失败'));
+  const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(error => onError(error, '打开冲突工具失败'));
+  const handleViewLog = () => void onViewLog(repo.id).catch(error => onError(error, '查看日志失败'));
   const handleLoadDiff = useCallback(
-    (file: RepoDetail['files'][number]) => fetchFileDiff(
-      repo.id,
-      file.path,
-      file.staged,
+    (file: RepoDetail['files'][number]) => backend.fetchFileDiff({
+      repoId: repo.id,
+      filePath: file.path,
+      staged: file.staged,
       settings,
-      { path: repo.path, category: repo.category },
-    ),
-    [repo.category, repo.id, repo.path, settings],
+      target: { path: repo.path, category: repo.category },
+    }),
+    [backend, repo.category, repo.id, repo.path, settings],
   );
   const handleSendToTerminal = async (command: string) => {
     setRepoTerminalStarting(repo.id);
     try {
-      const session = await ensureTerminalSession(repo.id, repo.path);
+      const session = await backend.ensureTerminalSession({ repoId: repo.id, repoPath: repo.path });
       registerTerminalSession(session);
-      await writeTerminalInput(session.sessionId, `${command}\r`);
+      await backend.writeTerminalInput(session.sessionId, `${command}\r`);
     } catch (error) {
       setRepoTerminalFailed(repo.id);
       throw error;

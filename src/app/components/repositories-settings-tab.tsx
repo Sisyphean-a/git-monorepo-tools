@@ -1,6 +1,6 @@
 import { GripVertical, Plus, Trash2 } from 'lucide-react';
 import { C } from '../theme';
-import type { AppSettings, Repo } from '../types';
+import type { AppSettings, Repo } from '../domain/types';
 
 interface RepositoriesSettingsTabProps {
   repos: Repo[];

@@ -8,8 +8,9 @@
     "build": "wails build",
     "web:dev": "vite",
     "web:build": "vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test:snapshot-coordinator": "tsc -p tsconfig.snapshot-tests.json && node --test .tmp/snapshot-tests/snapshot-coordinator.test.js .tmp/snapshot-tests/api.test.js .tmp/snapshot-tests/repo-snapshot-merge.test.js .tmp/snapshot-tests/repo-status.test.js .tmp/snapshot-tests/repo-terminal-activity.test.js .tmp/snapshot-tests/repo-log.test.js .tmp/snapshot-tests/pull-results.test.js .tmp/snapshot-tests/settings.test.js .tmp/snapshot-tests/terminal-event-bus.test.js .tmp/snapshot-tests/terminal-output-writer.test.js .tmp/snapshot-tests/components/repo-terminal-shortcuts.test.js",
+    "test:snapshot-coordinator": "tsc -p tsconfig.snapshot-tests.json && node --test .tmp/snapshot-tests/application/snapshot-coordinator.test.js .tmp/snapshot-tests/application/settings-actions.test.js .tmp/snapshot-tests/application/use-batch-controller.test.js .tmp/snapshot-tests/application/use-progressive-startup-scan.test.js .tmp/snapshot-tests/infrastructure/wails-client.test.js .tmp/snapshot-tests/domain/repo-snapshot-merge.test.js .tmp/snapshot-tests/domain/repo-status.test.js .tmp/snapshot-tests/features/terminal/repo-terminal-activity.test.js .tmp/snapshot-tests/application/repo-log.test.js .tmp/snapshot-tests/domain/pull-results.test.js .tmp/snapshot-tests/infrastructure/settings-store.test.js .tmp/snapshot-tests/features/terminal/terminal-event-bus.test.js .tmp/snapshot-tests/features/terminal/terminal-output-writer.test.js .tmp/snapshot-tests/components/repo-terminal-shortcuts.test.js",
     "wails:dev": "wails dev",
     "wails:build": "wails build"
   },

@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import type { RepoTerminalState } from '../repo-terminal-status';
+import type { RepoTerminalState } from '../features/terminal/repo-terminal-status';
 import { C } from '../theme';
-import type { Repo } from '../types';
+import type { Repo } from '../domain/types';
 import { RepoListStatus } from './repo-list-status';
 import { RepoTerminalIndicator } from './repo-terminal-indicator';
 
@@ -80,7 +80,7 @@ function groupReposByCategory(repos: Repo[]) {
   return grouped;
 }
 
-const listStyle = { flex: 1, overflowY: 'auto', padding: '6px 0' };
+const listStyle = { flex: 1, overflowY: 'auto', padding: '6px 0' } as const;
 const emptyStyle = { padding: 20, textAlign: 'center', color: C.textWeak, fontSize: 12 } as const;
 const groupStyle = { margin: '0 8px 10px' };
 const groupButtonStyle = { display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', width: '100%', border: 0, borderRadius: 8, cursor: 'pointer', color: C.textWeak, background: 'transparent', fontFamily: 'inherit' };

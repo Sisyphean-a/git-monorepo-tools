@@ -1,7 +1,7 @@
 import { Download, Loader2, RefreshCw, Upload } from 'lucide-react';
-import { formatAutoScanLabel } from '../settings';
+import { formatAutoScanLabel } from '../infrastructure/settings-store';
 import { C } from '../theme';
-import type { AppSettings, Repo } from '../types';
+import type { AppSettings, Repo } from '../domain/types';
 
 interface SidebarFooterProps {
   repos: Repo[];

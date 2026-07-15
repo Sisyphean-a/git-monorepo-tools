@@ -1,7 +1,7 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { C } from '../theme';
-import type { AppSettings } from '../types';
+import type { AppSettings } from '../domain/types';
 import { FormRow, Input, Select, Toggle } from './settings-modal-shared';
 
 interface AICommitSettingsTabProps {

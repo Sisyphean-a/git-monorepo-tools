@@ -1,8 +1,8 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
-import { BUILT_IN_COMMAND_OPTIONS, createCommandId, getBuiltInCommandLabel } from '../command-center';
+import { BUILT_IN_COMMAND_OPTIONS, createCommandId, DEFAULT_BUILT_IN_COMMAND_ACTION, getBuiltInCommandLabel } from '../features/commands/command-center';
 import { C } from '../theme';
-import type { AppSettings, BuiltInCommandAction, CommandCenterSettings, CommandCombo, CustomCommandButton } from '../types';
+import type { AppSettings, BuiltInCommandAction, CommandCenterSettings, CommandCombo, CustomCommandButton } from '../domain/types';
 import { Input, Select } from './settings-modal-shared';
 
 interface CommandSettingsTabProps {
@@ -115,12 +115,13 @@ function ComboEditor({
   onChange: (combo: CommandCombo) => void;
   onRemove: () => void;
 }) {
-  const [nextAction, setNextAction] = useState<BuiltInCommandAction>(BUILT_IN_COMMAND_OPTIONS[0].value);
+  const [nextAction, setNextAction] = useState<BuiltInCommandAction>(DEFAULT_BUILT_IN_COMMAND_ACTION);
 
   const moveAction = (from: number, to: number) => {
     if (to < 0 || to >= combo.actions.length) return;
     const nextActions = [...combo.actions];
     const [target] = nextActions.splice(from, 1);
+    if (!target) return;
     nextActions.splice(to, 0, target);
     onChange({ ...combo, actions: nextActions });
   };

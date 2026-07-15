@@ -1,6 +1,6 @@
 import { Copy, X } from 'lucide-react';
 import { C } from '../theme';
-import type { RepoLog } from '../types';
+import type { RepoLog } from '../domain/types';
 
 interface LogViewerModalProps {
   log: RepoLog | null;
@@ -11,7 +11,7 @@ export function LogViewerModal({ log, onClose }: LogViewerModalProps) {
   if (!log) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(log.content).catch(() => {});
+    navigator.clipboard.writeText(log.content).catch(error => console.error('复制日志失败', error));
   };
 
   return (

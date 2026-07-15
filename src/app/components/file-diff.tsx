@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { C } from '../theme';
-import type { FileChange, FileDiff } from '../types';
+import type { FileChange, FileDiff } from '../domain/types';
 
 interface FileDiffPanelProps {
   file: FileChange;

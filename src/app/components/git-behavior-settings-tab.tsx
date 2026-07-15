@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { AppSettings } from '../types';
+import type { AppSettings } from '../domain/types';
 import { FormRow, Input, Select, Toggle } from './settings-modal-shared';
 
 interface GitBehaviorSettingsTabProps {

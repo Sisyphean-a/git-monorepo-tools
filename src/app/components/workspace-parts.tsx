@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, FolderOpen, GitBranch, Settings2, Terminal } from 'lucide-react';
 import { C } from '../theme';
-import type { FileChange, Repo } from '../types';
+import type { FileChange, Repo } from '../domain/types';
 
 function HeaderActionBtn({
   icon,

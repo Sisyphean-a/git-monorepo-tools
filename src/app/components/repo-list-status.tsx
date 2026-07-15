@@ -1,7 +1,7 @@
 import { CheckCircle2, Loader2 } from 'lucide-react';
-import { shouldShowCleanIndicator } from '../repo-status';
+import { shouldShowCleanIndicator } from '../domain/repo-status';
 import { C } from '../theme';
-import type { Repo } from '../types';
+import type { Repo } from '../domain/types';
 import { StatusPill } from './common';
 
 export function RepoListStatus({ repo }: { repo: Repo }) {

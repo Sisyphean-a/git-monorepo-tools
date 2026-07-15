@@ -1,46 +1,3 @@
-export namespace main {
-	
-	export class TerminalSessionInfo {
-	    sessionId: string;
-	    repoId: string;
-	    repoPath: string;
-	    shell: string;
-	    startedAt: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new TerminalSessionInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.sessionId = source["sessionId"];
-	        this.repoId = source["repoId"];
-	        this.repoPath = source["repoPath"];
-	        this.shell = source["shell"];
-	        this.startedAt = source["startedAt"];
-	    }
-	}
-	export class TerminalSessionRequest {
-	    repoId: string;
-	    repoPath: string;
-	    cols?: number;
-	    rows?: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new TerminalSessionRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.repoId = source["repoId"];
-	        this.repoPath = source["repoPath"];
-	        this.cols = source["cols"];
-	        this.rows = source["rows"];
-	    }
-	}
-
-}
-
 export namespace snapshot {
 	
 	export class AICommitSettings {
@@ -735,6 +692,49 @@ export namespace snapshot {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace terminal {
+	
+	export class TerminalSessionInfo {
+	    sessionId: string;
+	    repoId: string;
+	    repoPath: string;
+	    shell: string;
+	    startedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalSessionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.repoId = source["repoId"];
+	        this.repoPath = source["repoPath"];
+	        this.shell = source["shell"];
+	        this.startedAt = source["startedAt"];
+	    }
+	}
+	export class TerminalSessionRequest {
+	    repoId: string;
+	    repoPath: string;
+	    cols?: number;
+	    rows?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalSessionRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.repoId = source["repoId"];
+	        this.repoPath = source["repoPath"];
+	        this.cols = source["cols"];
+	        this.rows = source["rows"];
+	    }
 	}
 
 }

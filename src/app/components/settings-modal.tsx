@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { C } from '../theme';
-import type { AppSettings, Repo, SettingsTab } from '../types';
+import type { AppSettings, Repo, SettingsTab } from '../domain/types';
 import { AICommitSettingsTab } from './ai-commit-settings-tab';
 import { CommandSettingsTab } from './command-settings-tab';
 import { GitBehaviorSettingsTab } from './git-behavior-settings-tab';

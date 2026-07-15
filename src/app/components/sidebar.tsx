@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useRepoTerminalStatuses } from '../repo-terminal-status';
+import { useRepoTerminalStatuses } from '../features/terminal/repo-terminal-status';
 import { C } from '../theme';
-import type { AppSettings, Repo } from '../types';
+import type { AppSettings, Repo } from '../domain/types';
 import { SidebarFooter } from './sidebar-footer';
 import { SidebarHeader } from './sidebar-header';
 import { SidebarRepoList } from './sidebar-repo-list';

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { C } from '../theme';
-import type { RepoDetail } from '../types';
+import type { RepoDetail } from '../domain/types';
 import { RepoTerminalSurface } from './repo-terminal-surface';
 
 interface RepoTerminalTabProps {

@@ -3,13 +3,12 @@ import { RotateCcw } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { ensureTerminalSession, resizeTerminal, restartTerminalSession, writeTerminalInput } from '../api';
-import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../repo-terminal-status';
-import { terminalEventBus } from '../terminal-runtime-event-bus';
-import { TerminalOutputWriter } from '../terminal-output-writer';
+import { useAppBackend } from '../application/backend-context';
+import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../features/terminal/repo-terminal-status';
+import { TerminalEventBus } from '../features/terminal/terminal-event-bus';
+import { TerminalOutputWriter } from '../features/terminal/terminal-output-writer';
 import { C } from '../theme';
-import type { RepoDetail, TerminalSessionInfo } from '../types';
-import { ClipboardGetText } from '../../../frontend/wailsjs/runtime/runtime.js';
+import type { RepoDetail, TerminalSessionInfo } from '../domain/types';
 import {
   handleWindowsTerminalShortcutEvent,
   pasteTerminalClipboard,
@@ -20,6 +19,8 @@ type TerminalStatus = 'idle' | 'connecting' | 'running' | 'failed' | 'exited';
 type TerminalToast = { id: number; text: string } | null;
 
 export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active: boolean }) {
+  const backend = useAppBackend();
+  const [terminalEventBus] = useState(() => new TerminalEventBus(backend.onEvent));
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -88,7 +89,8 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       resetViewportScroll();
       const nextSize = fitAddon.proposeDimensions();
       if (session && nextSize) {
-        void resizeTerminal(session.sessionId, nextSize.cols, nextSize.rows).catch(() => {});
+        void backend.resizeTerminal(session.sessionId, nextSize.cols, nextSize.rows)
+          .catch(resizeError => setError(resizeError instanceof Error ? resizeError.message : '终端尺寸同步失败'));
       }
       terminalRef.current?.focus();
     });
@@ -101,10 +103,10 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     }
     inputQueueRef.current = queueTerminalInput(
       inputQueueRef.current,
-      input => writeTerminalInput(session.sessionId, input),
+      input => backend.writeTerminalInput(session.sessionId, input),
       data,
     )
-      .catch(() => {});
+      .catch(inputError => setError(inputError instanceof Error ? inputError.message : '终端输入失败'));
   };
 
   const startSession = async (resetTerminal: boolean) => {
@@ -125,7 +127,12 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     if (!nextSize) return;
 
     try {
-      const session = await ensureTerminalSession(repo.id, repo.path, nextSize.cols, nextSize.rows);
+      const session = await backend.ensureTerminalSession({
+        repoId: repo.id,
+        repoPath: repo.path,
+        cols: nextSize.cols,
+        rows: nextSize.rows,
+      });
       registerTerminalSession(session);
       sessionRef.current = session;
       setSessionId(session.sessionId);
@@ -158,7 +165,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     sessionBindingRef.current?.bindSession('');
 
     try {
-      const replacement = await restartTerminalSession(session.sessionId, nextSize.cols, nextSize.rows);
+      const replacement = await backend.restartTerminalSession(session.sessionId, nextSize.cols, nextSize.rows);
       registerTerminalSession(replacement);
       sessionRef.current = replacement;
       setSessionId(replacement.sessionId);
@@ -198,7 +205,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
 
       const paste = inputQueueRef.current.then(async () => {
         const pasted = await pasteTerminalClipboard(
-          ClipboardGetText,
+          backend.readClipboardText,
           text => {
             let pasteData = '';
             terminalPasteDataRef.current = data => {
@@ -211,7 +218,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
             }
             return pasteData;
           },
-          data => writeTerminalInput(session.sessionId, data),
+          data => backend.writeTerminalInput(session.sessionId, data),
         );
         if (pasted) {
           terminal.focus();
@@ -286,7 +293,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
               showToast('已复制');
             }
           })
-          .catch(() => {});
+          .catch(copyError => setError(copyError instanceof Error ? copyError.message : '复制失败'));
       },
       pasteClipboard: () => pasteAndNotify(terminal),
     }, shortcutPlatform));
@@ -301,7 +308,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
               showToast('已复制');
             }
           })
-          .catch(() => {});
+          .catch(copyError => setError(copyError instanceof Error ? copyError.message : '复制失败'));
         return;
       }
       pasteAndNotify(terminal);

@@ -1,6 +1,6 @@
 import { FolderPlus, GitBranch, Search } from 'lucide-react';
 import { C } from '../theme';
-import type { Repo } from '../types';
+import type { Repo } from '../domain/types';
 
 interface SidebarHeaderProps {
   repos: Repo[];

@@ -1,6 +1,25 @@
 import type { ReactNode } from 'react';
 import { C } from '../theme';
 
+export function AppFrame({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: C.appBg,
+        color: C.textPrimary,
+        fontFamily: 'Inter, system-ui, sans-serif',
+        overflow: 'hidden',
+        fontSize: 14,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function IconButton({
   icon,
   title,

@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, Copy, GitBranch, GitCommit, GitMerge, TerminalSquare } from 'lucide-react';
-import { fetchCommitDetail, fetchRepoHistory } from '../api';
+import { useAppBackend } from '../application/backend-context';
 import { C } from '../theme';
-import type { AppSettings, CommitDetail, CommitSummary, RepoDetail } from '../types';
+import type { AppSettings, CommitDetail, CommitSummary, RepoDetail } from '../domain/types';
 
 const HISTORY_PAGE_SIZE = 50;
 
@@ -16,6 +16,7 @@ interface RepoHistoryTabProps {
 }
 
 export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendToTerminal }: RepoHistoryTabProps) {
+  const backend = useAppBackend();
   const repoHistory = Array.isArray(repo.history) ? repo.history : [];
   const [commits, setCommits] = useState<CommitSummary[]>(repoHistory);
   const [total, setTotal] = useState(repo.historyTotal);
@@ -50,7 +51,7 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     let cancelled = false;
     setInitialLoading(true);
     setInitialLoadError(null);
-    void fetchRepoHistory(repo.id, 0, HISTORY_PAGE_SIZE, settings)
+    void backend.fetchRepoHistory({ repoId: repo.id, offset: 0, limit: HISTORY_PAGE_SIZE, settings })
       .then(next => {
         if (cancelled) return;
         const nextCommits = Array.isArray(next.commits) ? next.commits : [];
@@ -69,7 +70,7 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     return () => {
       cancelled = true;
     };
-  }, [active, repo, settings]);
+  }, [active, backend, repo, settings]);
 
   useEffect(() => {
     if (!selectedHash) {
@@ -80,7 +81,7 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     let cancelled = false;
     setDetailLoading(true);
     setDetailError(null);
-    void fetchCommitDetail(repo.id, selectedHash, settings)
+    void backend.fetchCommitDetail({ repoId: repo.id, hash: selectedHash, settings })
       .then(next => {
         if (cancelled) return;
         setDetail(next);
@@ -97,7 +98,7 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     return () => {
       cancelled = true;
     };
-  }, [repo.id, selectedHash, settings]);
+  }, [backend, repo.id, selectedHash, settings]);
 
   const selectedSummary = useMemo(
     () => commits.find(commit => commit.hash === selectedHash) ?? null,
@@ -111,7 +112,12 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const next = await fetchRepoHistory(repo.id, commits.length, HISTORY_PAGE_SIZE, settings);
+      const next = await backend.fetchRepoHistory({
+        repoId: repo.id,
+        offset: commits.length,
+        limit: HISTORY_PAGE_SIZE,
+        settings,
+      });
       const nextCommits = Array.isArray(next.commits) ? next.commits : [];
       setCommits(current => {
         const seen = new Set(current.map(commit => commit.hash));
@@ -139,7 +145,9 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
       window.setTimeout(() => {
         setCopiedHash(current => current === hash ? '' : current);
       }, 1200);
-    } catch {}
+    } catch (error) {
+      setDetailError(error instanceof Error ? error.message : '复制提交哈希失败');
+    }
   };
 
   const sendToTerminal = async () => {

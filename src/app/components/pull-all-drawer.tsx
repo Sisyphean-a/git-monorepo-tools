@@ -1,7 +1,7 @@
 import { X, CheckCircle2, SkipForward, XCircle, Minus, FolderOpen, ScrollText, RefreshCw } from 'lucide-react';
 import { C } from '../theme';
-import { sortPullResults } from '../pull-results';
-import type { PullResult } from '../types';
+import { sortPullResults } from '../domain/pull-results';
+import type { PullResult } from '../domain/types';
 
 interface PullAllDrawerProps {
   open: boolean;
@@ -180,7 +180,7 @@ export function PullAllDrawer({ open, operation, results, scannedAt, onClose, on
             <button
               onClick={() => {
                 const report = sortedResults.map(result => `${result.name} [${result.result}] ${result.detail}`).join('\n');
-                navigator.clipboard.writeText(report).catch(() => {});
+                navigator.clipboard.writeText(report).catch(error => console.error('复制批量报告失败', error));
               }}
               style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, padding: '7px 16px', cursor: 'pointer', fontSize: 12 }}
             >

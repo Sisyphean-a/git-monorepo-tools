@@ -1,0 +1,24 @@
+schema_version: 1
+goal: "core-architecture-refactor"
+status: complete
+objective: "重构核心产品架构，明确后端与前端模块边界，降低耦合并提升后续功能改造便利性，同时保持现有用户行为。"
+start_point: "Go/Wails 后端实现平铺在仓库根目录；React 前端多数代码集中在 src/app，主应用承担状态、业务调用、错误处理和页面组装；既有审计已记录刷新时序、性能和可维护性问题。"
+acceptance:
+  - "核心产品代码具有清楚的模块边界，入口层主要负责依赖组装和界面组合。"
+  - "业务流程从框架和视图细节中抽离，可独立测试并方便后续替换或扩展。"
+  - "保持现有 Wails 公共调用契约和主要用户行为，不以重构名义新增产品能力。"
+  - "TypeScript 检查、前端测试、Go 测试和桌面构建通过。"
+  - "只进行一轮最终独立审查，并在同一轮完成面向验收标准的功能验收。"
+non_goals:
+  - "不重做视觉设计。"
+  - "不机械拆分仅略超 300 行且职责内聚的文件。"
+  - "不提交、推送、合并或发布。"
+budget:
+  kind: none
+  limit: null
+current_iteration: 1
+next_action: "none"
+blocker_signature: null
+blocker_count: 0
+owner_stop: null
+updated_at: "2026-07-14"

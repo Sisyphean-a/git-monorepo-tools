@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { C } from '../theme';
-import type { FileChange, FileDiff, FileStatus } from '../types';
+import type { FileChange, FileDiff, FileStatus } from '../domain/types';
 import { FileDiffPanel } from './file-diff';
 
 interface DiffListProps {

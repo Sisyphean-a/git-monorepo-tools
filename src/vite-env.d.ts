@@ -10,7 +10,7 @@ interface Window {
           pullStrategy: 'ff-only' | 'rebase' | 'merge';
           pushStrategy: 'upstream-only' | 'all';
           refreshRemotes: boolean;
-        }) => Promise<import('./app/types').AppSnapshot>;
+        }) => Promise<import('./app/domain/types').AppSnapshot>;
         RefreshRepo: (
           repoId: string,
           request: {
@@ -20,7 +20,7 @@ interface Window {
             pushStrategy: 'upstream-only' | 'all';
             refreshRemotes: boolean;
           },
-        ) => Promise<import('./app/types').RepoSnapshotUpdate>;
+        ) => Promise<import('./app/domain/types').RepoSnapshotUpdate>;
         MutateRepo: (
           repoId: string,
           action: string,
@@ -38,7 +38,7 @@ interface Window {
             repoPath?: string;
             repoCategory?: string;
           },
-        ) => Promise<import('./app/types').AppSnapshot>;
+        ) => Promise<import('./app/domain/types').AppSnapshot>;
         RunBatch: (
           operation: 'pull' | 'push',
           request: {
@@ -49,8 +49,8 @@ interface Window {
             refreshRemotes: boolean;
           },
         ) => Promise<{
-          snapshot: import('./app/types').AppSnapshot;
-          results?: import('./app/types').PullResult[];
+          snapshot: import('./app/domain/types').AppSnapshot;
+          results?: import('./app/domain/types').PullResult[];
           operation?: 'pullAll' | 'pushAll';
         }>;
         GetRepoLog: (
@@ -62,7 +62,7 @@ interface Window {
             pushStrategy: 'upstream-only' | 'all';
             refreshRemotes: boolean;
           },
-        ) => Promise<import('./app/types').RepoLog>;
+        ) => Promise<import('./app/domain/types').RepoLog>;
         GetRepoHistory: (
           repoId: string,
           request: {
@@ -74,7 +74,7 @@ interface Window {
           },
           offset: number,
           limit: number,
-        ) => Promise<import('./app/types').RepoHistoryPage>;
+        ) => Promise<import('./app/domain/types').RepoHistoryPage>;
         GetCommitDetail: (
           repoId: string,
           request: {
@@ -85,7 +85,7 @@ interface Window {
             refreshRemotes: boolean;
           },
           hash: string,
-        ) => Promise<import('./app/types').CommitDetail>;
+        ) => Promise<import('./app/domain/types').CommitDetail>;
         GetFileDiff: (request: {
           repoId: string;
           snapshot: {
@@ -99,14 +99,14 @@ interface Window {
           };
           filePath: string;
           staged: boolean;
-        }) => Promise<import('./app/types').FileDiff>;
+        }) => Promise<import('./app/domain/types').FileDiff>;
         EnsureTerminalSession: (request: {
           repoId: string;
           repoPath: string;
           cols?: number;
           rows?: number;
-        }) => Promise<import('./app/types').TerminalSessionInfo>;
-        RestartTerminalSession: (sessionId: string, cols: number, rows: number) => Promise<import('./app/types').TerminalSessionInfo>;
+        }) => Promise<import('./app/domain/types').TerminalSessionInfo>;
+        RestartTerminalSession: (sessionId: string, cols: number, rows: number) => Promise<import('./app/domain/types').TerminalSessionInfo>;
         WriteTerminalInput: (sessionId: string, data: string) => Promise<void>;
         ResizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>;
         GenerateCommitMessage: (
@@ -118,7 +118,7 @@ interface Window {
             pushStrategy: 'upstream-only' | 'all';
             refreshRemotes: boolean;
           },
-          aiCommit: import('./app/types').AICommitSettings,
+          aiCommit: import('./app/domain/types').AICommitSettings,
         ) => Promise<string>;
         OpenFolder: (path: string) => Promise<void>;
         OpenTerminal: (path: string) => Promise<void>;
