@@ -6,6 +6,7 @@ import { AICommitSettingsTab } from './ai-commit-settings-tab';
 import { CommandSettingsTab } from './command-settings-tab';
 import { GitBehaviorSettingsTab } from './git-behavior-settings-tab';
 import { RepositoriesSettingsTab } from './repositories-settings-tab';
+import { withScanRoots } from '../application/settings-actions';
 
 interface SettingsModalProps {
   repos: Repo[];
@@ -16,7 +17,7 @@ interface SettingsModalProps {
   onSave: (settings: AppSettings) => void;
   onAddScanRoot: () => Promise<void>;
   onAddCategory: () => void;
-  onRemoveScanRoot: (path: string) => void;
+  onRemoveScanRoot: (path: string) => AppSettings;
 }
 
 export function SettingsModal({
@@ -48,6 +49,11 @@ export function SettingsModal({
   }, [open, initialTab]);
 
   if (!open) return null;
+
+  const removeScanRoot = (path: string) => {
+    const next = onRemoveScanRoot(path);
+    setDraft(current => withScanRoots(current, next.scanRoots));
+  };
 
   const tabs: { key: SettingsTab; label: string }[] = [
     { key: 'repositories', label: '仓库' },
@@ -120,7 +126,7 @@ export function SettingsModal({
                 settings={draft}
                 onAddScanRoot={onAddScanRoot}
                 onAddCategory={onAddCategory}
-                onRemoveScanRoot={onRemoveScanRoot}
+                onRemoveScanRoot={removeScanRoot}
               />
             )}
             {tab === 'ai-commit' && <AICommitSettingsTab draft={draft} setDraft={setDraft} />}

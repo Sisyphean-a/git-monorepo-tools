@@ -22,6 +22,10 @@ export function createSettingsActions(context: SettingsActionContext) {
   };
 }
 
+export function withScanRoots(settings: AppSettings, scanRoots: AppSettings['scanRoots']) {
+  return { ...settings, scanRoots };
+}
+
 function persistSettings(context: SettingsActionContext, value: unknown) {
   const next = context.settingsStore.sanitizeSettings(value);
   context.setSettings(next);
@@ -77,6 +81,7 @@ function removeScanRoot(context: SettingsActionContext, path: string) {
     scanRoots: context.settings.scanRoots.filter(item => item.path !== path),
   });
   void context.refreshSnapshot(next).catch(error => context.reportError(error, '移除目录后刷新失败'));
+  return next;
 }
 
 function hasScanRoot(settings: AppSettings, path: string) {
