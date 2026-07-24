@@ -31,10 +31,6 @@ coverage/
 __pycache__/
 *.pyc
 
-# CodeStable runtime/cache
-.codestable/**/__pycache__/
-.codestable/**/*.pyc
-
 # Local env
 .env
 .env.*

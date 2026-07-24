@@ -1,29 +1,6 @@
-# Attention
+# 注意事项
 
-本文件是 CodeStable 技能启动必读的项目注意事项入口。所有 CodeStable 子技能开始工作前必须读取它。
-
-## 报告语言
-
-CodeStable 所有落盘产出的正文用**中文**：plan / design、plan review / design-review、code review、QA、验收、issue（report / analysis / fix-note）、refactor、roadmap、goal、沉淀（compound）等所有人读报告都用中文表达。机器状态（YAML / JSON / `state.yaml` / frontmatter 字段）保持机读格式不翻译。如需改默认语言，改这一节。
-
-## 项目碎片知识
-
-<!-- cs-note managed: 用 cs-note 维护，新条目按下面分节追加 -->
-
-### 编译与构建
-
-### 运行与本地起服务
-
-### 测试
-
-### 命令与脚本陷阱
-
-### 路径与目录约定
-
-- 默认禁止创建独立 git worktree；只有当前检出无法安全实施时才使用，并先说明必要性。
-
-### 环境变量与凭证
-
-### 其他
-
-- 能从仓库、代码或日志直接查到的信息先由 AI 自查；确需向用户补信息时一次问清，避免连续盘问。
+- 范围：`workspace`。开始任务时按 `attention → architecture/INDEX → 相关 shared 页面 → requirements/CONTEXT` 加载，不遍历历史。
+- 项目文档正文使用中文；当前事实以代码和本目录的架构、上下文、ADR 为准。
+- Wails 是桌面运行时。`frontend/wailsjs/` 为生成文件，不手改；前端外部调用只能经 `src/app/infrastructure/wails-client.ts` 与应用层端口。
+- 常用验证：`go test ./...`、`npm run typecheck`、`npm run test:snapshot-coordinator`。
