@@ -29,6 +29,8 @@ export function OpenTerminal(arg1:string):Promise<void>;
 
 export function PickFolder():Promise<string>;
 
+export function ReadClipboardImagePath():Promise<string>;
+
 export function RefreshRepo(arg1:string,arg2:snapshot.Request):Promise<snapshot.RepoSnapshotUpdate>;
 
 export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;

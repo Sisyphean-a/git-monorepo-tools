@@ -1,7 +1,9 @@
-export type RepoTerminalShortcutAction = 'copy-selection' | 'paste-clipboard' | 'pass-through';
+export type RepoTerminalShortcutAction = 'copy-selection' | 'paste-clipboard' | 'send-ctrl-j' | 'send-shift-enter' | 'pass-through';
 export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
 
 export const ctrlVInput = '\x16';
+export const ctrlJInput = '\x0a';
+export const shiftEnterInput = '\x1b[13;2u';
 
 interface RepoTerminalShortcutEvent {
   readonly type: string;
@@ -20,6 +22,7 @@ interface TerminalShortcutBindings {
   readonly hasSelection: () => boolean;
   readonly copySelection: () => void;
   readonly pasteClipboard: () => void;
+  readonly writeInput: (input: string) => void;
 }
 
 export function getWindowsTerminalShortcutAction(
@@ -30,13 +33,19 @@ export function getWindowsTerminalShortcutAction(
   if (!isWindowsPlatform(platform) || event.type !== 'keydown') {
     return 'pass-through';
   }
-  if (!event.ctrlKey || event.altKey || event.metaKey) {
+  if (event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    return 'send-shift-enter';
+  }
+  if (event.key.toLowerCase() === 'j' && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+    return 'send-ctrl-j';
+  }
+  if (event.metaKey || event.ctrlKey === event.altKey) {
     return 'pass-through';
   }
 
   switch (event.key.toLowerCase()) {
     case 'c':
-      return hasSelection ? 'copy-selection' : 'pass-through';
+      return event.ctrlKey && hasSelection ? 'copy-selection' : 'pass-through';
     case 'v':
       return 'paste-clipboard';
     default:
@@ -57,6 +66,14 @@ export function handleWindowsTerminalShortcutEvent(
       event.preventDefault();
       bindings.pasteClipboard();
       return false;
+    case 'send-ctrl-j':
+      event.preventDefault();
+      bindings.writeInput(ctrlJInput);
+      return false;
+    case 'send-shift-enter':
+      event.preventDefault();
+      bindings.writeInput(shiftEnterInput);
+      return false;
     default:
       return true;
   }
@@ -64,6 +81,7 @@ export function handleWindowsTerminalShortcutEvent(
 
 interface TerminalClipboardPasteOptions {
   readonly source: TerminalClipboardPasteSource;
+  readonly getClipboardImagePath?: () => Promise<string | null>;
   readonly getClipboardText: () => Promise<string>;
   readonly transformPastedText: (text: string) => string;
   readonly writeInput: (text: string) => Promise<void>;
@@ -71,6 +89,11 @@ interface TerminalClipboardPasteOptions {
 
 export async function pasteTerminalClipboard(options: TerminalClipboardPasteOptions) {
   const fallbackInput = options.source === 'keyboard' ? ctrlVInput : undefined;
+  const imagePath = await options.getClipboardImagePath?.();
+  if (imagePath) {
+    await options.writeInput(imagePath);
+    return true;
+  }
   let text: string;
   try {
     text = await options.getClipboardText();

@@ -31,6 +31,7 @@ type desktopGateway interface {
 	OpenFolder(string) error
 	OpenTerminal(string) error
 	OpenConflicts(string) error
+	ReadClipboardImagePath() (string, error)
 }
 
 type terminalGateway interface {
@@ -139,6 +140,10 @@ func (a *App) OpenTerminal(path string) error {
 
 func (a *App) OpenConflicts(path string) error {
 	return a.desktop.OpenConflicts(path)
+}
+
+func (a *App) ReadClipboardImagePath() (string, error) {
+	return a.desktop.ReadClipboardImagePath()
 }
 
 func (a *App) EnsureTerminalSession(request terminal.TerminalSessionRequest) (terminal.TerminalSessionInfo, error) {

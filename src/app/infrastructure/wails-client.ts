@@ -78,6 +78,7 @@ type WailsBindings = {
   OpenTerminal: (path: string) => Promise<void>;
   OpenConflicts: (path: string) => Promise<void>;
   PickFolder: () => Promise<string>;
+  ReadClipboardImagePath?: () => Promise<string>;
 };
 
 const WAILS_REPO_ACTIONS = new Set<RepoMutationAction>([
@@ -243,6 +244,15 @@ export async function generateCommitMessage(repoId: string, settings: AppSetting
 
 export async function pickFolder() {
   const path = await getWailsBindings().PickFolder();
+  return path || null;
+}
+
+export async function readClipboardImagePath() {
+  const binding = getWailsBindings().ReadClipboardImagePath;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 图片剪贴板绑定不可用');
+  }
+  const path = await binding();
   return path || null;
 }
 

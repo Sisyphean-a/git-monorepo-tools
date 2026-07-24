@@ -11,6 +11,7 @@ import {
   invokeLocalRepoAction,
   mutateRepo,
   refreshRepo,
+  readClipboardImagePath,
   resizeTerminal,
   restartTerminalSession,
   runRepoCommand,
@@ -89,6 +90,7 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
       throw new Error('unused');
     },
     PickFolder: async () => '',
+    ReadClipboardImagePath: async () => 'C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png',
   };
 
   Object.defineProperty(globalThis, 'window', {
@@ -99,6 +101,7 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
   try {
     await fetchSnapshot();
     await fetchSnapshot(undefined, { refreshRemotes: true });
+    assert.equal(await readClipboardImagePath(), 'C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png');
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,

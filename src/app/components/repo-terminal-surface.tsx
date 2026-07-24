@@ -207,6 +207,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
       const paste = inputQueueRef.current.then(async () => {
         const pasted = await pasteTerminalClipboard({
           source,
+          getClipboardImagePath: backend.readClipboardImagePath,
           getClipboardText: backend.readClipboardText,
           transformPastedText: text => {
             let pasteData = '';
@@ -298,6 +299,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
           .catch(copyError => setError(copyError instanceof Error ? copyError.message : '复制失败'));
       },
       pasteClipboard: () => pasteAndNotify(terminal, 'keyboard'),
+      writeInput: enqueueTerminalInput,
     }, shortcutPlatform));
     const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');
 

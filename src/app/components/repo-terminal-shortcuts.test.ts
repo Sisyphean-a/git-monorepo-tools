@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ctrlJInput,
   ctrlVInput,
   getWindowsTerminalShortcutAction,
   handleWindowsTerminalShortcutEvent,
   pasteTerminalClipboard,
   queueTerminalInput,
+  shiftEnterInput,
 } from './repo-terminal-shortcuts.js';
 
 test('windows ctrl+c copies selection without blocking browser fallback', () => {
@@ -26,6 +28,7 @@ test('windows ctrl+c copies selection without blocking browser fallback', () => 
       copyCalls += 1;
     },
     pasteClipboard: () => {},
+    writeInput: () => {},
   }, 'Win32');
 
   assert.equal(allowsDefault, false);
@@ -43,7 +46,7 @@ test('windows ctrl+c without selection passes through to terminal', () => {
   }, false, 'Win32'), 'pass-through');
 });
 
-test('windows shift+enter passes through to terminal', () => {
+test('windows shift+enter sends the Pi keyboard protocol sequence', () => {
   assert.equal(getWindowsTerminalShortcutAction({
     type: 'keydown',
     ctrlKey: false,
@@ -51,7 +54,7 @@ test('windows shift+enter passes through to terminal', () => {
     metaKey: false,
     shiftKey: true,
     key: 'Enter',
-  }, false, 'Win32'), 'pass-through');
+  }, false, 'Win32'), 'send-shift-enter');
 });
 
 test('windows enter passes through to terminal', () => {
@@ -94,11 +97,78 @@ test('windows ctrl+v invokes application paste and prevents default handling', (
     pasteClipboard: () => {
       pasteCalls += 1;
     },
+    writeInput: () => {},
   }, 'Win32');
 
   assert.equal(allowsDefault, false);
   assert.equal(preventDefaultCalls, 1);
   assert.equal(pasteCalls, 1);
+});
+
+test('windows alt+v invokes application paste and prevents default handling', () => {
+  let pasteCalls = 0;
+  let preventDefaultCalls = 0;
+  const allowsDefault = handleWindowsTerminalShortcutEvent({
+    type: 'keydown',
+    ctrlKey: false,
+    altKey: true,
+    metaKey: false,
+    key: 'V',
+    preventDefault: () => {
+      preventDefaultCalls += 1;
+    },
+  }, {
+    hasSelection: () => false,
+    copySelection: () => {},
+    pasteClipboard: () => {
+      pasteCalls += 1;
+    },
+    writeInput: () => {},
+  }, 'Win32');
+
+  assert.equal(allowsDefault, false);
+  assert.equal(preventDefaultCalls, 1);
+  assert.equal(pasteCalls, 1);
+});
+
+test('windows Pi multiline shortcuts write their protocol input', () => {
+  const writes: string[] = [];
+  let preventDefaultCalls = 0;
+  const bindings = {
+    hasSelection: () => false,
+    copySelection: () => {},
+    pasteClipboard: () => {},
+    writeInput: (input: string) => {
+      writes.push(input);
+    },
+  };
+
+  const shiftEnterAllowed = handleWindowsTerminalShortcutEvent({
+    type: 'keydown',
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    shiftKey: true,
+    key: 'Enter',
+    preventDefault: () => {
+      preventDefaultCalls += 1;
+    },
+  }, bindings, 'Win32');
+  const ctrlJAllowed = handleWindowsTerminalShortcutEvent({
+    type: 'keydown',
+    ctrlKey: true,
+    altKey: false,
+    metaKey: false,
+    key: 'j',
+    preventDefault: () => {
+      preventDefaultCalls += 1;
+    },
+  }, bindings, 'Win32');
+
+  assert.equal(shiftEnterAllowed, false);
+  assert.equal(ctrlJAllowed, false);
+  assert.equal(preventDefaultCalls, 2);
+  assert.deepEqual(writes, [shiftEnterInput, ctrlJInput]);
 });
 
 test('application clipboard paste preserves terminal-transformed text', async () => {
@@ -125,6 +195,23 @@ test('application clipboard paste preserves terminal-transformed text', async ()
   assert.equal(clipboardReads, 1);
   assert.deepEqual(transformed, ['first line\nsecond line']);
   assert.deepEqual(pasted, ['\x1b[200~first line\rsecond line\x1b[201~']);
+});
+
+test('application clipboard image paste writes its temporary path without reading text', async () => {
+  const pasted: string[] = [];
+
+  const pastedClipboard = await pasteTerminalClipboard({
+    source: 'keyboard',
+    getClipboardImagePath: async () => 'C:\\Users\\tester\\AppData\\Local\\Temp\\git-monorepo-tools-clipboard.png',
+    getClipboardText: async () => assert.fail('image paste must not read clipboard text'),
+    transformPastedText: () => assert.fail('image paste must not transform clipboard text'),
+    writeInput: async text => {
+      pasted.push(text);
+    },
+  });
+
+  assert.equal(pastedClipboard, true);
+  assert.deepEqual(pasted, ['C:\\Users\\tester\\AppData\\Local\\Temp\\git-monorepo-tools-clipboard.png']);
 });
 
 test('keyboard paste forwards ctrl+v when the clipboard has no text', async () => {

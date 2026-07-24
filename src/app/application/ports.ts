@@ -101,6 +101,7 @@ export type RuntimeEventHandler = (payload: unknown) => void;
 
 export interface RuntimeBackend {
   onEvent(event: string, handler: RuntimeEventHandler): () => void;
+  readClipboardImagePath(): Promise<string | null>;
   readClipboardText(): Promise<string>;
 }
 
