@@ -171,13 +171,18 @@ test('windows Pi multiline shortcuts write their protocol input', () => {
   assert.deepEqual(writes, [shiftEnterInput, ctrlJInput]);
 });
 
-test('application clipboard paste preserves terminal-transformed text', async () => {
+test('application clipboard text paste checks for an image before preserving terminal-transformed text', async () => {
   let clipboardReads = 0;
+  let imageReads = 0;
   const transformed: string[] = [];
   const pasted: string[] = [];
 
   const pastedClipboard = await pasteTerminalClipboard({
     source: 'context-menu',
+    getClipboardImagePath: async () => {
+      imageReads += 1;
+      return null;
+    },
     getClipboardText: async () => {
       clipboardReads += 1;
       return 'first line\nsecond line';
@@ -192,18 +197,19 @@ test('application clipboard paste preserves terminal-transformed text', async ()
   });
 
   assert.equal(pastedClipboard, true);
+  assert.equal(imageReads, 1);
   assert.equal(clipboardReads, 1);
   assert.deepEqual(transformed, ['first line\nsecond line']);
   assert.deepEqual(pasted, ['\x1b[200~first line\rsecond line\x1b[201~']);
 });
 
-test('application clipboard image paste writes its temporary path without reading text', async () => {
+test('application clipboard image paste writes its temporary path after text lookup finds nothing', async () => {
   const pasted: string[] = [];
 
   const pastedClipboard = await pasteTerminalClipboard({
     source: 'keyboard',
-    getClipboardImagePath: async () => 'C:\\Users\\tester\\AppData\\Local\\Temp\\git-monorepo-tools-clipboard.png',
-    getClipboardText: async () => assert.fail('image paste must not read clipboard text'),
+    getClipboardImagePath: async () => 'C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png',
+    getClipboardText: async () => '',
     transformPastedText: () => assert.fail('image paste must not transform clipboard text'),
     writeInput: async text => {
       pasted.push(text);
@@ -211,7 +217,7 @@ test('application clipboard image paste writes its temporary path without readin
   });
 
   assert.equal(pastedClipboard, true);
-  assert.deepEqual(pasted, ['C:\\Users\\tester\\AppData\\Local\\Temp\\git-monorepo-tools-clipboard.png']);
+  assert.deepEqual(pasted, ['C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png']);
 });
 
 test('keyboard paste forwards ctrl+v when the clipboard has no text', async () => {

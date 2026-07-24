@@ -7,9 +7,17 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
-const clipboardImagePathEnvironment = "GIT_MONOREPO_TOOLS_CLIPBOARD_IMAGE_PATH"
+const (
+	clipboardImagePathEnvironment = "GIT_MONOREPO_TOOLS_CLIPBOARD_IMAGE_PATH"
+	clipboardFormatBitmap         = 2
+	clipboardFormatDIB            = 8
+	clipboardFormatDIBV5          = 17
+)
+
+var isClipboardFormatAvailable = syscall.NewLazyDLL("user32.dll").NewProc("IsClipboardFormatAvailable")
 
 const clipboardImageScript = `
 Add-Type -AssemblyName System.Windows.Forms
@@ -24,6 +32,10 @@ try {
 `
 
 func (Client) ReadClipboardImagePath() (string, error) {
+	if !clipboardHasImage() {
+		return "", nil
+	}
+
 	imageFile, err := os.CreateTemp("", "pi-clipboard-*.png")
 	if err != nil {
 		return "", fmt.Errorf("创建剪贴板图片临时文件失败: %w", err)
@@ -57,6 +69,22 @@ func (Client) ReadClipboardImagePath() (string, error) {
 	return imagePath, nil
 }
 
+func clipboardHasImage() bool {
+	return hasClipboardImage(func(format uint32) bool {
+		available, _, _ := isClipboardFormatAvailable.Call(uintptr(format))
+		return available != 0
+	})
+}
+
+func hasClipboardImage(isFormatAvailable func(uint32) bool) bool {
+	for _, format := range [...]uint32{clipboardFormatBitmap, clipboardFormatDIB, clipboardFormatDIBV5} {
+		if isFormatAvailable(format) {
+			return true
+		}
+	}
+	return false
+}
+
 func newClipboardImageCommand(imagePath string) *exec.Cmd {
 	cmd := exec.Command(
 		"powershell.exe",
@@ -67,5 +95,6 @@ func newClipboardImageCommand(imagePath string) *exec.Cmd {
 		clipboardImageScript,
 	)
 	cmd.Env = append(os.Environ(), clipboardImagePathEnvironment+"="+imagePath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	return cmd
 }

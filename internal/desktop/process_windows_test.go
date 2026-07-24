@@ -31,6 +31,21 @@ func TestNewInteractiveCmdCommandRequestsNewConsole(t *testing.T) {
 	}
 }
 
+func TestClipboardImageFormatsAreRecognized(t *testing.T) {
+	t.Parallel()
+
+	for _, format := range []uint32{clipboardFormatBitmap, clipboardFormatDIB, clipboardFormatDIBV5} {
+		if !hasClipboardImage(func(candidate uint32) bool {
+			return candidate == format
+		}) {
+			t.Fatalf("expected clipboard format %d to be recognized as an image", format)
+		}
+	}
+	if hasClipboardImage(func(uint32) bool { return false }) {
+		t.Fatal("unexpected image detection when no image formats are available")
+	}
+}
+
 func TestNewClipboardImageCommandUsesStaAndConfiguredOutputPath(t *testing.T) {
 	t.Parallel()
 
@@ -45,6 +60,9 @@ func TestNewClipboardImageCommandUsesStaAndConfiguredOutputPath(t *testing.T) {
 	}
 	if !containsString(cmd.Env, clipboardImagePathEnvironment+"="+imagePath) {
 		t.Fatalf("clipboard image path was not passed to PowerShell: %#v", cmd.Env)
+	}
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.HideWindow {
+		t.Fatal("clipboard image command must not create a visible console window")
 	}
 }
 
