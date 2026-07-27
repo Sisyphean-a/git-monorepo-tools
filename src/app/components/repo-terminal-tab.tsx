@@ -9,6 +9,15 @@ interface RepoTerminalTabProps {
   visible: boolean;
 }
 
+interface IndependentTerminalTabProps {
+  repo: RepoDetail;
+  visible: boolean;
+}
+
+export function IndependentTerminalTab({ repo, visible }: IndependentTerminalTabProps) {
+  return <RepoTerminalSurface repo={repo} active={visible} createIndependentSession closeSessionOnUnmount />;
+}
+
 export function RepoTerminalTab({ repoDetails, activeRepoId, visible }: RepoTerminalTabProps) {
   const [openedRepoIds, setOpenedRepoIds] = useState<string[]>([]);
 

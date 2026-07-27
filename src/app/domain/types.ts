@@ -108,6 +108,7 @@ export interface CommandCenterSettings {
 export interface AppSettings {
   scanRoots: ScanRootSetting[];
   customCategories: string[];
+  favoriteRepoIds: string[];
   aiCommit: AICommitSettings;
   gitBehavior: GitBehaviorSettings;
   commandCenter: CommandCenterSettings;

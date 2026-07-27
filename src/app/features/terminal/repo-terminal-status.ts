@@ -14,11 +14,15 @@ interface RepoTerminalEntry {
   lastOutputAt: number | null;
 }
 
+interface TerminalSessionEntry extends RepoTerminalEntry {
+  repoId: string;
+}
+
 const ACTIVE_WINDOW_MS = 1400;
 
 const listeners = new Set<() => void>();
-const entries = new Map<string, RepoTerminalEntry>();
-const sessionRepoIds = new Map<string, string>();
+const entries = new Map<string, TerminalSessionEntry>();
+const pendingEntries = new Map<string, RepoTerminalState>();
 
 let snapshot: TerminalStatusSnapshot = {};
 let outputStop: (() => void) | null = null;
@@ -35,21 +39,13 @@ export function useRepoTerminalStatuses() {
 }
 
 export function setRepoTerminalStarting(repoId: string) {
-  const current = entries.get(repoId);
-  setEntry(repoId, {
-    sessionId: current?.sessionId ?? null,
-    state: 'starting',
-    lastOutputAt: null,
-  });
+  pendingEntries.set(repoId, 'starting');
+  publishSnapshot();
 }
 
 export function setRepoTerminalFailed(repoId: string) {
-  const current = entries.get(repoId);
-  setEntry(repoId, {
-    sessionId: current?.sessionId ?? null,
-    state: 'failed',
-    lastOutputAt: null,
-  });
+  pendingEntries.set(repoId, 'failed');
+  publishSnapshot();
 }
 
 export function registerTerminalSession(session: TerminalSessionInfo) {
@@ -57,17 +53,15 @@ export function registerTerminalSession(session: TerminalSessionInfo) {
     return;
   }
 
-  const current = entries.get(session.repoId);
-  if (current?.sessionId && current.sessionId !== session.sessionId) {
-    sessionRepoIds.delete(current.sessionId);
-  }
-
-  sessionRepoIds.set(session.sessionId, session.repoId);
-  setEntry(session.repoId, {
+  pendingEntries.delete(session.repoId);
+  const current = entries.get(session.sessionId);
+  entries.set(session.sessionId, {
+    repoId: session.repoId,
     sessionId: session.sessionId,
-    state: current?.sessionId === session.sessionId && current.state === 'active' ? 'active' : 'running',
-    lastOutputAt: current?.sessionId === session.sessionId ? current.lastOutputAt : null,
+    state: current?.state === 'active' ? 'active' : 'running',
+    lastOutputAt: current?.lastOutputAt ?? null,
   });
+  publishSnapshot();
 }
 
 function subscribe(listener: () => void) {
@@ -108,56 +102,45 @@ function readSessionId(payload: unknown) {
 }
 
 function markTerminalOutput(sessionId: string) {
-  const repoId = sessionRepoIds.get(sessionId);
-  if (!repoId) {
-    return;
-  }
-
-  const current = entries.get(repoId);
-  if (!current || current.sessionId !== sessionId) {
+  const current = entries.get(sessionId);
+  if (!current) {
     return;
   }
 
   const activity = recordTerminalOutput(current, sessionId, Date.now());
+  entries.set(sessionId, { ...activity.entry, repoId: current.repoId });
   if (!activity.shouldPublish) {
-    entries.set(repoId, activity.entry);
     scheduleDecay();
     return;
   }
-  setEntry(repoId, activity.entry);
+  publishSnapshot();
 }
 
 function markTerminalExit(sessionId: string) {
-  const repoId = sessionRepoIds.get(sessionId);
-  sessionRepoIds.delete(sessionId);
-  if (!repoId) {
+  const current = entries.get(sessionId);
+  if (!current) {
     return;
   }
 
-  const current = entries.get(repoId);
-  if (!current || current.sessionId !== sessionId) {
-    return;
-  }
-
-  setEntry(repoId, {
+  entries.set(sessionId, {
+    repoId: current.repoId,
     sessionId: null,
     state: 'exited',
     lastOutputAt: null,
   });
-}
-
-function setEntry(repoId: string, entry: RepoTerminalEntry) {
-  entries.set(repoId, entry);
   publishSnapshot();
 }
 
 function publishSnapshot() {
-  snapshot = Object.freeze(
-    Array.from(entries.entries()).reduce<TerminalStatusSnapshot>((accumulator, [repoId, entry]) => {
-      accumulator[repoId] = entry.state;
-      return accumulator;
-    }, {}),
-  );
+  const states = new Map<string, RepoTerminalState>();
+  for (const entry of entries.values()) {
+    setRepoState(states, entry.repoId, entry.state);
+  }
+  for (const [repoId, state] of pendingEntries) {
+    setRepoState(states, repoId, state);
+  }
+
+  snapshot = Object.freeze(Object.fromEntries(states));
   scheduleDecay();
   listeners.forEach(listener => listener());
 }
@@ -189,12 +172,13 @@ function settleActiveStates() {
   const now = Date.now();
   let changed = false;
 
-  for (const [repoId, entry] of entries.entries()) {
+  for (const [sessionId, entry] of entries.entries()) {
     if (!shouldSettleTerminalActivity(entry, now, ACTIVE_WINDOW_MS)) {
       continue;
     }
 
-    entries.set(repoId, {
+    entries.set(sessionId, {
+      repoId: entry.repoId,
       sessionId: entry.sessionId,
       state: 'running',
       lastOutputAt: null,
@@ -208,4 +192,22 @@ function settleActiveStates() {
   }
 
   scheduleDecay();
+}
+
+function setRepoState(states: Map<string, RepoTerminalState>, repoId: string, next: RepoTerminalState) {
+  const current = states.get(repoId);
+  if (!current || terminalStatePriority(next) > terminalStatePriority(current)) {
+    states.set(repoId, next);
+  }
+}
+
+function terminalStatePriority(state: RepoTerminalState) {
+  switch (state) {
+    case 'active': return 6;
+    case 'starting': return 5;
+    case 'running': return 4;
+    case 'failed': return 3;
+    case 'exited': return 2;
+    case 'idle': return 1;
+  }
 }

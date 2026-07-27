@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  closeTerminalSession,
+  createTerminalSession,
   ensureTerminalSession,
   fetchCommitDetail,
   fetchFileDiff,
@@ -350,6 +352,7 @@ test('generateCommitMessage uses dedicated binding', async () => {
     const message = await generateCommitMessage('repo-1', {
       scanRoots: [],
       customCategories: [],
+      favoriteRepoIds: [],
       aiCommit: {
         apiKey: 'sk-test',
         baseUrl: 'https://api.deepseek.com',
@@ -628,6 +631,16 @@ test('terminal bindings use dedicated Wails bridge', async () => {
         startedAt: 1,
       };
     },
+    CreateTerminalSession: async ({ repoId, repoPath, cols, rows }: { repoId: string; repoPath: string; cols?: number; rows?: number }) => {
+      calls.push(`CreateTerminalSession:${repoId}:${repoPath}:${cols}:${rows}`);
+      return {
+        sessionId: 'term-2',
+        repoId,
+        repoPath,
+        shell: 'pwsh',
+        startedAt: 2,
+      };
+    },
     RestartTerminalSession: async (sessionId: string, cols: number, rows: number) => {
       calls.push(`RestartTerminalSession:${sessionId}:${cols}:${rows}`);
       return {
@@ -643,6 +656,9 @@ test('terminal bindings use dedicated Wails bridge', async () => {
     },
     ResizeTerminal: async (sessionId: string, cols: number, rows: number) => {
       calls.push(`ResizeTerminal:${sessionId}:${cols}:${rows}`);
+    },
+    CloseTerminalSession: async (sessionId: string) => {
+      calls.push(`CloseTerminalSession:${sessionId}`);
     },
     GenerateCommitMessage: async () => {
       throw new Error('unused');
@@ -667,10 +683,13 @@ test('terminal bindings use dedicated Wails bridge', async () => {
   try {
     const session = await ensureTerminalSession({ repoId: 'repo-1', repoPath: '/repo/a', cols: 120, rows: 40 });
     assert.equal(session.sessionId, 'term-1');
+    const created = await createTerminalSession({ repoId: 'repo-1', repoPath: '/repo/a', cols: 121, rows: 41 });
+    assert.equal(created.sessionId, 'term-2');
     const restarted = await restartTerminalSession('term-1', 132, 44);
     assert.equal(restarted.sessionId, 'term-2');
     await writeTerminalInput('term-2', 'git status\r');
     await resizeTerminal('term-2', 140, 50);
+    await closeTerminalSession('term-2');
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -680,9 +699,11 @@ test('terminal bindings use dedicated Wails bridge', async () => {
 
   assert.deepEqual(calls, [
     'EnsureTerminalSession:repo-1:/repo/a:120:40',
+    'CreateTerminalSession:repo-1:/repo/a:121:41',
     'RestartTerminalSession:term-1:132:44',
     'WriteTerminalInput:term-2:git status\r',
     'ResizeTerminal:term-2:140:50',
+    'CloseTerminalSession:term-2',
   ]);
 });
 

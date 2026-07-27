@@ -66,7 +66,9 @@ type WailsBindings = {
   GetFileDiff: (request: WailsFileDiffRequest) => Promise<FileDiff>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
   EnsureTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
+  CreateTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
   RestartTerminalSession: (sessionId: string, cols: number, rows: number) => Promise<TerminalSessionInfo>;
+  CloseTerminalSession: (sessionId: string) => Promise<void>;
   WriteTerminalInput: (sessionId: string, data: string) => Promise<void>;
   ResizeTerminal: (sessionId: string, cols: number, rows: number) => Promise<void>;
   GenerateCommitMessage: (
@@ -215,8 +217,16 @@ export async function ensureTerminalSession({ repoId, repoPath, cols, rows }: Te
   return getWailsBindings().EnsureTerminalSession({ repoId, repoPath, cols, rows });
 }
 
+export async function createTerminalSession({ repoId, repoPath, cols, rows }: TerminalSessionRequest) {
+  return getWailsBindings().CreateTerminalSession({ repoId, repoPath, cols, rows });
+}
+
 export async function restartTerminalSession(sessionId: string, cols: number, rows: number) {
   return getWailsBindings().RestartTerminalSession(sessionId, cols, rows);
+}
+
+export async function closeTerminalSession(sessionId: string) {
+  return getWailsBindings().CloseTerminalSession(sessionId);
 }
 
 export async function writeTerminalInput(sessionId: string, data: string) {
@@ -269,7 +279,9 @@ export const wailsClient: WorkspaceBackend & RepoInteractionBackend = {
   runRepoCommand,
   generateCommitMessage,
   ensureTerminalSession,
+  createTerminalSession,
   restartTerminalSession,
+  closeTerminalSession,
   writeTerminalInput,
   resizeTerminal,
   invokeLocalRepoAction,

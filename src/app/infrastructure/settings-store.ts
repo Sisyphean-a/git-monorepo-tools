@@ -7,6 +7,7 @@ const STORAGE_KEY = 'git-manager-ui-settings';
 export const DEFAULT_SETTINGS: AppSettings = {
   scanRoots: [],
   customCategories: [],
+  favoriteRepoIds: [],
   aiCommit: {
     apiKey: '',
     baseUrl: 'https://api.deepseek.com',
@@ -83,6 +84,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
 
   draft.scanRoots = sanitizeScanRoots(source.scanRoots);
   draft.customCategories = sanitizeCategories(source.customCategories);
+  draft.favoriteRepoIds = sanitizeRepoIDs(source.favoriteRepoIds);
   draft.aiCommit.apiKey = typeof aiCommit.apiKey === 'string' ? aiCommit.apiKey : draft.aiCommit.apiKey;
   draft.aiCommit.baseUrl = sanitizeText(aiCommit.baseUrl, draft.aiCommit.baseUrl);
   draft.aiCommit.model = sanitizeText(aiCommit.model, draft.aiCommit.model);
@@ -115,6 +117,15 @@ function sanitizeCategories(value: unknown) {
     .map(item => item.trim())
     .filter(Boolean);
   return [...new Set(categories)];
+}
+
+function sanitizeRepoIDs(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const ids = value
+    .filter((item): item is string => typeof item === 'string')
+    .map(item => item.trim())
+    .filter(Boolean);
+  return [...new Set(ids)];
 }
 
 export function loadSettings() {

@@ -55,6 +55,15 @@ export function SettingsModal({
     setDraft(current => withScanRoots(current, next.scanRoots));
   };
 
+  const toggleFavorite = (repoId: string) => {
+    setDraft(current => ({
+      ...current,
+      favoriteRepoIds: current.favoriteRepoIds.includes(repoId)
+        ? current.favoriteRepoIds.filter(id => id !== repoId)
+        : [...current.favoriteRepoIds, repoId],
+    }));
+  };
+
   const tabs: { key: SettingsTab; label: string }[] = [
     { key: 'repositories', label: '仓库' },
     { key: 'ai-commit', label: 'AI 提交' },
@@ -127,6 +136,7 @@ export function SettingsModal({
                 onAddScanRoot={onAddScanRoot}
                 onAddCategory={onAddCategory}
                 onRemoveScanRoot={removeScanRoot}
+                onToggleFavorite={toggleFavorite}
               />
             )}
             {tab === 'ai-commit' && <AICommitSettingsTab draft={draft} setDraft={setDraft} />}

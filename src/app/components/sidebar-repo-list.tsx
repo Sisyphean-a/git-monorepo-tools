@@ -9,6 +9,7 @@ import { RepoTerminalIndicator } from './repo-terminal-indicator';
 interface SidebarRepoListProps {
   repos: Repo[];
   categories: string[];
+  favoriteRepoIds: string[];
   search: string;
   terminalStates: Record<string, RepoTerminalState>;
   selectedRepoId: string;
@@ -19,11 +20,17 @@ export function SidebarRepoList(props: SidebarRepoListProps) {
   const query = props.search.toLowerCase();
   const filtered = query ? props.repos.filter(repo => matchesSearch(repo, query)) : props.repos;
   const grouped = query ? null : groupReposByCategory(filtered);
+  const favorites = query ? [] : filtered.filter(repo => props.favoriteRepoIds.includes(repo.id));
   return (
     <div style={listStyle}>
-      {query ? <SearchResults {...props} repos={filtered} /> : props.categories.map(category => (
-        <CategoryGroup key={category} {...props} name={category} repos={grouped?.get(category) ?? []} />
-      ))}
+      {query ? <SearchResults {...props} repos={filtered} /> : (
+        <>
+          {favorites.length > 0 && <CategoryGroup {...props} name="收藏" repos={favorites} />}
+          {props.categories.map(category => (
+            <CategoryGroup key={category} {...props} name={category} repos={grouped?.get(category) ?? []} />
+          ))}
+        </>
+      )}
     </div>
   );
 }

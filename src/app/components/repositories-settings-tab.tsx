@@ -1,4 +1,4 @@
-import { GripVertical, Plus, Trash2 } from 'lucide-react';
+import { GripVertical, Plus, Star, Trash2 } from 'lucide-react';
 import { C } from '../theme';
 import type { AppSettings, Repo } from '../domain/types';
 
@@ -8,6 +8,7 @@ interface RepositoriesSettingsTabProps {
   onAddScanRoot: () => Promise<void>;
   onAddCategory: () => void;
   onRemoveScanRoot: (path: string) => void;
+  onToggleFavorite: (repoId: string) => void;
 }
 
 export function RepositoriesSettingsTab({
@@ -16,6 +17,7 @@ export function RepositoriesSettingsTab({
   onAddScanRoot,
   onAddCategory,
   onRemoveScanRoot,
+  onToggleFavorite,
 }: RepositoriesSettingsTabProps) {
   return (
     <div>
@@ -88,7 +90,9 @@ export function RepositoriesSettingsTab({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {repos.map(repo => (
+        {repos.map(repo => {
+          const favorite = settings.favoriteRepoIds.includes(repo.id);
+          return (
           <div
             key={repo.id}
             style={{
@@ -111,8 +115,18 @@ export function RepositoriesSettingsTab({
             <span style={{ color: C.textWeak, fontSize: 10, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 3, padding: '2px 6px', flexShrink: 0 }}>
               {repo.category}
             </span>
+            <button
+              type="button"
+              aria-label={favorite ? `取消收藏 ${repo.name}` : `收藏 ${repo.name}`}
+              title={favorite ? '取消收藏' : '收藏'}
+              onClick={() => onToggleFavorite(repo.id)}
+              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', color: favorite ? C.modified : C.textWeak, cursor: 'pointer', padding: 3 }}
+            >
+              <Star size={14} fill={favorite ? 'currentColor' : 'none'} />
+            </button>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

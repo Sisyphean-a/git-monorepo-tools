@@ -19,7 +19,19 @@ import {
 type TerminalStatus = 'idle' | 'connecting' | 'running' | 'failed' | 'exited';
 type TerminalToast = { id: number; text: string } | null;
 
-export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active: boolean }) {
+interface RepoTerminalSurfaceProps {
+  repo: RepoDetail;
+  active: boolean;
+  createIndependentSession?: boolean;
+  closeSessionOnUnmount?: boolean;
+}
+
+export function RepoTerminalSurface({
+  repo,
+  active,
+  createIndependentSession = false,
+  closeSessionOnUnmount = false,
+}: RepoTerminalSurfaceProps) {
   const backend = useAppBackend();
   const [terminalEventBus] = useState(() => new TerminalEventBus(backend.onEvent));
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -27,6 +39,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const sessionRef = useRef<TerminalSessionInfo | null>(null);
+  const disposedRef = useRef(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const sessionBindingRef = useRef<{ bindSession: (sessionId: string) => void; dispose: () => void } | null>(null);
   const outputWriterRef = useRef<TerminalOutputWriter | null>(null);
@@ -128,12 +141,25 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     if (!nextSize) return;
 
     try {
-      const session = await backend.ensureTerminalSession({
-        repoId: repo.id,
-        repoPath: repo.path,
-        cols: nextSize.cols,
-        rows: nextSize.rows,
-      });
+      const session = await (createIndependentSession
+        ? backend.createTerminalSession({
+          repoId: repo.id,
+          repoPath: repo.path,
+          cols: nextSize.cols,
+          rows: nextSize.rows,
+        })
+        : backend.ensureTerminalSession({
+          repoId: repo.id,
+          repoPath: repo.path,
+          cols: nextSize.cols,
+          rows: nextSize.rows,
+        }));
+      if (disposedRef.current) {
+        if (createIndependentSession) {
+          void backend.closeTerminalSession(session.sessionId).catch(() => undefined);
+        }
+        return;
+      }
       registerTerminalSession(session);
       sessionRef.current = session;
       setSessionId(session.sessionId);
@@ -183,6 +209,7 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
   };
 
   useEffect(() => {
+    disposedRef.current = false;
     if (!viewportRef.current || terminalRef.current) return;
 
     const shortcutPlatform = window.navigator.platform ?? '';
@@ -331,6 +358,11 @@ export function RepoTerminalSurface({ repo, active }: { repo: RepoDetail; active
     });
 
     return () => {
+      disposedRef.current = true;
+      const session = sessionRef.current;
+      if (closeSessionOnUnmount && session) {
+        void backend.closeTerminalSession(session.sessionId).catch(() => undefined);
+      }
       if (toastTimerRef.current !== null) {
         window.clearTimeout(toastTimerRef.current);
         toastTimerRef.current = null;

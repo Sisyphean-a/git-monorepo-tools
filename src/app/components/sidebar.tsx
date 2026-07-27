@@ -32,6 +32,7 @@ export function Sidebar(props: SidebarProps) {
       <SidebarRepoList
         repos={props.repos}
         categories={props.categories}
+        favoriteRepoIds={props.settings.favoriteRepoIds}
         search={search}
         terminalStates={terminalStates}
         selectedRepoId={props.selectedRepoId}

@@ -3,6 +3,10 @@
 import {terminal} from '../models';
 import {snapshot} from '../models';
 
+export function CloseTerminalSession(arg1:string):Promise<void>;
+
+export function CreateTerminalSession(arg1:terminal.TerminalSessionRequest):Promise<terminal.TerminalSessionInfo>;
+
 export function EnsureTerminalSession(arg1:terminal.TerminalSessionRequest):Promise<terminal.TerminalSessionInfo>;
 
 export function GenerateCommitMessage(arg1:string,arg2:snapshot.Request,arg3:snapshot.AICommitSettings):Promise<string>;

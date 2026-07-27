@@ -36,7 +36,9 @@ type desktopGateway interface {
 
 type terminalGateway interface {
 	EnsureSession(terminal.TerminalSessionRequest) (terminal.TerminalSessionInfo, error)
+	CreateSession(terminal.TerminalSessionRequest) (terminal.TerminalSessionInfo, error)
 	RestartSession(string, int, int) (terminal.TerminalSessionInfo, error)
+	CloseSession(string) error
 	WriteInput(string, string) error
 	Resize(string, int, int) error
 	CloseAll()
@@ -154,12 +156,28 @@ func (a *App) EnsureTerminalSession(request terminal.TerminalSessionRequest) (te
 	return manager.EnsureSession(request)
 }
 
+func (a *App) CreateTerminalSession(request terminal.TerminalSessionRequest) (terminal.TerminalSessionInfo, error) {
+	manager, err := a.terminalManager()
+	if err != nil {
+		return terminal.TerminalSessionInfo{}, err
+	}
+	return manager.CreateSession(request)
+}
+
 func (a *App) RestartTerminalSession(sessionID string, cols, rows int) (terminal.TerminalSessionInfo, error) {
 	manager, err := a.terminalManager()
 	if err != nil {
 		return terminal.TerminalSessionInfo{}, err
 	}
 	return manager.RestartSession(sessionID, cols, rows)
+}
+
+func (a *App) CloseTerminalSession(sessionID string) error {
+	manager, err := a.terminalManager()
+	if err != nil {
+		return err
+	}
+	return manager.CloseSession(sessionID)
 }
 
 func (a *App) WriteTerminalInput(sessionID, data string) error {

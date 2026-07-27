@@ -84,6 +84,28 @@ func (m *Manager) EnsureSession(request TerminalSessionRequest) (TerminalSession
 	return session.info(), nil
 }
 
+// CreateSession starts an independent shell even when the repository already has one.
+func (m *Manager) CreateSession(request TerminalSessionRequest) (TerminalSessionInfo, error) {
+	repoPath, repoInfo, err := validateTerminalRepoPath(request.RepoPath)
+	if err != nil {
+		return TerminalSessionInfo{}, err
+	}
+
+	cols, rows := normalizeTerminalSize(request.Cols, request.Rows)
+
+	m.mu.Lock()
+	session, err := m.newSessionLocked(strings.TrimSpace(request.RepoID), repoPath, repoInfo, cols, rows)
+	if err != nil {
+		m.mu.Unlock()
+		return TerminalSessionInfo{}, err
+	}
+	m.sessionsByID[session.id] = session
+	m.mu.Unlock()
+
+	session.start()
+	return session.info(), nil
+}
+
 func (m *Manager) RestartSession(sessionID string, cols, rows int) (TerminalSessionInfo, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -112,6 +134,26 @@ func (m *Manager) RestartSession(sessionID string, cols, rows int) (TerminalSess
 	existing.Stop()
 	replacement.start()
 	return replacement.info(), nil
+}
+
+func (m *Manager) CloseSession(sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("缺少终端会话 ID")
+	}
+
+	m.mu.Lock()
+	session := m.sessionsByID[sessionID]
+	if session != nil {
+		delete(m.sessionsByID, sessionID)
+	}
+	m.mu.Unlock()
+	if session == nil {
+		return errors.New("终端会话不存在")
+	}
+
+	session.Stop()
+	return nil
 }
 
 func (m *Manager) WriteInput(sessionID, data string) error {

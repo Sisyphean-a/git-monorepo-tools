@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, X } from 'lucide-react';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
 import { DiffList } from './diff-list';
@@ -16,8 +17,15 @@ import type {
   SettingsTab,
 } from '../domain/types';
 
-type MainTab = 'changes' | 'history' | 'terminal';
+type MainTab = 'changes' | 'history' | 'terminal' | `terminal-${number}`;
+
+interface IndependentTerminal {
+  id: `terminal-${number}`;
+  repoId: string;
+}
+
 const RepoTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).RepoTerminalTab }));
+const IndependentTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).IndependentTerminalTab }));
 
 interface WorkspaceProps {
   repoDetails: Record<string, RepoDetail>;
@@ -106,12 +114,27 @@ export function Workspace({
   const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
   const [mainTab, setMainTab] = useState<MainTab>('changes');
   const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [independentTerminals, setIndependentTerminals] = useState<IndependentTerminal[]>([]);
+  const terminalSequence = useRef(1);
 
   useEffect(() => {
-    if (mainTab === 'terminal') {
+    if (mainTab === 'terminal' || independentTerminals.some(tab => tab.id === mainTab)) {
       setTerminalEnabled(true);
     }
-  }, [mainTab]);
+  }, [mainTab, independentTerminals]);
+
+  useEffect(() => {
+    setIndependentTerminals(current => {
+      const next = current.filter(tab => Boolean(repoDetails[tab.repoId]));
+      return next.length === current.length ? current : next;
+    });
+  }, [repoDetails]);
+
+  useEffect(() => {
+    if (mainTab !== 'changes' && mainTab !== 'history' && mainTab !== 'terminal' && !independentTerminals.some(tab => tab.id === mainTab)) {
+      setMainTab('changes');
+    }
+  }, [mainTab, independentTerminals]);
 
   if (!repo) {
     return (
@@ -169,6 +192,17 @@ export function Workspace({
       throw error;
     }
   };
+  const openIndependentTerminal = () => {
+    if (isChecking) return;
+    const number = ++terminalSequence.current;
+    const id = `terminal-${number}` as IndependentTerminal['id'];
+    setIndependentTerminals(current => [...current, { id, repoId: repo.id }]);
+    setMainTab(id);
+  };
+  const closeIndependentTerminal = (id: IndependentTerminal['id']) => {
+    setIndependentTerminals(current => current.filter(tab => tab.id !== id));
+    setMainTab(current => current === id ? 'terminal' : current);
+  };
   const isConflict = repo.conflicts > 0;
 
   const mainTabs: { key: MainTab; label: string }[] = [
@@ -189,7 +223,7 @@ export function Workspace({
 
       {isConflict && <ConflictBanner repo={repo} onOpenConflicts={handleOpenConflicts} onViewLog={handleViewLog} />}
 
-      <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}`, background: C.panel1, flexShrink: 0, padding: '0 14px' }}>
+      <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}`, background: C.panel1, flexShrink: 0, padding: '0 14px', overflowX: 'auto' }}>
         {mainTabs.map(tab => (
           <button
             key={tab.key}
@@ -214,6 +248,41 @@ export function Workspace({
             {tab.label}
           </button>
         ))}
+        {independentTerminals.map(tab => (
+          <div
+            key={tab.id}
+            style={{ display: 'flex', alignItems: 'center', borderBottom: `2px solid ${mainTab === tab.id ? C.btnPrimary : 'transparent'}`, whiteSpace: 'nowrap' }}
+          >
+            <button
+              type="button"
+              disabled={isChecking}
+              onClick={() => setMainTab(tab.id)}
+              style={{ background: 'none', border: 'none', color: mainTab === tab.id ? C.textPrimary : C.textWeak, padding: '8px 4px 8px 14px', cursor: isChecking ? 'default' : 'pointer', fontSize: 12, fontWeight: mainTab === tab.id ? 500 : 400, opacity: isChecking ? 0.65 : 1 }}
+            >
+              终端
+            </button>
+            <button
+              type="button"
+              aria-label="关闭终端"
+              title="关闭终端"
+              disabled={isChecking}
+              onClick={() => closeIndependentTerminal(tab.id)}
+              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', color: C.textWeak, cursor: isChecking ? 'default' : 'pointer', padding: '5px 8px 5px 5px', opacity: isChecking ? 0.65 : 1 }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          aria-label="新建终端"
+          title="新建终端"
+          disabled={isChecking}
+          onClick={openIndependentTerminal}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', background: 'none', border: 'none', color: C.textSecondary, cursor: isChecking ? 'default' : 'pointer', padding: '5px 7px', opacity: isChecking ? 0.65 : 1 }}
+        >
+          <Plus size={15} />
+        </button>
       </div>
 
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
@@ -264,6 +333,10 @@ export function Workspace({
             {terminalEnabled && (
               <Suspense fallback={null}>
                 <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={mainTab === 'terminal'} />
+                {independentTerminals.map(tab => {
+                  const terminalRepo = repoDetails[tab.repoId];
+                  return terminalRepo ? <IndependentTerminalTab key={tab.id} repo={terminalRepo} visible={mainTab === tab.id} /> : null;
+                })}
               </Suspense>
             )}
           </>

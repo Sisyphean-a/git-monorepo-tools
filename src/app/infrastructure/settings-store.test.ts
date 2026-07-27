@@ -35,3 +35,11 @@ test('sanitizeSettings trims and deduplicates custom categories', () => {
 
   assert.deepEqual(settings.customCategories, ['团队', '个人']);
 });
+
+test('sanitizeSettings trims and deduplicates favorite repository IDs', () => {
+  const settings = sanitizeSettings({
+    favoriteRepoIds: [' repo-a ', 'repo-a', '', 'repo-b'],
+  });
+
+  assert.deepEqual(settings.favoriteRepoIds, ['repo-a', 'repo-b']);
+});

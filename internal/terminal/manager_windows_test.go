@@ -36,6 +36,74 @@ func TestTerminalManagerReusesSessionPerRepo(t *testing.T) {
 	manager.CloseAll()
 }
 
+func TestTerminalManagerCreatesIndependentSessionsForSameRepo(t *testing.T) {
+	manager := NewManager(func(string, any) {})
+	repo := t.TempDir()
+
+	first, err := manager.CreateSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: repo})
+	if err != nil {
+		t.Fatalf("create first session: %v", err)
+	}
+	second, err := manager.CreateSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: repo})
+	if err != nil {
+		t.Fatalf("create second session: %v", err)
+	}
+
+	if first.SessionID == second.SessionID {
+		t.Fatalf("independent sessions must have unique IDs: %s", first.SessionID)
+	}
+
+	manager.CloseAll()
+}
+
+func TestTerminalManagerClosesNamedSession(t *testing.T) {
+	exits := make(chan string, 1)
+	manager := NewManager(func(name string, payload any) {
+		if event, ok := payload.(terminalExitEvent); ok && name == terminalExitEventName {
+			exits <- event.SessionID
+		}
+	})
+
+	session, err := manager.CreateSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: t.TempDir()})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if err := manager.CloseSession(session.SessionID); err != nil {
+		t.Fatalf("close session: %v", err)
+	}
+
+	select {
+	case sessionID := <-exits:
+		if sessionID != session.SessionID {
+			t.Fatalf("closed unexpected session: %s", sessionID)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("named terminal session did not emit an exit event")
+	}
+}
+
+func TestClosingTerminalSessionDoesNotReuseIt(t *testing.T) {
+	manager := NewManager(func(string, any) {})
+	defer manager.CloseAll()
+
+	repo := t.TempDir()
+	closing, err := manager.CreateSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: repo})
+	if err != nil {
+		t.Fatalf("create closing session: %v", err)
+	}
+	if err := manager.CloseSession(closing.SessionID); err != nil {
+		t.Fatalf("close session: %v", err)
+	}
+
+	defaultSession, err := manager.EnsureSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: repo})
+	if err != nil {
+		t.Fatalf("ensure replacement session: %v", err)
+	}
+	if defaultSession.SessionID == closing.SessionID {
+		t.Fatalf("closed session was reused: %s", closing.SessionID)
+	}
+}
+
 func TestTerminalManagerStartsInRepoDirectoryAndCloses(t *testing.T) {
 	outputs := make(chan string, 32)
 	exits := make(chan int, 4)
