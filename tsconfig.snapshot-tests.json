@@ -35,6 +35,8 @@
     "src/app/features/terminal/terminal-event-bus.test.ts",
     "src/app/features/terminal/terminal-output-writer.ts",
     "src/app/features/terminal/terminal-output-writer.test.ts",
+    "src/app/features/terminal/independent-terminal-tabs.ts",
+    "src/app/features/terminal/independent-terminal-tabs.test.ts",
     "src/app/features/diff/file-diff-loader.ts",
     "src/app/features/diff/file-diff-loader.test.ts",
     "src/app/features/diff/diff-viewport.ts",

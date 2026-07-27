@@ -8,6 +8,12 @@ import { RepoHistoryTab } from './repo-history-tab';
 import { useAppBackend } from '../application/backend-context';
 import { useRepoCommandPanel } from '../features/commands/use-repo-command-panel';
 import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../features/terminal/repo-terminal-status';
+import {
+  getIndependentTerminalsForRepo,
+  resolveMainTabForRepo,
+  type IndependentTerminalTab,
+  type WorkspaceMainTab,
+} from '../features/terminal/independent-terminal-tabs';
 import { createFileDiffLoader } from '../features/diff/file-diff-loader';
 import type {
   AppSettings,
@@ -17,12 +23,8 @@ import type {
   SettingsTab,
 } from '../domain/types';
 
-type MainTab = 'changes' | 'history' | 'terminal' | `terminal-${number}`;
-
-interface IndependentTerminal {
-  id: `terminal-${number}`;
-  repoId: string;
-}
+type MainTab = WorkspaceMainTab;
+type IndependentTerminal = IndependentTerminalTab;
 
 const RepoTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).RepoTerminalTab }));
 const IndependentTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).IndependentTerminalTab }));
@@ -131,10 +133,8 @@ export function Workspace({
   }, [repoDetails]);
 
   useEffect(() => {
-    if (mainTab !== 'changes' && mainTab !== 'history' && mainTab !== 'terminal' && !independentTerminals.some(tab => tab.id === mainTab)) {
-      setMainTab('changes');
-    }
-  }, [mainTab, independentTerminals]);
+    setMainTab(current => resolveMainTabForRepo(current, repo?.id ?? '', independentTerminals));
+  }, [repo?.id, independentTerminals]);
 
   if (!repo) {
     return (
@@ -144,6 +144,7 @@ export function Workspace({
     );
   }
 
+  const repoIndependentTerminals = getIndependentTerminalsForRepo(independentTerminals, repo.id);
   const fileSummary = summarizeFiles(repo.files);
   const isChecking = repo.status === 'checking';
 
@@ -248,7 +249,7 @@ export function Workspace({
             {tab.label}
           </button>
         ))}
-        {independentTerminals.map(tab => (
+        {repoIndependentTerminals.map(tab => (
           <div
             key={tab.id}
             style={{ display: 'flex', alignItems: 'center', borderBottom: `2px solid ${mainTab === tab.id ? C.btnPrimary : 'transparent'}`, whiteSpace: 'nowrap' }}
@@ -335,7 +336,7 @@ export function Workspace({
                 <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={mainTab === 'terminal'} />
                 {independentTerminals.map(tab => {
                   const terminalRepo = repoDetails[tab.repoId];
-                  return terminalRepo ? <IndependentTerminalTab key={tab.id} repo={terminalRepo} visible={mainTab === tab.id} /> : null;
+                  return terminalRepo ? <IndependentTerminalTab key={tab.id} repo={terminalRepo} visible={tab.repoId === repo.id && mainTab === tab.id} /> : null;
                 })}
               </Suspense>
             )}
