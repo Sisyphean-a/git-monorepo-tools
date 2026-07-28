@@ -32,6 +32,7 @@ const DEFAULT_COMBOS: CommandCombo[] = [
 export const DEFAULT_COMMAND_CENTER: CommandCenterSettings = {
   combos: DEFAULT_COMBOS,
   customCommands: [],
+  projectCommands: {},
 };
 
 export function cloneDefaultCommandCenter() {
@@ -54,6 +55,10 @@ export function formatComboSummary(actions: BuiltInCommandAction[]) {
   return actions.map(getBuiltInCommandLabel).join(' → ');
 }
 
+export function getProjectCommands(commandCenter: CommandCenterSettings, repoId: string) {
+  return commandCenter.projectCommands[repoId] ?? [];
+}
+
 export function sanitizeCommandCenter(value: unknown) {
   const fallback = cloneDefaultCommandCenter();
   if (!value || typeof value !== 'object') return fallback;
@@ -61,6 +66,7 @@ export function sanitizeCommandCenter(value: unknown) {
   return {
     combos: sanitizeCommandCombos(source.combos, fallback.combos),
     customCommands: sanitizeCustomCommands(source.customCommands),
+    projectCommands: sanitizeProjectCommands(source.projectCommands),
   };
 }
 
@@ -94,6 +100,20 @@ function sanitizeCustomCommands(value: unknown) {
     commands.push({ id, label, command: shell });
   }
   return commands;
+}
+
+function sanitizeProjectCommands(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {} as Record<string, CustomCommandButton[]>;
+  }
+
+  const projectCommands: Record<string, CustomCommandButton[]> = {};
+  for (const [repoId, commands] of Object.entries(value)) {
+    const id = sanitizeText(repoId, '');
+    const sanitized = sanitizeCustomCommands(commands);
+    if (id && sanitized.length > 0) projectCommands[id] = sanitized;
+  }
+  return projectCommands;
 }
 
 function sanitizeText(value: unknown, fallback: string) {

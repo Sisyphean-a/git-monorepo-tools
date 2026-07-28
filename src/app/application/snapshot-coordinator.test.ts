@@ -32,6 +32,7 @@ const settings = (concurrency: number): AppSettings => ({
   commandCenter: {
     combos: [],
     customCommands: [],
+    projectCommands: {},
   },
 });
 

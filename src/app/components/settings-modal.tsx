@@ -3,7 +3,6 @@ import { X } from 'lucide-react';
 import { C } from '../theme';
 import type { AppSettings, Repo, SettingsTab } from '../domain/types';
 import { AICommitSettingsTab } from './ai-commit-settings-tab';
-import { CommandSettingsTab } from './command-settings-tab';
 import { GitBehaviorSettingsTab } from './git-behavior-settings-tab';
 import { RepositoriesSettingsTab } from './repositories-settings-tab';
 import { withScanRoots } from '../application/settings-actions';
@@ -68,7 +67,6 @@ export function SettingsModal({
     { key: 'repositories', label: '仓库' },
     { key: 'ai-commit', label: 'AI 提交' },
     { key: 'git-behavior', label: 'Git 行为' },
-    { key: 'commands', label: '命令' },
   ];
 
   return (
@@ -141,7 +139,6 @@ export function SettingsModal({
             )}
             {tab === 'ai-commit' && <AICommitSettingsTab draft={draft} setDraft={setDraft} />}
             {tab === 'git-behavior' && <GitBehaviorSettingsTab draft={draft} setDraft={setDraft} />}
-            {tab === 'commands' && <CommandSettingsTab draft={draft} setDraft={setDraft} />}
           </div>
         </div>
 

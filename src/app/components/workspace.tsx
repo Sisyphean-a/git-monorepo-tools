@@ -38,6 +38,7 @@ interface WorkspaceProps {
   onInvokeLocalRepoAction: (action: 'open-folder' | 'open-terminal' | 'open-conflicts', path: string) => Promise<void>;
   onRunCustomCommand: (repoPath: string, command: string, streamId?: string) => Promise<RepoCommandResult>;
   onOpenSettings: (tab?: SettingsTab) => void;
+  onOpenCommands: () => void;
   onViewLog: (repoId: string) => Promise<void>;
   onError: (error: unknown, fallback: string) => void;
 }
@@ -108,6 +109,7 @@ export function Workspace({
   onInvokeLocalRepoAction,
   onRunCustomCommand,
   onOpenSettings,
+  onOpenCommands,
   onViewLog,
   onError,
 }: WorkspaceProps) {
@@ -163,7 +165,7 @@ export function Workspace({
     onRefresh: () => onRefresh(repo.id),
     onMutateRepo,
     onRunCustomCommand,
-    onOpenCommandsSettings: () => onOpenSettings('commands'),
+    onOpenCommands: onOpenCommands,
     backend,
   });
 

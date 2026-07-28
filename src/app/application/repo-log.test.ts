@@ -32,6 +32,7 @@ const settings: AppSettings = {
   commandCenter: {
     combos: [],
     customCommands: [],
+    projectCommands: {},
   },
 };
 

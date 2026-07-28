@@ -378,6 +378,7 @@ test('generateCommitMessage uses dedicated binding', async () => {
       commandCenter: {
         combos: [],
         customCommands: [],
+        projectCommands: {},
       },
     });
     assert.equal(message, 'feat: 统一 AI 提交生成');

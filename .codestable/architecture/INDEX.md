@@ -21,3 +21,4 @@
 - 前端依赖方向是 `components/features → application → domain`；基础设施实现应用层端口，组件不直接访问 Wails。
 - 跨端绑定和事件契约见 [Wails 桥接](shared/wails-bridge.md)。终端会话与事件约束见 [终端运行时](shared/terminal-runtime.md)。
 - Git 状态术语和刷新时序见 `requirements/CONTEXT.md`；高代价取舍见 `requirements/adrs/`。
+- 命令设置保存在本地设置中：组合与全局命令对所有仓库可见，项目命令按仓库 ID 保存，只在对应仓库的命令区域展示和执行。命令由独立弹窗管理；主界面将全局与当前项目命令合并为一个“命令”区域。

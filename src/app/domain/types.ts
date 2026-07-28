@@ -103,6 +103,7 @@ export interface CustomCommandButton {
 export interface CommandCenterSettings {
   combos: CommandCombo[];
   customCommands: CustomCommandButton[];
+  projectCommands: Record<string, CustomCommandButton[]>;
 }
 
 export interface AppSettings {
@@ -226,4 +227,4 @@ export interface AppSnapshot {
   commitCandidates: Record<string, CommitCandidate[]>;
 }
 
-export type SettingsTab = 'repositories' | 'ai-commit' | 'git-behavior' | 'commands';
+export type SettingsTab = 'repositories' | 'ai-commit' | 'git-behavior';

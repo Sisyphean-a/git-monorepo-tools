@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Download, GitCommit, Layers3, MinusSquare, PlusSquare, RefreshCw, RotateCcw, Sparkles, TerminalSquare, Upload } from 'lucide-react';
-import { formatComboSummary, getBuiltInCommandLabel } from './command-center';
+import { formatComboSummary, getBuiltInCommandLabel, getProjectCommands } from './command-center';
 import { createCommandConsoleSession } from './repo-command-console';
 import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButton, RepoCommandResult, RepoDetail, RepoMutationAction } from '../../domain/types';
 import type { CommandConsoleState, PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
@@ -12,7 +12,7 @@ interface UseRepoCommandPanelArgs {
   onRefresh: () => Promise<void>;
   onMutateRepo: (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => Promise<void>;
   onRunCustomCommand: (repoPath: string, command: string, streamId?: string) => Promise<RepoCommandResult>;
-  onOpenCommandsSettings: () => void;
+  onOpenCommands: () => void;
   backend: Pick<AppBackend, 'generateCommitMessage' | 'onEvent'>;
 }
 
@@ -22,7 +22,7 @@ export function useRepoCommandPanel({
   onRefresh,
   onMutateRepo,
   onRunCustomCommand,
-  onOpenCommandsSettings,
+  onOpenCommands,
   backend,
 }: UseRepoCommandPanelArgs) {
   const [commitMessage, setCommitMessage] = useState('');
@@ -149,8 +149,8 @@ export function useRepoCommandPanel({
     });
   };
 
-  const runCustomCommand = (command: CustomCommandButton) => {
-    triggerBusyAction(`custom:${command.id}`, async isActive => {
+  const runCustomCommand = (scope: 'global' | 'project', command: CustomCommandButton) => {
+    triggerBusyAction(`${scope}-command:${command.id}`, async isActive => {
       const streamId = `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const session = createCommandConsoleSession(setCommandConsole, command.label, command.command, isActive);
       const stopListening = backend.onEvent('repo-command-output', payload => {
@@ -254,19 +254,28 @@ export function useRepoCommandPanel({
         disabled: busyAction !== null,
         accent: true,
       })),
-      onManage: onOpenCommandsSettings,
+      onManage: onOpenCommands,
     },
     {
-      key: 'custom',
+      key: 'command',
       label: '命令',
-      actions: settings.commandCenter.customCommands.map(command => ({
-        key: command.id,
-        label: busyAction === `custom:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
-        icon: <TerminalSquare size={12} />,
-        onClick: () => runCustomCommand(command),
-        disabled: busyAction !== null,
-      })),
-      onManage: onOpenCommandsSettings,
+      actions: [
+        ...settings.commandCenter.customCommands.map(command => ({
+          key: `global:${command.id}`,
+          label: busyAction === `global-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
+          icon: <TerminalSquare size={12} />,
+          onClick: () => runCustomCommand('global', command),
+          disabled: busyAction !== null,
+        })),
+        ...getProjectCommands(settings.commandCenter, repo.id).map(command => ({
+          key: `project:${command.id}`,
+          label: busyAction === `project-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
+          icon: <TerminalSquare size={12} />,
+          onClick: () => runCustomCommand('project', command),
+          disabled: busyAction !== null,
+        })),
+      ],
+      onManage: onOpenCommands,
     },
   ];
 

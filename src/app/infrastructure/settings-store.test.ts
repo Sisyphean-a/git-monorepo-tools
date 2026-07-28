@@ -43,3 +43,33 @@ test('sanitizeSettings trims and deduplicates favorite repository IDs', () => {
 
   assert.deepEqual(settings.favoriteRepoIds, ['repo-a', 'repo-b']);
 });
+
+test('sanitizeSettings keeps commands scoped to their repository IDs', () => {
+  const settings = sanitizeSettings({
+    commandCenter: {
+      projectCommands: {
+        ' repo-a ': [
+          { id: ' build ', label: ' 构建 ', command: ' npm run build ' },
+          { id: 'invalid', label: '', command: 'npm test' },
+        ],
+        ' ': [{ id: 'ignored', label: '忽略', command: 'echo ignored' }],
+        'repo-b': [],
+      },
+    },
+  });
+
+  assert.deepEqual(settings.commandCenter.projectCommands, {
+    'repo-a': [{ id: 'build', label: '构建', command: 'npm run build' }],
+  });
+});
+
+test('sanitizeSettings accepts settings saved before project commands existed', () => {
+  const settings = sanitizeSettings({
+    commandCenter: {
+      customCommands: [{ id: 'global', label: '全局', command: 'npm test' }],
+    },
+  });
+
+  assert.deepEqual(settings.commandCenter.projectCommands, {});
+  assert.deepEqual(settings.commandCenter.customCommands, [{ id: 'global', label: '全局', command: 'npm test' }]);
+});

@@ -116,7 +116,7 @@ function ActionCluster({ actionGroups }: Pick<AiCommitPanelProps, 'actionGroups'
 }
 
 function CommandSection({ section }: { section: PanelCommandSection }) {
-  if (section.actions.length === 0) return null;
+  if (section.actions.length === 0 && !section.onManage) return null;
   return (
     <div style={{ background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>

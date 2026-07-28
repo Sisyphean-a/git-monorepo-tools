@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AddRepoMenu } from './components/add-repo-menu';
 import { AppFrame } from './components/common';
+import { CommandModal } from './components/command-modal';
 import { LogViewerModal } from './components/log-viewer-modal';
 import { PullAllDrawer } from './components/pull-all-drawer';
 import { SettingsModal } from './components/settings-modal';
@@ -89,6 +90,7 @@ function WorkspaceLayout({
         onInvokeLocalRepoAction={workspace.invokeLocalRepoAction}
         onRunCustomCommand={workspace.runRepoCommand}
         onOpenSettings={dialogs.openSettings}
+        onOpenCommands={dialogs.openCommands}
         onViewLog={workspace.openRepoLog}
         onError={workspace.reportActionError}
       />
@@ -141,6 +143,16 @@ function AppDialogs({
         onAddCategory={addCategory}
         onRemoveScanRoot={workspace.removeScanRoot}
       />
+      <CommandModal
+        repo={snapshot.repos.find(repo => repo.id === workspace.selectedRepoId) ?? null}
+        settings={workspace.settings}
+        open={dialogs.commandsOpen}
+        onClose={dialogs.closeCommands}
+        onSave={settings => {
+          workspace.saveSettings(settings);
+          dialogs.closeCommands();
+        }}
+      />
       <LogViewerModal log={workspace.repoLog} onClose={workspace.closeRepoLog} />
     </>
   );
@@ -165,6 +177,7 @@ function useDialogs() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai-commit');
+  const [commandsOpen, setCommandsOpen] = useState(false);
   return {
     addMenuOpen,
     openAddMenu: () => setAddMenuOpen(true),
@@ -176,6 +189,9 @@ function useDialogs() {
       setSettingsOpen(true);
     },
     closeSettings: () => setSettingsOpen(false),
+    commandsOpen,
+    openCommands: () => setCommandsOpen(true),
+    closeCommands: () => setCommandsOpen(false),
   };
 }
 

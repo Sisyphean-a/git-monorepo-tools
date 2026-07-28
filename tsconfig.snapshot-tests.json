@@ -27,6 +27,7 @@
     "src/app/domain/repo-status.test.ts",
     "src/app/features/terminal/repo-terminal-activity.ts",
     "src/app/features/terminal/repo-terminal-activity.test.ts",
+    "src/app/features/commands/command-center.test.ts",
     "src/app/infrastructure/settings-store.ts",
     "src/app/infrastructure/settings-store.test.ts",
     "src/app/application/snapshot-coordinator.ts",
