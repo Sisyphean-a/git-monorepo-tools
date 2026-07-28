@@ -233,11 +233,18 @@ func streamCommand(reader io.Reader, onChunk func(string), builder *strings.Buil
 
 func buildShellCommand(repoPath, commandText string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
-		cmd := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", commandText)
+		cmd := exec.Command(resolveWindowsCommandShell(exec.LookPath), "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", commandText)
 		cmd.Dir = repoPath
 		return cmd
 	}
 	cmd := exec.Command("sh", "-lc", commandText)
 	cmd.Dir = repoPath
 	return cmd
+}
+
+func resolveWindowsCommandShell(lookPath func(string) (string, error)) string {
+	if path, err := lookPath("pwsh.exe"); err == nil {
+		return path
+	}
+	return "powershell.exe"
 }

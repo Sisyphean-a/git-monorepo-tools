@@ -199,6 +199,34 @@ func TestRunRepoCommandTimeoutStopsChildProcess(t *testing.T) {
 	}
 }
 
+func TestResolveWindowsCommandShellPrefersPwsh(t *testing.T) {
+	t.Parallel()
+
+	pwshPath := filepath.Join(`C:\Program Files\PowerShell\7`, "pwsh.exe")
+	shell := resolveWindowsCommandShell(func(command string) (string, error) {
+		if command == "pwsh.exe" {
+			return pwshPath, nil
+		}
+		return "", errors.New("not found")
+	})
+
+	if shell != pwshPath {
+		t.Fatalf("expected pwsh path %q, got %q", pwshPath, shell)
+	}
+}
+
+func TestResolveWindowsCommandShellUsesWindowsPowerShellWhenPwshUnavailable(t *testing.T) {
+	t.Parallel()
+
+	shell := resolveWindowsCommandShell(func(string) (string, error) {
+		return "", errors.New("not found")
+	})
+
+	if shell != "powershell.exe" {
+		t.Fatalf("expected Windows PowerShell, got %q", shell)
+	}
+}
+
 func successShellCommand() string {
 	if runtime.GOOS == "windows" {
 		return "Write-Output 'hello'"
