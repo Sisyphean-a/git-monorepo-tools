@@ -11,8 +11,10 @@ import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting
 import {
   getIndependentTerminalsForRepo,
   resolveMainTabForRepo,
+  selectMainTabForRepo,
   type IndependentTerminalTab,
   type WorkspaceMainTab,
+  type WorkspaceMainTabsByRepo,
 } from '../features/terminal/independent-terminal-tabs';
 import { createFileDiffLoader } from '../features/diff/file-diff-loader';
 import type {
@@ -116,10 +118,11 @@ export function Workspace({
   const backend = useAppBackend();
   const repoIds = Object.keys(repoDetails);
   const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
-  const [mainTab, setMainTab] = useState<MainTab>('changes');
+  const [mainTabsByRepo, setMainTabsByRepo] = useState<WorkspaceMainTabsByRepo>({});
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [independentTerminals, setIndependentTerminals] = useState<IndependentTerminal[]>([]);
   const terminalSequence = useRef(1);
+  const mainTab = resolveMainTabForRepo(mainTabsByRepo, repo?.id ?? '', independentTerminals);
 
   useEffect(() => {
     if (mainTab === 'terminal' || independentTerminals.some(tab => tab.id === mainTab)) {
@@ -134,10 +137,6 @@ export function Workspace({
     });
   }, [repoDetails]);
 
-  useEffect(() => {
-    setMainTab(current => resolveMainTabForRepo(current, repo?.id ?? '', independentTerminals));
-  }, [repo?.id, independentTerminals]);
-
   if (!repo) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>
@@ -149,6 +148,9 @@ export function Workspace({
   const repoIndependentTerminals = getIndependentTerminalsForRepo(independentTerminals, repo.id);
   const fileSummary = summarizeFiles(repo.files);
   const isChecking = repo.status === 'checking';
+  const selectMainTab = (tab: MainTab) => {
+    setMainTabsByRepo(current => selectMainTabForRepo(current, repo.id, tab));
+  };
 
   const {
     commitMessage,
@@ -200,11 +202,16 @@ export function Workspace({
     const number = ++terminalSequence.current;
     const id = `terminal-${number}` as IndependentTerminal['id'];
     setIndependentTerminals(current => [...current, { id, repoId: repo.id }]);
-    setMainTab(id);
+    selectMainTab(id);
   };
   const closeIndependentTerminal = (id: IndependentTerminal['id']) => {
+    const terminal = independentTerminals.find(tab => tab.id === id);
     setIndependentTerminals(current => current.filter(tab => tab.id !== id));
-    setMainTab(current => current === id ? 'terminal' : current);
+    if (terminal) {
+      setMainTabsByRepo(current => current[terminal.repoId] === id
+        ? selectMainTabForRepo(current, terminal.repoId, 'terminal')
+        : current);
+    }
   };
   const isConflict = repo.conflicts > 0;
 
@@ -232,7 +239,7 @@ export function Workspace({
             key={tab.key}
             disabled={isChecking}
             onClick={() => {
-              if (!isChecking) setMainTab(tab.key);
+              if (!isChecking) selectMainTab(tab.key);
             }}
             style={{
               background: 'none',
@@ -259,7 +266,7 @@ export function Workspace({
             <button
               type="button"
               disabled={isChecking}
-              onClick={() => setMainTab(tab.id)}
+              onClick={() => selectMainTab(tab.id)}
               style={{ background: 'none', border: 'none', color: mainTab === tab.id ? C.textPrimary : C.textWeak, padding: '8px 4px 8px 14px', cursor: isChecking ? 'default' : 'pointer', fontSize: 12, fontWeight: mainTab === tab.id ? 500 : 400, opacity: isChecking ? 0.65 : 1 }}
             >
               终端
