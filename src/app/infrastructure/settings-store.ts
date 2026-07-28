@@ -1,4 +1,4 @@
-import { cloneDefaultCommandCenter, sanitizeCommandCenter } from '../features/commands/command-center.js';
+import { cloneDefaultCommandCatalog, sanitizeCommandCatalog } from '../features/commands/command-catalog.js';
 import type { AppSettings, ScanRootSetting } from '../domain/types.js';
 import type { SettingsStore } from '../application/ports.js';
 
@@ -30,7 +30,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
       port: 7897,
     },
   },
-  commandCenter: cloneDefaultCommandCenter(),
+  commandCenter: cloneDefaultCommandCatalog(),
 };
 
 function cloneDefaults() {
@@ -106,7 +106,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   draft.gitBehavior.proxy.enabled = sanitizeBoolean(proxy.enabled, draft.gitBehavior.proxy.enabled);
   draft.gitBehavior.proxy.host = sanitizeText(proxy.host, draft.gitBehavior.proxy.host);
   draft.gitBehavior.proxy.port = sanitizePort(proxy.port, draft.gitBehavior.proxy.port);
-  draft.commandCenter = sanitizeCommandCenter(source.commandCenter);
+  draft.commandCenter = sanitizeCommandCatalog(source.commandCenter);
   return draft;
 }
 

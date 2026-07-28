@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Plus, Trash2, X } from 'lucide-react';
-import { BUILT_IN_COMMAND_OPTIONS, createCommandId, DEFAULT_BUILT_IN_COMMAND_ACTION, getBuiltInCommandLabel, getProjectCommands, moveCommand } from '../features/commands/command-center';
+import {
+  BUILT_IN_COMMAND_OPTIONS,
+  applyCommandCatalogAction,
+  DEFAULT_BUILT_IN_COMMAND_ACTION,
+  getBuiltInCommandLabel,
+  getCommandCatalogView,
+  type CommandCatalogAction,
+} from '../features/commands/command-catalog';
 import { C } from '../theme';
-import type { AppSettings, BuiltInCommandAction, CommandCenterSettings, CommandCombo, CustomCommandButton, Repo } from '../domain/types';
+import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButton, Repo } from '../domain/types';
 import { Input, Select } from './settings-modal-shared';
 
 type CommandTab = 'global' | 'project';
@@ -30,38 +37,21 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
 
   if (!open) return null;
 
-  const updateCommandCenter = (updater: (current: CommandCenterSettings) => CommandCenterSettings) => {
-    setDraft(current => ({ ...current, commandCenter: updater(current.commandCenter) }));
+  const catalog = getCommandCatalogView(draft.commandCenter, repo?.id);
+  const updateCatalog = (action: CommandCatalogAction) => {
+    setDraft(current => ({
+      ...current,
+      commandCenter: applyCommandCatalogAction(current.commandCenter, action),
+    }));
   };
-  const updateProjectCommands = (updater: (commands: CustomCommandButton[]) => CustomCommandButton[]) => {
-    if (!repo) return;
-    updateCommandCenter(current => {
-      const commands = updater(getProjectCommands(current, repo.id));
-      const projectCommands = { ...current.projectCommands };
-      if (commands.length === 0) {
-        delete projectCommands[repo.id];
-      } else {
-        projectCommands[repo.id] = commands;
-      }
-      return { ...current, projectCommands };
-    });
-  };
-  const projectCommands = repo ? getProjectCommands(draft.commandCenter, repo.id) : [];
+  const projectCommands = catalog.projectCommands;
 
-  const addCombo = () => {
-    updateCommandCenter(current => ({
-      ...current,
-      combos: [...current.combos, { id: createCommandId('combo'), label: '新组合', actions: ['stage-all'] }],
-    }));
-  };
-  const addGlobalCommand = () => {
-    updateCommandCenter(current => ({
-      ...current,
-      customCommands: [...current.customCommands, { id: createCommandId('cmd'), label: '', command: '' }],
-    }));
-  };
+  const addCombo = () => updateCatalog({ type: 'add-combo' });
+  const addGlobalCommand = () => updateCatalog({ type: 'add-custom', scope: 'global' });
   const addProjectCommand = () => {
-    updateProjectCommands(commands => [...commands, { id: createCommandId('cmd'), label: '', command: '' }]);
+    if (repo) {
+      updateCatalog({ type: 'add-custom', scope: 'project', repoId: repo.id });
+    }
   };
 
   return (
@@ -104,59 +94,35 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
         <div style={{ overflowY: 'auto', padding: 20 }}>
           {tab === 'global' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              <CommandSection title={`组合按钮（${draft.commandCenter.combos.length}）`} onAdd={addCombo}>
+              <CommandSection title={`组合按钮（${catalog.combos.length}）`} onAdd={addCombo}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {draft.commandCenter.combos.map((combo, index) => (
+                  {catalog.combos.map((combo, index) => (
                     <ComboEditor
                       key={combo.id}
                       combo={combo}
                       canMoveUp={index > 0}
                       canMoveDown={index < draft.commandCenter.combos.length - 1}
-                      onMoveUp={() => updateCommandCenter(current => ({
-                        ...current,
-                        combos: moveCommand(current.combos, index, index - 1),
-                      }))}
-                      onMoveDown={() => updateCommandCenter(current => ({
-                        ...current,
-                        combos: moveCommand(current.combos, index, index + 1),
-                      }))}
-                      onChange={nextCombo => updateCommandCenter(current => ({
-                        ...current,
-                        combos: current.combos.map(item => item.id === combo.id ? nextCombo : item),
-                      }))}
-                      onRemove={() => updateCommandCenter(current => ({
-                        ...current,
-                        combos: current.combos.filter(item => item.id !== combo.id),
-                      }))}
+                      onMoveUp={() => updateCatalog({ type: 'move-combo', from: index, to: index - 1 })}
+                      onMoveDown={() => updateCatalog({ type: 'move-combo', from: index, to: index + 1 })}
+                      onChange={nextCombo => updateCatalog({ type: 'replace-combo', index, combo: nextCombo })}
+                      onRemove={() => updateCatalog({ type: 'remove-combo', index })}
                     />
                   ))}
                 </div>
               </CommandSection>
 
-              <CommandSection title={`全局命令（${draft.commandCenter.customCommands.length}）`} onAdd={addGlobalCommand}>
+              <CommandSection title={`全局命令（${catalog.globalCommands.length}）`} onAdd={addGlobalCommand}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {draft.commandCenter.customCommands.map((command, index) => (
+                  {catalog.globalCommands.map((command, index) => (
                     <CustomCommandEditor
                       key={command.id}
                       command={command}
                       canMoveUp={index > 0}
                       canMoveDown={index < draft.commandCenter.customCommands.length - 1}
-                      onMoveUp={() => updateCommandCenter(current => ({
-                        ...current,
-                        customCommands: moveCommand(current.customCommands, index, index - 1),
-                      }))}
-                      onMoveDown={() => updateCommandCenter(current => ({
-                        ...current,
-                        customCommands: moveCommand(current.customCommands, index, index + 1),
-                      }))}
-                      onChange={nextCommand => updateCommandCenter(current => ({
-                        ...current,
-                        customCommands: current.customCommands.map(item => item.id === command.id ? nextCommand : item),
-                      }))}
-                      onRemove={() => updateCommandCenter(current => ({
-                        ...current,
-                        customCommands: current.customCommands.filter(item => item.id !== command.id),
-                      }))}
+                      onMoveUp={() => updateCatalog({ type: 'move-custom', scope: 'global', from: index, to: index - 1 })}
+                      onMoveDown={() => updateCatalog({ type: 'move-custom', scope: 'global', from: index, to: index + 1 })}
+                      onChange={nextCommand => updateCatalog({ type: 'replace-custom', scope: 'global', index, command: nextCommand })}
+                      onRemove={() => updateCatalog({ type: 'remove-custom', scope: 'global', index })}
                     />
                   ))}
                 </div>
@@ -173,14 +139,10 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
                     command={command}
                     canMoveUp={index > 0}
                     canMoveDown={index < projectCommands.length - 1}
-                    onMoveUp={() => updateProjectCommands(commands => moveCommand(commands, index, index - 1))}
-                    onMoveDown={() => updateProjectCommands(commands => moveCommand(commands, index, index + 1))}
-                    onChange={nextCommand => updateProjectCommands(commands => (
-                      commands.map(item => item.id === command.id ? nextCommand : item)
-                    ))}
-                    onRemove={() => updateProjectCommands(commands => (
-                      commands.filter(item => item.id !== command.id)
-                    ))}
+                    onMoveUp={() => updateCatalog({ type: 'move-custom', scope: 'project', repoId: repo.id, from: index, to: index - 1 })}
+                    onMoveDown={() => updateCatalog({ type: 'move-custom', scope: 'project', repoId: repo.id, from: index, to: index + 1 })}
+                    onChange={nextCommand => updateCatalog({ type: 'replace-custom', scope: 'project', repoId: repo.id, index, command: nextCommand })}
+                    onRemove={() => updateCatalog({ type: 'remove-custom', scope: 'project', repoId: repo.id, index })}
                   />
                 ))}
               </div>

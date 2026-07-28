@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Download, GitCommit, Layers3, MinusSquare, PlusSquare, RefreshCw, RotateCcw, Sparkles, TerminalSquare, Upload } from 'lucide-react';
-import { formatComboSummary, getBuiltInCommandLabel, getProjectCommands } from './command-center';
+import { formatComboSummary, getBuiltInCommandLabel, getRepoCommands } from './command-catalog';
 import { createCommandConsoleSession } from './repo-command-console';
 import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButton, RepoCommandResult, RepoDetail, RepoMutationAction } from '../../domain/types';
 import type { CommandConsoleState, PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
@@ -260,18 +260,11 @@ export function useRepoCommandPanel({
       key: 'command',
       label: '命令',
       actions: [
-        ...getProjectCommands(settings.commandCenter, repo.id).map(command => ({
-          key: `project:${command.id}`,
-          label: busyAction === `project-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
+        ...getRepoCommands(settings.commandCenter, repo.id).map(({ scope, command }) => ({
+          key: `${scope}:${command.id}`,
+          label: busyAction === `${scope}-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
           icon: <TerminalSquare size={12} />,
-          onClick: () => runCustomCommand('project', command),
-          disabled: busyAction !== null,
-        })),
-        ...settings.commandCenter.customCommands.map(command => ({
-          key: `global:${command.id}`,
-          label: busyAction === `global-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
-          icon: <TerminalSquare size={12} />,
-          onClick: () => runCustomCommand('global', command),
+          onClick: () => runCustomCommand(scope, command),
           disabled: busyAction !== null,
         })),
       ],
