@@ -151,3 +151,40 @@ func TestBuildRepoSnapshotListsEveryChangedFile(t *testing.T) {
 		t.Fatalf("expected file-level counts, got repo=%d unstaged=%d", snapshot.repo.Modified, snapshot.detail.UnstagedCount)
 	}
 }
+
+func TestBuildRepoSnapshotPreservesNonASCIIFilenames(t *testing.T) {
+	repoPath := t.TempDir()
+	initTestRepo(t, repoPath)
+
+	trackedPath := "已跟踪的中文文档.md"
+	untrackedPath := "26包桥接文档和埋点文档.md"
+	commitTestFile(t, repoPath, trackedPath, "before\n", "seed")
+	if err := os.WriteFile(filepath.Join(repoPath, trackedPath), []byte("before\nafter\n"), 0o644); err != nil {
+		t.Fatalf("modify tracked file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, untrackedPath), []byte("new\n"), 0o644); err != nil {
+		t.Fatalf("write untracked file: %v", err)
+	}
+
+	snapshot, err := defaultGitExecutor().buildRepoSnapshot(
+		repoEntry{repoPath: repoPath, category: "测试"},
+		time.Unix(0, 0),
+	)
+	if err != nil {
+		t.Fatalf("build repo snapshot: %v", err)
+	}
+
+	expected := map[string]bool{trackedPath: true, untrackedPath: true}
+	if len(snapshot.detail.Files) != len(expected) {
+		t.Fatalf("expected %d file changes, got %#v", len(expected), snapshot.detail.Files)
+	}
+	for _, change := range snapshot.detail.Files {
+		if !expected[change.Path] {
+			t.Fatalf("expected non-ASCII path, got %#v", change)
+		}
+		delete(expected, change.Path)
+	}
+	if len(expected) != 0 {
+		t.Fatalf("missing changes for %#v", expected)
+	}
+}

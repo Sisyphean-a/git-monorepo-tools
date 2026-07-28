@@ -28,7 +28,7 @@ type parsedStatus struct {
 }
 
 func (executor gitExecutor) readStatus(repoPath string) (parsedStatus, error) {
-	output, err := executor.runGit(repoPath, []string{"status", "--porcelain=v1", "-b", "--untracked-files=all"})
+	output, err := executor.runGitRaw(repoPath, []string{"status", "--porcelain=v1", "-b", "-z", "--untracked-files=all"})
 	return parseStatus(output), err
 }
 
@@ -65,14 +65,21 @@ func (executor gitExecutor) refreshRemoteWithRetry(repoPath, remote string) erro
 }
 
 func parseStatus(output string) parsedStatus {
-	lines := filterNonEmpty(strings.Split(output, "\n"))
-	branchLine := "## HEAD"
-	if len(lines) > 0 {
-		branchLine = strings.TrimSpace(lines[0])
+	records := strings.Split(output, "\x00")
+	if !strings.Contains(output, "\x00") {
+		records = strings.Split(output, "\n")
 	}
+	branchLine := "## HEAD"
 	entries := []string{}
-	if len(lines) > 1 {
-		entries = lines[1:]
+	for _, record := range records {
+		if strings.TrimSpace(record) == "" {
+			continue
+		}
+		if strings.HasPrefix(record, "## ") {
+			branchLine = strings.TrimSpace(record)
+			continue
+		}
+		entries = append(entries, record)
 	}
 	return parsedStatus{
 		branch:    extractBranch(branchLine),
@@ -85,8 +92,8 @@ func parseStatus(output string) parsedStatus {
 }
 
 func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
-	stagedOutput, stagedErr := executor.runGit(repoPath, []string{"diff", "--cached", "--numstat", "--no-renames"})
-	unstagedOutput, unstagedErr := executor.runGit(repoPath, []string{"diff", "--numstat", "--no-renames"})
+	stagedOutput, stagedErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--numstat", "-z", "--no-renames"})
+	unstagedOutput, unstagedErr := executor.runGitRaw(repoPath, []string{"diff", "--numstat", "-z", "--no-renames"})
 	changes := buildTrackedChanges(repoPath, parseNumstat(stagedOutput), true)
 	changes = append(changes, buildTrackedChanges(repoPath, parseNumstat(unstagedOutput), false)...)
 	changes = append(changes, buildUntrackedChanges(repoPath, entries, changes)...)
@@ -96,8 +103,15 @@ func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) 
 
 func parseNumstat(output string) map[string]FileChange {
 	stats := map[string]FileChange{}
-	for _, line := range filterNonEmpty(strings.Split(output, "\n")) {
-		parts := strings.Split(line, "\t")
+	records := strings.Split(output, "\x00")
+	if !strings.Contains(output, "\x00") {
+		records = strings.Split(output, "\n")
+	}
+	for _, record := range records {
+		if record == "" {
+			continue
+		}
+		parts := strings.SplitN(record, "\t", 3)
 		if len(parts) != 3 {
 			continue
 		}
@@ -131,7 +145,7 @@ func buildUntrackedChanges(repoPath string, entries []string, existing []FileCha
 		if !strings.HasPrefix(entry, "?? ") {
 			continue
 		}
-		filePath := normalizePath(strings.TrimSpace(strings.TrimPrefix(entry, "?? ")))
+		filePath := normalizePath(strings.TrimPrefix(entry, "?? "))
 		id := filePath + "::unstaged"
 		if seen[id] {
 			continue

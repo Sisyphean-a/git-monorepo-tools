@@ -23,8 +23,17 @@ func (executor gitExecutor) runGit(repoPath string, args []string) (string, erro
 	return executor.runGitCommand("git", repoPath, args)
 }
 
+func (executor gitExecutor) runGitRaw(repoPath string, args []string) (string, error) {
+	return executor.runGitCommandRaw("git", repoPath, args)
+}
+
 func (executor gitExecutor) runGitCommand(executable, repoPath string, args []string) (string, error) {
-	return executor.runCommand(gitCommandSpec{executable: executable, repoPath: repoPath, args: args})
+	output, err := executor.runGitCommandRaw(executable, repoPath, args)
+	return strings.TrimSpace(output), err
+}
+
+func (executor gitExecutor) runGitCommandRaw(executable, repoPath string, args []string) (string, error) {
+	return executor.runCommandRaw(gitCommandSpec{executable: executable, repoPath: repoPath, args: args})
 }
 
 func (executor gitExecutor) runGitAllowingExitCodeOne(repoPath string, args []string) (string, error) {
@@ -34,6 +43,11 @@ func (executor gitExecutor) runGitAllowingExitCodeOne(repoPath string, args []st
 }
 
 func (executor gitExecutor) runCommand(spec gitCommandSpec) (string, error) {
+	output, err := executor.runCommandRaw(spec)
+	return strings.TrimSpace(output), err
+}
+
+func (executor gitExecutor) runCommandRaw(spec gitCommandSpec) (string, error) {
 	cmd := exec.Command(spec.executable, append([]string{"-C", spec.repoPath}, spec.args...)...)
 	applyBackgroundProcessAttrs(cmd)
 	cmd.Env = buildGitProcessEnv(executor.proxy)
@@ -49,7 +63,7 @@ func (executor gitExecutor) runCommand(spec gitCommandSpec) (string, error) {
 	} else if err != nil && !spec.allowedExitCodes[cmd.ProcessState.ExitCode()] {
 		return "", buildGitError(spec.args, stdout.String(), stderr.String())
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return stdout.String(), nil
 }
 
 func firstGitError(errors ...error) error {
