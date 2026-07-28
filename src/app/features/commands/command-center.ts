@@ -59,6 +59,16 @@ export function getProjectCommands(commandCenter: CommandCenterSettings, repoId:
   return commandCenter.projectCommands[repoId] ?? [];
 }
 
+export function moveCommand<T>(commands: T[], from: number, to: number) {
+  if (from < 0 || from >= commands.length || to < 0 || to >= commands.length) {
+    throw new RangeError('命令排序位置无效');
+  }
+  const ordered = [...commands];
+  const [command] = ordered.splice(from, 1);
+  ordered.splice(to, 0, command!);
+  return ordered;
+}
+
 export function sanitizeCommandCenter(value: unknown) {
   const fallback = cloneDefaultCommandCenter();
   if (!value || typeof value !== 'object') return fallback;

@@ -260,18 +260,18 @@ export function useRepoCommandPanel({
       key: 'command',
       label: '命令',
       actions: [
-        ...settings.commandCenter.customCommands.map(command => ({
-          key: `global:${command.id}`,
-          label: busyAction === `global-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
-          icon: <TerminalSquare size={12} />,
-          onClick: () => runCustomCommand('global', command),
-          disabled: busyAction !== null,
-        })),
         ...getProjectCommands(settings.commandCenter, repo.id).map(command => ({
           key: `project:${command.id}`,
           label: busyAction === `project-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
           icon: <TerminalSquare size={12} />,
           onClick: () => runCustomCommand('project', command),
+          disabled: busyAction !== null,
+        })),
+        ...settings.commandCenter.customCommands.map(command => ({
+          key: `global:${command.id}`,
+          label: busyAction === `global-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
+          icon: <TerminalSquare size={12} />,
+          onClick: () => runCustomCommand('global', command),
           disabled: busyAction !== null,
         })),
       ],

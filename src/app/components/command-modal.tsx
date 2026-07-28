@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react';
-import { BUILT_IN_COMMAND_OPTIONS, createCommandId, DEFAULT_BUILT_IN_COMMAND_ACTION, getBuiltInCommandLabel, getProjectCommands } from '../features/commands/command-center';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Plus, Trash2, X } from 'lucide-react';
+import { BUILT_IN_COMMAND_OPTIONS, createCommandId, DEFAULT_BUILT_IN_COMMAND_ACTION, getBuiltInCommandLabel, getProjectCommands, moveCommand } from '../features/commands/command-center';
 import { C } from '../theme';
 import type { AppSettings, BuiltInCommandAction, CommandCenterSettings, CommandCombo, CustomCommandButton, Repo } from '../domain/types';
 import { Input, Select } from './settings-modal-shared';
@@ -16,14 +16,14 @@ interface CommandModalProps {
 }
 
 export function CommandModal({ repo, settings, open, onClose, onSave }: CommandModalProps) {
-  const [tab, setTab] = useState<CommandTab>('global');
+  const [tab, setTab] = useState<CommandTab>(repo ? 'project' : 'global');
   const [draft, setDraft] = useState(settings);
   const openedRef = useRef(false);
 
   useEffect(() => {
     if (open && !openedRef.current) {
       setDraft(settings);
-      setTab('global');
+      setTab(repo ? 'project' : 'global');
     }
     openedRef.current = open;
   }, [open, settings]);
@@ -97,8 +97,8 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
         </div>
 
         <div style={{ display: 'flex', gap: 8, padding: '12px 20px 0', flexShrink: 0 }}>
-          <TabButton active={tab === 'global'} onClick={() => setTab('global')}>全局命令</TabButton>
           <TabButton active={tab === 'project'} onClick={() => setTab('project')}>项目命令</TabButton>
+          <TabButton active={tab === 'global'} onClick={() => setTab('global')}>全局命令</TabButton>
         </div>
 
         <div style={{ overflowY: 'auto', padding: 20 }}>
@@ -106,10 +106,20 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               <CommandSection title={`组合按钮（${draft.commandCenter.combos.length}）`} onAdd={addCombo}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {draft.commandCenter.combos.map(combo => (
+                  {draft.commandCenter.combos.map((combo, index) => (
                     <ComboEditor
                       key={combo.id}
                       combo={combo}
+                      canMoveUp={index > 0}
+                      canMoveDown={index < draft.commandCenter.combos.length - 1}
+                      onMoveUp={() => updateCommandCenter(current => ({
+                        ...current,
+                        combos: moveCommand(current.combos, index, index - 1),
+                      }))}
+                      onMoveDown={() => updateCommandCenter(current => ({
+                        ...current,
+                        combos: moveCommand(current.combos, index, index + 1),
+                      }))}
                       onChange={nextCombo => updateCommandCenter(current => ({
                         ...current,
                         combos: current.combos.map(item => item.id === combo.id ? nextCombo : item),
@@ -125,10 +135,20 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
 
               <CommandSection title={`全局命令（${draft.commandCenter.customCommands.length}）`} onAdd={addGlobalCommand}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {draft.commandCenter.customCommands.map(command => (
+                  {draft.commandCenter.customCommands.map((command, index) => (
                     <CustomCommandEditor
                       key={command.id}
                       command={command}
+                      canMoveUp={index > 0}
+                      canMoveDown={index < draft.commandCenter.customCommands.length - 1}
+                      onMoveUp={() => updateCommandCenter(current => ({
+                        ...current,
+                        customCommands: moveCommand(current.customCommands, index, index - 1),
+                      }))}
+                      onMoveDown={() => updateCommandCenter(current => ({
+                        ...current,
+                        customCommands: moveCommand(current.customCommands, index, index + 1),
+                      }))}
                       onChange={nextCommand => updateCommandCenter(current => ({
                         ...current,
                         customCommands: current.customCommands.map(item => item.id === command.id ? nextCommand : item),
@@ -147,10 +167,14 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
           {tab === 'project' && (repo ? (
             <CommandSection title={`${repo.name} 的项目命令（${projectCommands.length}）`} onAdd={addProjectCommand}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {projectCommands.map(command => (
+                {projectCommands.map((command, index) => (
                   <CustomCommandEditor
                     key={command.id}
                     command={command}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < projectCommands.length - 1}
+                    onMoveUp={() => updateProjectCommands(commands => moveCommand(commands, index, index - 1))}
+                    onMoveDown={() => updateProjectCommands(commands => moveCommand(commands, index, index + 1))}
                     onChange={nextCommand => updateProjectCommands(commands => (
                       commands.map(item => item.id === command.id ? nextCommand : item)
                     ))}
@@ -208,7 +232,23 @@ function CommandSection({ title, children, onAdd }: { title: string; children: R
   );
 }
 
-function ComboEditor({ combo, onChange, onRemove }: { combo: CommandCombo; onChange: (combo: CommandCombo) => void; onRemove: () => void }) {
+function ComboEditor({
+  combo,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+  onChange,
+  onRemove,
+}: {
+  combo: CommandCombo;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onChange: (combo: CommandCombo) => void;
+  onRemove: () => void;
+}) {
   const [nextAction, setNextAction] = useState<BuiltInCommandAction>(DEFAULT_BUILT_IN_COMMAND_ACTION);
   const moveAction = (from: number, to: number) => {
     if (to < 0 || to >= combo.actions.length) return;
@@ -223,6 +263,8 @@ function ComboEditor({ combo, onChange, onRemove }: { combo: CommandCombo; onCha
     <div style={editorStyle()}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
         <div style={{ flex: 1 }}><Input value={combo.label} onChange={label => onChange({ ...combo, label })} placeholder="名称" /></div>
+        <button onClick={onMoveUp} disabled={!canMoveUp} style={iconButtonStyle(!canMoveUp)}><ChevronUp size={12} /></button>
+        <button onClick={onMoveDown} disabled={!canMoveDown} style={iconButtonStyle(!canMoveDown)}><ChevronDown size={12} /></button>
         <button onClick={onRemove} style={iconButtonStyle()}><Trash2 size={12} /></button>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -243,11 +285,29 @@ function ComboEditor({ combo, onChange, onRemove }: { combo: CommandCombo; onCha
   );
 }
 
-function CustomCommandEditor({ command, onChange, onRemove }: { command: CustomCommandButton; onChange: (command: CustomCommandButton) => void; onRemove: () => void }) {
+function CustomCommandEditor({
+  command,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+  onChange,
+  onRemove,
+}: {
+  command: CustomCommandButton;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onChange: (command: CustomCommandButton) => void;
+  onRemove: () => void;
+}) {
   return (
     <div style={editorStyle()}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
         <div style={{ flex: 1 }}><Input value={command.label} onChange={label => onChange({ ...command, label })} placeholder="名称" /></div>
+        <button onClick={onMoveUp} disabled={!canMoveUp} style={iconButtonStyle(!canMoveUp)}><ChevronUp size={12} /></button>
+        <button onClick={onMoveDown} disabled={!canMoveDown} style={iconButtonStyle(!canMoveDown)}><ChevronDown size={12} /></button>
         <button onClick={onRemove} style={iconButtonStyle()}><Trash2 size={12} /></button>
       </div>
       <textarea

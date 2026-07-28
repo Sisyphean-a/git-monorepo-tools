@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getProjectCommands, sanitizeCommandCenter } from './command-center.js';
+import { getProjectCommands, moveCommand, sanitizeCommandCenter } from './command-center.js';
 
 const projectCommands = {
   combos: [],
@@ -19,6 +19,10 @@ test('getProjectCommands returns only commands configured for the current reposi
     { id: 'beta-build', label: '构建 Beta', command: 'npm run build:beta' },
   ]);
   assert.deepEqual(getProjectCommands(projectCommands, 'repo-other'), []);
+});
+
+test('moveCommand returns commands in the requested order', () => {
+  assert.deepEqual(moveCommand(['first', 'second', 'third'], 2, 0), ['third', 'first', 'second']);
 });
 
 test('sanitizeCommandCenter preserves multiline commands', () => {
