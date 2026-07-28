@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useRepoTerminalStatuses } from '../features/terminal/repo-terminal-status';
+import { useRepoTerminalStatuses } from '../features/terminal/terminal-workspace';
 import { C } from '../theme';
 import type { AppSettings, Repo } from '../domain/types';
 import { SidebarFooter } from './sidebar-footer';

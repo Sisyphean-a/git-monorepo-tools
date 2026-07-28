@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 import { Plus, X } from 'lucide-react';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
@@ -7,15 +7,11 @@ import { ConflictBanner, RepoHeader, summarizeFiles } from './workspace-parts';
 import { RepoHistoryTab } from './repo-history-tab';
 import { useAppBackend } from '../application/backend-context';
 import { useRepoCommandPanel } from '../features/commands/use-repo-command-panel';
-import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../features/terminal/repo-terminal-status';
 import {
-  getIndependentTerminalsForRepo,
-  resolveMainTabForRepo,
-  selectMainTabForRepo,
-  type IndependentTerminalTab,
+  useTerminalWorkspace,
+  useTerminalWorkspaceTabs,
   type WorkspaceMainTab,
-  type WorkspaceMainTabsByRepo,
-} from '../features/terminal/independent-terminal-tabs';
+} from '../features/terminal/terminal-workspace';
 import { createFileDiffLoader } from '../features/diff/file-diff-loader';
 import type {
   AppSettings,
@@ -26,8 +22,6 @@ import type {
 } from '../domain/types';
 
 type MainTab = WorkspaceMainTab;
-type IndependentTerminal = IndependentTerminalTab;
-
 const RepoTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).RepoTerminalTab }));
 const IndependentTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).IndependentTerminalTab }));
 
@@ -116,26 +110,9 @@ export function Workspace({
   onError,
 }: WorkspaceProps) {
   const backend = useAppBackend();
-  const repoIds = Object.keys(repoDetails);
-  const repo = repoDetails[selectedRepoId] ?? (repoIds[0] ? repoDetails[repoIds[0]] : undefined);
-  const [mainTabsByRepo, setMainTabsByRepo] = useState<WorkspaceMainTabsByRepo>({});
-  const [terminalEnabled, setTerminalEnabled] = useState(false);
-  const [independentTerminals, setIndependentTerminals] = useState<IndependentTerminal[]>([]);
-  const terminalSequence = useRef(1);
-  const mainTab = resolveMainTabForRepo(mainTabsByRepo, repo?.id ?? '', independentTerminals);
-
-  useEffect(() => {
-    if (mainTab === 'terminal' || independentTerminals.some(tab => tab.id === mainTab)) {
-      setTerminalEnabled(true);
-    }
-  }, [mainTab, independentTerminals]);
-
-  useEffect(() => {
-    setIndependentTerminals(current => {
-      const next = current.filter(tab => Boolean(repoDetails[tab.repoId]));
-      return next.length === current.length ? current : next;
-    });
-  }, [repoDetails]);
+  const terminalWorkspace = useTerminalWorkspace();
+  const terminalTabs = useTerminalWorkspaceTabs(repoDetails, selectedRepoId);
+  const repo = repoDetails[terminalTabs.activeRepoId];
 
   if (!repo) {
     return (
@@ -145,12 +122,17 @@ export function Workspace({
     );
   }
 
-  const repoIndependentTerminals = getIndependentTerminalsForRepo(independentTerminals, repo.id);
+  const {
+    mainTab,
+    terminalEnabled,
+    independentTerminals,
+    repoIndependentTerminals,
+    selectMainTab,
+    openIndependentTerminal,
+    closeIndependentTerminal,
+  } = terminalTabs;
   const fileSummary = summarizeFiles(repo.files);
   const isChecking = repo.status === 'checking';
-  const selectMainTab = (tab: MainTab) => {
-    setMainTabsByRepo(current => selectMainTabForRepo(current, repo.id, tab));
-  };
 
   const {
     commitMessage,
@@ -187,31 +169,10 @@ export function Workspace({
     [backend, repo, settings],
   );
   const handleSendToTerminal = async (command: string) => {
-    setRepoTerminalStarting(repo.id);
-    try {
-      const session = await backend.ensureTerminalSession({ repoId: repo.id, repoPath: repo.path });
-      registerTerminalSession(session);
-      await backend.writeTerminalInput(session.sessionId, `${command}\r`);
-    } catch (error) {
-      setRepoTerminalFailed(repo.id);
-      throw error;
-    }
-  };
-  const openIndependentTerminal = () => {
-    if (isChecking) return;
-    const number = ++terminalSequence.current;
-    const id = `terminal-${number}` as IndependentTerminal['id'];
-    setIndependentTerminals(current => [...current, { id, repoId: repo.id }]);
-    selectMainTab(id);
-  };
-  const closeIndependentTerminal = (id: IndependentTerminal['id']) => {
-    const terminal = independentTerminals.find(tab => tab.id === id);
-    setIndependentTerminals(current => current.filter(tab => tab.id !== id));
-    if (terminal) {
-      setMainTabsByRepo(current => current[terminal.repoId] === id
-        ? selectMainTabForRepo(current, terminal.repoId, 'terminal')
-        : current);
-    }
+    await terminalWorkspace.sendToDefaultSession(
+      { repoId: repo.id, repoPath: repo.path },
+      `${command}\r`,
+    );
   };
   const isConflict = repo.conflicts > 0;
 

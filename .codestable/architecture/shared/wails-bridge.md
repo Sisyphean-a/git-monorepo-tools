@@ -17,4 +17,4 @@
 
 ## 代码锚点
 
-`app.go`、`src/app/infrastructure/wails-client.ts`、`src/app/application/ports.ts`、`src/app/infrastructure/wails-app-backend.ts`、`src/app/features/terminal/terminal-event-bus.ts`。
+`app.go`、`src/app/infrastructure/wails-client.ts`、`src/app/application/ports.ts`、`src/app/infrastructure/wails-app-backend.ts`、`src/app/features/terminal/terminal-workspace.tsx`。

@@ -1,5 +1,5 @@
 import { C } from '../theme';
-import type { RepoTerminalState } from '../features/terminal/repo-terminal-status';
+import type { RepoTerminalState } from '../features/terminal/terminal-workspace';
 
 interface RepoTerminalIndicatorProps {
   state?: RepoTerminalState;

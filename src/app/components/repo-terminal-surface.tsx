@@ -3,9 +3,7 @@ import { RotateCcw } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { useAppBackend } from '../application/backend-context';
-import { registerTerminalSession, setRepoTerminalFailed, setRepoTerminalStarting } from '../features/terminal/repo-terminal-status';
-import { TerminalEventBus } from '../features/terminal/terminal-event-bus';
+import { useTerminalWorkspace } from '../features/terminal/terminal-workspace';
 import { TerminalOutputWriter } from '../features/terminal/terminal-output-writer';
 import { C } from '../theme';
 import type { RepoDetail, TerminalSessionInfo } from '../domain/types';
@@ -23,23 +21,20 @@ interface RepoTerminalSurfaceProps {
   repo: RepoDetail;
   active: boolean;
   createIndependentSession?: boolean;
-  closeSessionOnUnmount?: boolean;
 }
 
 export function RepoTerminalSurface({
   repo,
   active,
   createIndependentSession = false,
-  closeSessionOnUnmount = false,
 }: RepoTerminalSurfaceProps) {
-  const backend = useAppBackend();
-  const [terminalEventBus] = useState(() => new TerminalEventBus(backend.onEvent));
+  const terminalWorkspace = useTerminalWorkspace();
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const sessionRef = useRef<TerminalSessionInfo | null>(null);
-  const disposedRef = useRef(false);
+  const [surfaceSession] = useState(() => terminalWorkspace.createSurfaceSession(createIndependentSession));
   const [sessionId, setSessionId] = useState<string | null>(null);
   const sessionBindingRef = useRef<{ bindSession: (sessionId: string) => void; dispose: () => void } | null>(null);
   const outputWriterRef = useRef<TerminalOutputWriter | null>(null);
@@ -103,7 +98,7 @@ export function RepoTerminalSurface({
       resetViewportScroll();
       const nextSize = fitAddon.proposeDimensions();
       if (session && nextSize) {
-        void backend.resizeTerminal(session.sessionId, nextSize.cols, nextSize.rows)
+        void terminalWorkspace.resize(session.sessionId, nextSize.cols, nextSize.rows)
           .catch(resizeError => setError(resizeError instanceof Error ? resizeError.message : '终端尺寸同步失败'));
       }
       terminalRef.current?.focus();
@@ -117,7 +112,7 @@ export function RepoTerminalSurface({
     }
     inputQueueRef.current = queueTerminalInput(
       inputQueueRef.current,
-      input => backend.writeTerminalInput(session.sessionId, input),
+      input => terminalWorkspace.writeInput(session.sessionId, input),
       data,
     )
       .catch(inputError => setError(inputError instanceof Error ? inputError.message : '终端输入失败'));
@@ -133,7 +128,6 @@ export function RepoTerminalSurface({
       terminal.reset();
     }
 
-    setRepoTerminalStarting(repo.id);
     setStatus('connecting');
     setError(null);
     setExitCode(null);
@@ -141,26 +135,15 @@ export function RepoTerminalSurface({
     if (!nextSize) return;
 
     try {
-      const session = await (createIndependentSession
-        ? backend.createTerminalSession({
-          repoId: repo.id,
-          repoPath: repo.path,
-          cols: nextSize.cols,
-          rows: nextSize.rows,
-        })
-        : backend.ensureTerminalSession({
-          repoId: repo.id,
-          repoPath: repo.path,
-          cols: nextSize.cols,
-          rows: nextSize.rows,
-        }));
-      if (disposedRef.current) {
-        if (createIndependentSession) {
-          void backend.closeTerminalSession(session.sessionId).catch(() => undefined);
-        }
+      const session = await surfaceSession.start({
+        repoId: repo.id,
+        repoPath: repo.path,
+        cols: nextSize.cols,
+        rows: nextSize.rows,
+      });
+      if (!session) {
         return;
       }
-      registerTerminalSession(session);
       sessionRef.current = session;
       setSessionId(session.sessionId);
       sessionBindingRef.current?.bindSession(session.sessionId);
@@ -168,7 +151,6 @@ export function RepoTerminalSurface({
       setStatus('running');
       scheduleResize();
     } catch (sessionError) {
-      setRepoTerminalFailed(repo.id);
       sessionRef.current = null;
       setStatus('failed');
       setError(sessionError instanceof Error ? sessionError.message : '终端启动失败');
@@ -185,15 +167,16 @@ export function RepoTerminalSurface({
 
     outputWriterRef.current?.reset();
     terminal.reset();
-    setRepoTerminalStarting(repo.id);
     setStatus('connecting');
     setError(null);
     setExitCode(null);
     sessionBindingRef.current?.bindSession('');
 
     try {
-      const replacement = await backend.restartTerminalSession(session.sessionId, nextSize.cols, nextSize.rows);
-      registerTerminalSession(replacement);
+      const replacement = await surfaceSession.restart(repo.id, nextSize.cols, nextSize.rows);
+      if (!replacement) {
+        return;
+      }
       sessionRef.current = replacement;
       setSessionId(replacement.sessionId);
       sessionBindingRef.current?.bindSession(replacement.sessionId);
@@ -201,7 +184,6 @@ export function RepoTerminalSurface({
       setStatus('running');
       scheduleResize();
     } catch (sessionError) {
-      setRepoTerminalFailed(repo.id);
       sessionBindingRef.current?.bindSession(session.sessionId);
       setStatus('failed');
       setError(sessionError instanceof Error ? sessionError.message : '终端重启失败');
@@ -209,7 +191,6 @@ export function RepoTerminalSurface({
   };
 
   useEffect(() => {
-    disposedRef.current = false;
     if (!viewportRef.current || terminalRef.current) return;
 
     const shortcutPlatform = window.navigator.platform ?? '';
@@ -234,8 +215,8 @@ export function RepoTerminalSurface({
       const paste = inputQueueRef.current.then(async () => {
         const pasted = await pasteTerminalClipboard({
           source,
-          getClipboardImagePath: backend.readClipboardImagePath,
-          getClipboardText: backend.readClipboardText,
+          getClipboardImagePath: terminalWorkspace.readClipboardImagePath,
+          getClipboardText: terminalWorkspace.readClipboardText,
           transformPastedText: text => {
             let pasteData = '';
             terminalPasteDataRef.current = data => {
@@ -248,7 +229,7 @@ export function RepoTerminalSurface({
             }
             return pasteData;
           },
-          writeInput: data => backend.writeTerminalInput(session.sessionId, data),
+          writeInput: data => terminalWorkspace.writeInput(session.sessionId, data),
         });
         if (pasted) {
           terminal.focus();
@@ -358,11 +339,7 @@ export function RepoTerminalSurface({
     });
 
     return () => {
-      disposedRef.current = true;
-      const session = sessionRef.current;
-      if (closeSessionOnUnmount && session) {
-        void backend.closeTerminalSession(session.sessionId).catch(() => undefined);
-      }
+      void surfaceSession.release().catch(() => undefined);
       if (toastTimerRef.current !== null) {
         window.clearTimeout(toastTimerRef.current);
         toastTimerRef.current = null;
@@ -388,18 +365,18 @@ export function RepoTerminalSurface({
       return;
     }
 
-    sessionBindingRef.current = terminalEventBus.createSubscription({
-      onOutput: chunk => {
+    sessionBindingRef.current = terminalWorkspace.subscribeSession(
+      chunk => {
         outputWriterRef.current?.enqueue(chunk);
       },
-      onExit: exitCode => {
+      exitCode => {
         sessionRef.current = null;
         setSessionId(null);
         setStatus('exited');
         setExitCode(exitCode);
         outputWriterRef.current?.enqueue(`\r\n\x1b[90m[process exited ${exitCode}]\x1b[0m\r\n`);
       },
-    });
+    );
     sessionBindingRef.current.bindSession(sessionId);
 
     return () => {

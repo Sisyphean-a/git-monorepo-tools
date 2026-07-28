@@ -15,7 +15,7 @@ interface IndependentTerminalTabProps {
 }
 
 export function IndependentTerminalTab({ repo, visible }: IndependentTerminalTabProps) {
-  return <RepoTerminalSurface repo={repo} active={visible} createIndependentSession closeSessionOnUnmount />;
+  return <RepoTerminalSurface repo={repo} active={visible} createIndependentSession />;
 }
 
 export function RepoTerminalTab({ repoDetails, activeRepoId, visible }: RepoTerminalTabProps) {

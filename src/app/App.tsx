@@ -8,6 +8,7 @@ import { SettingsModal } from './components/settings-modal';
 import { Sidebar } from './components/sidebar';
 import { Workspace } from './components/workspace';
 import { BackendProvider } from './application/backend-context';
+import { TerminalWorkspaceProvider } from './features/terminal/terminal-workspace';
 import { useBatchController } from './application/use-batch-controller';
 import { useWorkspaceController } from './application/use-workspace-controller';
 import type { SettingsTab } from './domain/types';
@@ -39,10 +40,12 @@ export default function App() {
 
   return (
     <BackendProvider backend={wailsAppBackend}>
-      <AppFrame>
-        <WorkspaceLayout workspace={workspace} batch={batch} dialogs={dialogs} />
-        <AppDialogs workspace={workspace} batch={batch} dialogs={dialogs} />
-      </AppFrame>
+      <TerminalWorkspaceProvider runtime={wailsAppBackend}>
+        <AppFrame>
+          <WorkspaceLayout workspace={workspace} batch={batch} dialogs={dialogs} />
+          <AppDialogs workspace={workspace} batch={batch} dialogs={dialogs} />
+        </AppFrame>
+      </TerminalWorkspaceProvider>
     </BackendProvider>
   );
 }

@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import type { RepoTerminalState } from '../features/terminal/repo-terminal-status';
+import type { RepoTerminalState } from '../features/terminal/terminal-workspace';
 import { C } from '../theme';
 import { favoriteRepos, nonFavoriteRepos } from '../domain/favorite-repos';
 import type { Repo } from '../domain/types';

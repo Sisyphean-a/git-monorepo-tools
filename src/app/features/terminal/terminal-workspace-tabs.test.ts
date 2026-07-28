@@ -6,7 +6,7 @@ import {
   selectMainTabForRepo,
   type IndependentTerminalTab,
   type WorkspaceMainTabsByRepo,
-} from './independent-terminal-tabs.js';
+} from './terminal-workspace.js';
 
 const terminals: IndependentTerminalTab[] = [
   { id: 'terminal-1', repoId: 'repo-a' },
