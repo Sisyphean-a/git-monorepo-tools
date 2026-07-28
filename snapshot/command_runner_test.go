@@ -35,6 +35,24 @@ func TestRunRepoCommandReturnsCombinedOutput(t *testing.T) {
 	}
 }
 
+func TestRunRepoCommandRunsMultilineScript(t *testing.T) {
+	service := NewService(t.TempDir())
+
+	result, err := service.RunRepoCommand(RepoCommandRequest{
+		RepoPath: t.TempDir(),
+		Command:  multilineShellCommand(),
+	})
+	if err != nil {
+		t.Fatalf("expected multiline command to run, got %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", result.ExitCode)
+	}
+	if !strings.Contains(result.Output, "first") || !strings.Contains(result.Output, "second") {
+		t.Fatalf("expected output from both lines, got %q", result.Output)
+	}
+}
+
 func TestRunRepoCommandCapturesExitCode(t *testing.T) {
 	repoPath := t.TempDir()
 	service := NewService(repoPath)
@@ -193,6 +211,13 @@ func failingShellCommand() string {
 		return "Write-Output 'boom'; exit 7"
 	}
 	return "printf 'boom\\n'; exit 7"
+}
+
+func multilineShellCommand() string {
+	if runtime.GOOS == "windows" {
+		return "Write-Output 'first'\nWrite-Output 'second'"
+	}
+	return "printf 'first\\n'\nprintf 'second\\n'"
 }
 
 func ansiShellCommand() string {

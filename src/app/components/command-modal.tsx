@@ -250,7 +250,33 @@ function CustomCommandEditor({ command, onChange, onRemove }: { command: CustomC
         <div style={{ flex: 1 }}><Input value={command.label} onChange={label => onChange({ ...command, label })} placeholder="名称" /></div>
         <button onClick={onRemove} style={iconButtonStyle()}><Trash2 size={12} /></button>
       </div>
-      <Input value={command.command} onChange={value => onChange({ ...command, command: value })} placeholder="wails build" monospace />
+      <textarea
+        value={command.command}
+        onChange={event => onChange({ ...command, command: event.target.value })}
+        placeholder="wails build"
+        rows={4}
+        style={{
+          width: '100%',
+          minHeight: 88,
+          resize: 'vertical',
+          background: C.panel1,
+          border: `1px solid ${C.border}`,
+          borderRadius: 6,
+          padding: '8px 10px',
+          color: command.command ? C.textPrimary : C.textWeak,
+          fontSize: 12,
+          lineHeight: 1.5,
+          outline: 'none',
+          boxSizing: 'border-box',
+          fontFamily: 'JetBrains Mono, monospace',
+        }}
+        onFocus={event => {
+          event.target.style.borderColor = C.btnPrimary;
+        }}
+        onBlur={event => {
+          event.target.style.borderColor = C.border;
+        }}
+      />
     </div>
   );
 }
