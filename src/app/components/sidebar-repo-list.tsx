@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import type { RepoTerminalState } from '../features/terminal/repo-terminal-status';
 import { C } from '../theme';
+import { favoriteRepos, nonFavoriteRepos } from '../domain/favorite-repos';
 import type { Repo } from '../domain/types';
 import { RepoListStatus } from './repo-list-status';
 import { RepoTerminalIndicator } from './repo-terminal-indicator';
@@ -19,8 +20,8 @@ interface SidebarRepoListProps {
 export function SidebarRepoList(props: SidebarRepoListProps) {
   const query = props.search.toLowerCase();
   const filtered = query ? props.repos.filter(repo => matchesSearch(repo, query)) : props.repos;
-  const grouped = query ? null : groupReposByCategory(filtered);
-  const favorites = query ? [] : filtered.filter(repo => props.favoriteRepoIds.includes(repo.id));
+  const favorites = query ? [] : favoriteRepos(filtered, props.favoriteRepoIds);
+  const grouped = query ? null : groupReposByCategory(nonFavoriteRepos(filtered, props.favoriteRepoIds));
   return (
     <div style={listStyle}>
       {query ? <SearchResults {...props} repos={filtered} /> : (

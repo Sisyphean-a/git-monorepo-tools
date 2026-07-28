@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { buildBootstrapSnapshot } from '../domain/bootstrap-snapshot.js';
+import { defaultRepoId } from '../domain/favorite-repos.js';
 import { loadProgressiveRepoUpdate, normalizeProgressiveConcurrency, orderProgressiveTargets } from './progressive-repo-scan.js';
 import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types.js';
 import type { ProgressiveSnapshotLease } from './snapshot-coordinator.js';
@@ -108,13 +109,16 @@ export async function loadProgressiveStartupScan(request: ProgressiveStartupScan
   const { settings, coordinator, backend, handlers } = request;
   const bootstrap = await backend.fetchWorkspaceBootstrap(settings);
   if (!handlers.isCurrent()) return;
-  const snapshot = buildBootstrapSnapshot(bootstrap);
+  const snapshot = {
+    ...buildBootstrapSnapshot(bootstrap),
+    selectedRepoId: defaultRepoId(bootstrap.repos, settings.favoriteRepoIds, bootstrap.selectedRepoId),
+  };
   handlers.applySnapshot(snapshot);
   handlers.reportError(null);
   await scanRepos({
     snapshot,
     settings,
-    preferredRepoId: handlers.getPreferredRepoId() || bootstrap.selectedRepoId,
+    preferredRepoId: handlers.getPreferredRepoId() || snapshot.selectedRepoId,
     handlers,
     refreshRepo: backend.refreshRepo,
   });

@@ -25,6 +25,8 @@
     "src/app/domain/pull-results.test.ts",
     "src/app/domain/repo-status.ts",
     "src/app/domain/repo-status.test.ts",
+    "src/app/domain/favorite-repos.ts",
+    "src/app/domain/favorite-repos.test.ts",
     "src/app/features/terminal/repo-terminal-activity.ts",
     "src/app/features/terminal/repo-terminal-activity.test.ts",
     "src/app/features/commands/command-center.test.ts",
