@@ -190,8 +190,14 @@ function isConflictLine(code) {
 }
 
 function buildFileChanges(repoPath, entries) {
-  const stagedStats = parseNumstat(runGit(repoPath, ['diff', '--cached', '--numstat', '--no-renames']));
-  const unstagedStats = parseNumstat(runGit(repoPath, ['diff', '--numstat', '--no-renames']));
+  const stagedStats = parseNumstat(
+    runGit(repoPath, ['diff', '--cached', '--numstat', '-z', '--no-renames']),
+    parseNameStatus(runGit(repoPath, ['diff', '--cached', '--name-status', '-z', '--no-renames'])),
+  );
+  const unstagedStats = parseNumstat(
+    runGit(repoPath, ['diff', '--numstat', '-z', '--no-renames']),
+    parseNameStatus(runGit(repoPath, ['diff', '--name-status', '-z', '--no-renames'])),
+  );
   const fileChanges = [];
   for (const [filePath, stat] of stagedStats) {
     fileChanges.push(createChange(repoPath, filePath, stat, true));
@@ -212,26 +218,44 @@ function buildFileChanges(repoPath, entries) {
   return fileChanges.sort(compareChanges);
 }
 
-function parseNumstat(output) {
+function parseNumstat(output, statuses) {
   const stats = new Map();
-  for (const line of output.split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    const [added, deleted, rawPath] = line.split('\t');
-    const filePath = normalizePath(rawPath);
-    stats.set(filePath, {
-      additions: toNumber(added),
-      deletions: toNumber(deleted),
-      status: detectStatus(filePath, added, deleted),
-    });
+  const records = output.includes('\0') ? output.split('\0') : output.split(/\r?\n/);
+  for (const record of records) {
+    if (!record) continue;
+    const firstTab = record.indexOf('\t');
+    const secondTab = record.indexOf('\t', firstTab + 1);
+    if (firstTab < 0 || secondTab < 0) continue;
+    const added = record.slice(0, firstTab);
+    const deleted = record.slice(firstTab + 1, secondTab);
+    const filePath = normalizePath(record.slice(secondTab + 1));
+    const status = statuses.get(filePath);
+    if (!status) throw new Error(`缺少文件状态：${filePath}`);
+    stats.set(filePath, { additions: toNumber(added), deletions: toNumber(deleted), status });
   }
   return stats;
 }
 
-function detectStatus(filePath, added, deleted) {
-  if (added === '0') return 'D';
-  if (deleted === '0') return 'A';
-  if (filePath.includes(' -> ')) return 'R';
-  return 'M';
+function parseNameStatus(output) {
+  const statuses = new Map();
+  const records = output.includes('\0') ? output.split('\0') : output.split(/\r?\n/);
+  if (output.includes('\0')) {
+    for (let index = 0; index + 1 < records.length; index += 2) {
+      statuses.set(normalizePath(records[index + 1]), fileStatus(records[index]));
+    }
+    return statuses;
+  }
+  for (const record of records) {
+    const separator = record.indexOf('\t');
+    if (separator < 0) continue;
+    statuses.set(normalizePath(record.slice(separator + 1)), fileStatus(record.slice(0, separator)));
+  }
+  return statuses;
+}
+
+function fileStatus(status) {
+  const normalized = status.trim();
+  return ['A', 'D', 'R'].includes(normalized) ? normalized : 'M';
 }
 
 function createChange(repoPath, filePath, stat, staged) {

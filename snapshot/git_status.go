@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -92,16 +93,24 @@ func parseStatus(output string) parsedStatus {
 }
 
 func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
-	stagedOutput, stagedErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--numstat", "-z", "--no-renames"})
-	unstagedOutput, unstagedErr := executor.runGitRaw(repoPath, []string{"diff", "--numstat", "-z", "--no-renames"})
-	changes := buildTrackedChanges(repoPath, parseNumstat(stagedOutput), true)
-	changes = append(changes, buildTrackedChanges(repoPath, parseNumstat(unstagedOutput), false)...)
+	stagedStatsOutput, stagedStatsErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--numstat", "-z", "--no-renames"})
+	stagedStatusOutput, stagedStatusErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--name-status", "-z", "--no-renames"})
+	unstagedStatsOutput, unstagedStatsErr := executor.runGitRaw(repoPath, []string{"diff", "--numstat", "-z", "--no-renames"})
+	unstagedStatusOutput, unstagedStatusErr := executor.runGitRaw(repoPath, []string{"diff", "--name-status", "-z", "--no-renames"})
+
+	stagedStats, stagedParseErr := parseNumstat(stagedStatsOutput, parseNameStatus(stagedStatusOutput))
+	unstagedStats, unstagedParseErr := parseNumstat(unstagedStatsOutput, parseNameStatus(unstagedStatusOutput))
+	changes := buildTrackedChanges(repoPath, stagedStats, true)
+	changes = append(changes, buildTrackedChanges(repoPath, unstagedStats, false)...)
 	changes = append(changes, buildUntrackedChanges(repoPath, entries, changes)...)
 	slices.SortFunc(changes, compareFileChanges)
-	return changes, firstGitError(stagedErr, unstagedErr)
+	return changes, firstGitError(
+		stagedStatsErr, stagedStatusErr, unstagedStatsErr, unstagedStatusErr,
+		stagedParseErr, unstagedParseErr,
+	)
 }
 
-func parseNumstat(output string) map[string]FileChange {
+func parseNumstat(output string, statuses map[string]string) (map[string]FileChange, error) {
 	stats := map[string]FileChange{}
 	records := strings.Split(output, "\x00")
 	if !strings.Contains(output, "\x00") {
@@ -116,12 +125,44 @@ func parseNumstat(output string) map[string]FileChange {
 			continue
 		}
 		filePath := normalizePath(parts[2])
+		status, ok := statuses[filePath]
+		if !ok {
+			return nil, fmt.Errorf("missing Git status for %q", filePath)
+		}
 		stats[filePath] = FileChange{
-			Status: detectStatus(filePath, parts[0], parts[1]), Path: filePath,
+			Status: status, Path: filePath,
 			Additions: toNumber(parts[0]), Deletions: toNumber(parts[1]),
 		}
 	}
-	return stats
+	return stats, nil
+}
+
+func parseNameStatus(output string) map[string]string {
+	statuses := map[string]string{}
+	if strings.Contains(output, "\x00") {
+		records := strings.Split(output, "\x00")
+		for index := 0; index+1 < len(records); index += 2 {
+			statuses[normalizePath(records[index+1])] = fileStatus(records[index])
+		}
+		return statuses
+	}
+	for _, record := range strings.Split(output, "\n") {
+		parts := strings.SplitN(record, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		statuses[normalizePath(parts[1])] = fileStatus(parts[0])
+	}
+	return statuses
+}
+
+func fileStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case "A", "D", "R":
+		return strings.TrimSpace(status)
+	default:
+		return "M"
+	}
 }
 
 func buildTrackedChanges(repoPath string, stats map[string]FileChange, staged bool) []FileChange {
@@ -196,19 +237,6 @@ func countConflicts(entries []string) int {
 		}
 	}
 	return count
-}
-
-func detectStatus(filePath, added, deleted string) string {
-	if added == "0" {
-		return "D"
-	}
-	if deleted == "0" {
-		return "A"
-	}
-	if strings.Contains(filePath, " -> ") {
-		return "R"
-	}
-	return "M"
 }
 
 func compareFileChanges(left, right FileChange) int {

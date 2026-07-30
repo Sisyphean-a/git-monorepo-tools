@@ -152,6 +152,52 @@ func TestBuildRepoSnapshotListsEveryChangedFile(t *testing.T) {
 	}
 }
 
+func TestBuildRepoSnapshotClassifiesDeletionOnlyEditsAsModified(t *testing.T) {
+	repoPath := t.TempDir()
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "only-deleted-lines.txt", "keep\nremove\n", "seed deletion-only edit")
+	commitTestFile(t, repoPath, "staged-deletion-only.txt", "keep\nremove\n", "seed staged deletion-only edit")
+	commitTestFile(t, repoPath, "deleted-file.txt", "remove entirely\n", "seed deleted file")
+
+	if err := os.WriteFile(filepath.Join(repoPath, "only-deleted-lines.txt"), []byte("keep\n"), 0o644); err != nil {
+		t.Fatalf("delete unstaged line: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "staged-deletion-only.txt"), []byte("keep\n"), 0o644); err != nil {
+		t.Fatalf("delete staged line: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"add", "--", "staged-deletion-only.txt"}); err != nil {
+		t.Fatalf("stage deletion-only edit: %v", err)
+	}
+	if err := os.Remove(filepath.Join(repoPath, "deleted-file.txt")); err != nil {
+		t.Fatalf("delete file: %v", err)
+	}
+
+	snapshot, err := defaultGitExecutor().buildRepoSnapshot(
+		repoEntry{repoPath: repoPath, category: "测试"},
+		time.Unix(0, 0),
+	)
+	if err != nil {
+		t.Fatalf("build repo snapshot: %v", err)
+	}
+
+	changes := map[string]FileChange{}
+	for _, change := range snapshot.detail.Files {
+		changes[change.Path] = change
+	}
+	if len(changes) != 3 {
+		t.Fatalf("expected 3 file changes, got %#v", snapshot.detail.Files)
+	}
+	if change := changes["only-deleted-lines.txt"]; change.Status != "M" || change.Additions != 0 || change.Deletions != 1 || change.Staged {
+		t.Fatalf("expected unstaged deletion-only edit to remain modified, got %#v", change)
+	}
+	if change := changes["staged-deletion-only.txt"]; change.Status != "M" || change.Additions != 0 || change.Deletions != 1 || !change.Staged {
+		t.Fatalf("expected staged deletion-only edit to remain modified, got %#v", change)
+	}
+	if change := changes["deleted-file.txt"]; change.Status != "D" || change.Additions != 0 || change.Deletions != 1 || change.Staged {
+		t.Fatalf("expected deleted file to remain deleted, got %#v", change)
+	}
+}
+
 func TestBuildRepoSnapshotPreservesNonASCIIFilenames(t *testing.T) {
 	repoPath := t.TempDir()
 	initTestRepo(t, repoPath)
