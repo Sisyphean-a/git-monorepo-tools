@@ -1,5 +1,6 @@
 export interface TerminalOutputSink {
   write(data: string, callback?: () => void): void;
+  clear?(): void;
 }
 
 export interface TerminalOutputScheduler {
@@ -103,6 +104,9 @@ export class TerminalOutputWriter {
   private flushFrame() {
     if (!this.enabled || this.writing || this.queue.length === 0) {
       return;
+    }
+    if (this.droppedOutput) {
+      this.sink.clear?.();
     }
     this.writing = true;
     this.sink.write(this.takeNextPayload(), () => {

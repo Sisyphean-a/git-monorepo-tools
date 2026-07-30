@@ -118,13 +118,16 @@ test('terminal output writer can pause and resume without losing queued output',
   assert.deepEqual(writes, ['onetwo']);
 });
 
-test('terminal output writer trims hidden backlog to bounded tail', () => {
-  const writes: string[] = [];
+test('terminal output writer replaces visible history when hidden backlog is trimmed', () => {
+  let visibleOutput = '';
   const scheduler = createManualScheduler();
   const writer = new TerminalOutputWriter({
     write(data, callback) {
-      writes.push(data);
+      visibleOutput += data;
       callback?.();
+    },
+    clear() {
+      visibleOutput = '';
     },
   }, {
     scheduler,
@@ -133,20 +136,19 @@ test('terminal output writer trims hidden backlog to bounded tail', () => {
     maxDisabledBufferedChars: 1024,
   });
 
-  const chunks = Array.from({ length: 160 }, (_, index) => `chunk-${index.toString().padStart(4, '0')}\n`);
-
+  writer.enqueue('before-switch\n');
+  scheduler.flushAll();
   writer.setEnabled(false);
-  for (const chunk of chunks) {
+  for (const chunk of Array.from({ length: 160 }, (_, index) => `chunk-${index.toString().padStart(4, '0')}\n`)) {
     writer.enqueue(chunk);
   }
   scheduler.flushAll();
-  assert.deepEqual(writes, []);
 
   writer.setEnabled(true);
   scheduler.flushAll();
 
-  const payload = writes.join('');
-  assert.match(payload, /older terminal output skipped/);
-  assert.match(payload, /chunk-0159/);
-  assert.ok(!payload.includes('chunk-0000'));
+  assert.match(visibleOutput, /older terminal output skipped/);
+  assert.match(visibleOutput, /chunk-0159/);
+  assert.ok(!visibleOutput.includes('before-switch'));
+  assert.ok(!visibleOutput.includes('chunk-0000'));
 });
