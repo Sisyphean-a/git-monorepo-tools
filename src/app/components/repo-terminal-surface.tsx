@@ -294,7 +294,6 @@ export function RepoTerminalSurface({
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     outputWriterRef.current = new TerminalOutputWriter(terminal);
-    outputWriterRef.current.setEnabled(active);
     terminal.attachCustomKeyEventHandler(event => handleWindowsTerminalShortcutEvent(event, {
       hasSelection: () => terminal.hasSelection(),
       copySelection: () => {
@@ -385,9 +384,6 @@ export function RepoTerminalSurface({
     };
   }, [sessionId]);
 
-  useEffect(() => {
-    outputWriterRef.current?.setEnabled(active);
-  }, [active]);
 
   useEffect(() => {
     if (!active) return;

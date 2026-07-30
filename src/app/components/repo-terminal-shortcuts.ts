@@ -1,8 +1,13 @@
-export type RepoTerminalShortcutAction = 'copy-selection' | 'paste-clipboard' | 'send-ctrl-j' | 'send-shift-enter' | 'pass-through';
+export type RepoTerminalShortcutAction =
+  | { readonly type: 'copy-selection' }
+  | { readonly type: 'paste-clipboard' }
+  | { readonly type: 'send-input'; readonly input: string }
+  | { readonly type: 'pass-through' };
 export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
 
 export const ctrlVInput = '\x16';
 export const ctrlJInput = '\x0a';
+export const ctrlWInput = '\x17';
 export const shiftEnterInput = '\x1b[13;2u';
 
 interface RepoTerminalShortcutEvent {
@@ -25,32 +30,78 @@ interface TerminalShortcutBindings {
   readonly writeInput: (input: string) => void;
 }
 
+interface TerminalShortcutRule {
+  readonly key: string;
+  readonly modifiers: TerminalShortcutModifiers;
+  readonly action: Exclude<RepoTerminalShortcutAction, { readonly type: 'pass-through' }>;
+  readonly requiresSelection?: boolean;
+}
+
+interface TerminalShortcutModifiers {
+  readonly ctrlKey?: boolean;
+  readonly altKey?: boolean;
+  readonly metaKey?: boolean;
+  readonly shiftKey?: boolean;
+}
+
+const passThroughAction: RepoTerminalShortcutAction = { type: 'pass-through' };
+
+const windowsTerminalShortcutRules: readonly TerminalShortcutRule[] = [
+  {
+    key: 'enter',
+    modifiers: { shiftKey: true, ctrlKey: false, altKey: false, metaKey: false },
+    action: { type: 'send-input', input: shiftEnterInput },
+  },
+  {
+    key: 'j',
+    modifiers: { ctrlKey: true, shiftKey: false, altKey: false, metaKey: false },
+    action: { type: 'send-input', input: ctrlJInput },
+  },
+  {
+    key: 'backspace',
+    modifiers: { ctrlKey: true, shiftKey: false, altKey: false, metaKey: false },
+    action: { type: 'send-input', input: ctrlWInput },
+  },
+  {
+    key: 'c',
+    modifiers: { ctrlKey: true, altKey: false, metaKey: false },
+    action: { type: 'copy-selection' },
+    requiresSelection: true,
+  },
+  {
+    key: 'v',
+    modifiers: { ctrlKey: true, altKey: false, metaKey: false },
+    action: { type: 'paste-clipboard' },
+  },
+  {
+    key: 'v',
+    modifiers: { ctrlKey: false, altKey: true, metaKey: false },
+    action: { type: 'paste-clipboard' },
+  },
+];
+
 export function getWindowsTerminalShortcutAction(
   event: RepoTerminalShortcutEvent,
   hasSelection: boolean,
   platform: string,
 ): RepoTerminalShortcutAction {
   if (!isWindowsPlatform(platform) || event.type !== 'keydown') {
-    return 'pass-through';
-  }
-  if (event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
-    return 'send-shift-enter';
-  }
-  if (event.key.toLowerCase() === 'j' && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
-    return 'send-ctrl-j';
-  }
-  if (event.metaKey || event.ctrlKey === event.altKey) {
-    return 'pass-through';
+    return passThroughAction;
   }
 
-  switch (event.key.toLowerCase()) {
-    case 'c':
-      return event.ctrlKey && hasSelection ? 'copy-selection' : 'pass-through';
-    case 'v':
-      return 'paste-clipboard';
-    default:
-      return 'pass-through';
+  const rule = windowsTerminalShortcutRules.find(candidate => matchesTerminalShortcut(event, candidate));
+  if (!rule || (rule.requiresSelection && !hasSelection)) {
+    return passThroughAction;
   }
+  return rule.action;
+}
+
+function matchesTerminalShortcut(event: RepoTerminalShortcutEvent, rule: TerminalShortcutRule) {
+  return event.key.toLowerCase() === rule.key
+    && (rule.modifiers.ctrlKey === undefined || event.ctrlKey === rule.modifiers.ctrlKey)
+    && (rule.modifiers.altKey === undefined || event.altKey === rule.modifiers.altKey)
+    && (rule.modifiers.metaKey === undefined || event.metaKey === rule.modifiers.metaKey)
+    && (rule.modifiers.shiftKey === undefined || (event.shiftKey ?? false) === rule.modifiers.shiftKey);
 }
 
 export function handleWindowsTerminalShortcutEvent(
@@ -58,7 +109,8 @@ export function handleWindowsTerminalShortcutEvent(
   bindings: TerminalShortcutBindings,
   platform: string,
 ) {
-  switch (getWindowsTerminalShortcutAction(event, bindings.hasSelection(), platform)) {
+  const action = getWindowsTerminalShortcutAction(event, bindings.hasSelection(), platform);
+  switch (action.type) {
     case 'copy-selection':
       bindings.copySelection();
       return false;
@@ -66,15 +118,11 @@ export function handleWindowsTerminalShortcutEvent(
       event.preventDefault();
       bindings.pasteClipboard();
       return false;
-    case 'send-ctrl-j':
+    case 'send-input':
       event.preventDefault();
-      bindings.writeInput(ctrlJInput);
+      bindings.writeInput(action.input);
       return false;
-    case 'send-shift-enter':
-      event.preventDefault();
-      bindings.writeInput(shiftEnterInput);
-      return false;
-    default:
+    case 'pass-through':
       return true;
   }
 }

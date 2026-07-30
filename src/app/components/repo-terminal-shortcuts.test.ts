@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   ctrlJInput,
   ctrlVInput,
+  ctrlWInput,
   getWindowsTerminalShortcutAction,
   handleWindowsTerminalShortcutEvent,
   pasteTerminalClipboard,
@@ -37,46 +38,46 @@ test('windows ctrl+c copies selection without blocking browser fallback', () => 
 });
 
 test('windows ctrl+c without selection passes through to terminal', () => {
-  assert.equal(getWindowsTerminalShortcutAction({
+  assert.deepEqual(getWindowsTerminalShortcutAction({
     type: 'keydown',
     ctrlKey: true,
     altKey: false,
     metaKey: false,
     key: 'c',
-  }, false, 'Win32'), 'pass-through');
+  }, false, 'Win32'), { type: 'pass-through' });
 });
 
 test('windows shift+enter sends the Pi keyboard protocol sequence', () => {
-  assert.equal(getWindowsTerminalShortcutAction({
+  assert.deepEqual(getWindowsTerminalShortcutAction({
     type: 'keydown',
     ctrlKey: false,
     altKey: false,
     metaKey: false,
     shiftKey: true,
     key: 'Enter',
-  }, false, 'Win32'), 'send-shift-enter');
+  }, false, 'Win32'), { type: 'send-input', input: shiftEnterInput });
 });
 
 test('windows enter passes through to terminal', () => {
-  assert.equal(getWindowsTerminalShortcutAction({
+  assert.deepEqual(getWindowsTerminalShortcutAction({
     type: 'keydown',
     ctrlKey: false,
     altKey: false,
     metaKey: false,
     shiftKey: false,
     key: 'Enter',
-  }, false, 'Win32'), 'pass-through');
+  }, false, 'Win32'), { type: 'pass-through' });
 });
 
 test('non-windows shift+enter passes through to terminal', () => {
-  assert.equal(getWindowsTerminalShortcutAction({
+  assert.deepEqual(getWindowsTerminalShortcutAction({
     type: 'keydown',
     ctrlKey: false,
     altKey: false,
     metaKey: false,
     shiftKey: true,
     key: 'Enter',
-  }, false, 'MacIntel'), 'pass-through');
+  }, false, 'MacIntel'), { type: 'pass-through' });
 });
 
 test('windows ctrl+v invokes application paste and prevents default handling', () => {
@@ -131,7 +132,7 @@ test('windows alt+v invokes application paste and prevents default handling', ()
   assert.equal(pasteCalls, 1);
 });
 
-test('windows Pi multiline shortcuts write their protocol input', () => {
+test('windows application and compatibility shortcuts write their mapped input', () => {
   const writes: string[] = [];
   let preventDefaultCalls = 0;
   const bindings = {
@@ -164,11 +165,23 @@ test('windows Pi multiline shortcuts write their protocol input', () => {
       preventDefaultCalls += 1;
     },
   }, bindings, 'Win32');
+  const ctrlBackspaceAllowed = handleWindowsTerminalShortcutEvent({
+    type: 'keydown',
+    ctrlKey: true,
+    altKey: false,
+    metaKey: false,
+    shiftKey: false,
+    key: 'Backspace',
+    preventDefault: () => {
+      preventDefaultCalls += 1;
+    },
+  }, bindings, 'Win32');
 
   assert.equal(shiftEnterAllowed, false);
   assert.equal(ctrlJAllowed, false);
-  assert.equal(preventDefaultCalls, 2);
-  assert.deepEqual(writes, [shiftEnterInput, ctrlJInput]);
+  assert.equal(ctrlBackspaceAllowed, false);
+  assert.equal(preventDefaultCalls, 3);
+  assert.deepEqual(writes, [shiftEnterInput, ctrlJInput, ctrlWInput]);
 });
 
 test('application clipboard text paste checks for an image before preserving terminal-transformed text', async () => {
@@ -314,12 +327,24 @@ test('terminal input queue preserves write order', async () => {
   assert.deepEqual(writes, ['first', 'second']);
 });
 
+test('standard terminal shortcuts pass through to xterm', () => {
+  for (const key of ['ArrowLeft', 'ArrowRight']) {
+    assert.deepEqual(getWindowsTerminalShortcutAction({
+      type: 'keydown',
+      ctrlKey: true,
+      altKey: false,
+      metaKey: false,
+      key,
+    }, false, 'Win32'), { type: 'pass-through' });
+  }
+});
+
 test('non-windows platforms keep default terminal shortcuts', () => {
-  assert.equal(getWindowsTerminalShortcutAction({
+  assert.deepEqual(getWindowsTerminalShortcutAction({
     type: 'keydown',
     ctrlKey: true,
     altKey: false,
     metaKey: false,
     key: 'v',
-  }, false, 'MacIntel'), 'pass-through');
+  }, false, 'MacIntel'), { type: 'pass-through' });
 });

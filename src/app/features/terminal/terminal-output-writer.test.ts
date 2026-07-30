@@ -58,7 +58,6 @@ test('terminal output writer pressure test collapses many events into few writes
   }, {
     scheduler,
     maxWriteChars: 4096,
-    compactThreshold: 8,
   });
 
   let expected = '';
@@ -94,31 +93,7 @@ test('terminal output writer reset drops pending buffered output', () => {
   assert.deepEqual(writes, ['after-reset']);
 });
 
-test('terminal output writer can pause and resume without losing queued output', () => {
-  const writes: string[] = [];
-  const scheduler = createManualScheduler();
-  const writer = new TerminalOutputWriter({
-    write(data, callback) {
-      writes.push(data);
-      callback?.();
-    },
-  }, {
-    scheduler,
-    maxWriteChars: 8,
-  });
-
-  writer.setEnabled(false);
-  writer.enqueue('one');
-  writer.enqueue('two');
-  scheduler.flushAll();
-  assert.deepEqual(writes, []);
-
-  writer.setEnabled(true);
-  scheduler.flushAll();
-  assert.deepEqual(writes, ['onetwo']);
-});
-
-test('terminal output writer replaces visible history when hidden backlog is trimmed', () => {
+test('terminal output writer preserves more than the former 512KB output limit', () => {
   let visibleOutput = '';
   const scheduler = createManualScheduler();
   const writer = new TerminalOutputWriter({
@@ -126,29 +101,22 @@ test('terminal output writer replaces visible history when hidden backlog is tri
       visibleOutput += data;
       callback?.();
     },
-    clear() {
-      visibleOutput = '';
-    },
   }, {
     scheduler,
     maxWriteChars: 1024,
-    maxBufferedChars: 2048,
-    maxDisabledBufferedChars: 1024,
   });
 
-  writer.enqueue('before-switch\n');
+  const beforeSwitch = 'before-switch\n';
+  const queuedOutput = Array.from(
+    { length: 640 },
+    (_, index) => `chunk-${index.toString().padStart(4, '0')}:${'x'.repeat(1024)}\n`,
+  ).join('');
+  assert.ok(queuedOutput.length > 512 * 1024);
+
+  writer.enqueue(beforeSwitch);
   scheduler.flushAll();
-  writer.setEnabled(false);
-  for (const chunk of Array.from({ length: 160 }, (_, index) => `chunk-${index.toString().padStart(4, '0')}\n`)) {
-    writer.enqueue(chunk);
-  }
+  writer.enqueue(queuedOutput);
   scheduler.flushAll();
 
-  writer.setEnabled(true);
-  scheduler.flushAll();
-
-  assert.match(visibleOutput, /older terminal output skipped/);
-  assert.match(visibleOutput, /chunk-0159/);
-  assert.ok(!visibleOutput.includes('before-switch'));
-  assert.ok(!visibleOutput.includes('chunk-0000'));
+  assert.equal(visibleOutput, beforeSwitch + queuedOutput);
 });
