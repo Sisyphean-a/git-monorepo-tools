@@ -55,6 +55,7 @@ export namespace snapshot {
 	    additions: number;
 	    deletions: number;
 	    parents: number;
+	    parentHashes: string[];
 	    refs?: string[];
 	    files: number;
 	
@@ -72,6 +73,7 @@ export namespace snapshot {
 	        this.additions = source["additions"];
 	        this.deletions = source["deletions"];
 	        this.parents = source["parents"];
+	        this.parentHashes = source["parentHashes"];
 	        this.refs = source["refs"];
 	        this.files = source["files"];
 	    }
@@ -312,6 +314,7 @@ export namespace snapshot {
 	    additions: number;
 	    deletions: number;
 	    parents: number;
+	    parentHashes: string[];
 	    refs?: string[];
 	    files: number;
 	    body: string;
@@ -333,6 +336,7 @@ export namespace snapshot {
 	        this.additions = source["additions"];
 	        this.deletions = source["deletions"];
 	        this.parents = source["parents"];
+	        this.parentHashes = source["parentHashes"];
 	        this.refs = source["refs"];
 	        this.files = source["files"];
 	        this.body = source["body"];

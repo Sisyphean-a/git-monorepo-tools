@@ -144,16 +144,17 @@ type CommitCandidate struct {
 }
 
 type CommitSummary struct {
-	Hash      string   `json:"hash"`
-	ShortHash string   `json:"shortHash"`
-	Author    string   `json:"author"`
-	Time      string   `json:"time"`
-	Message   string   `json:"message"`
-	Additions int      `json:"additions"`
-	Deletions int      `json:"deletions"`
-	Parents   int      `json:"parents"`
-	Refs      []string `json:"refs,omitempty"`
-	Files     int      `json:"files"`
+	Hash         string   `json:"hash"`
+	ShortHash    string   `json:"shortHash"`
+	Author       string   `json:"author"`
+	Time         string   `json:"time"`
+	Message      string   `json:"message"`
+	Additions    int      `json:"additions"`
+	Deletions    int      `json:"deletions"`
+	Parents      int      `json:"parents"`
+	ParentHashes []string `json:"parentHashes"`
+	Refs         []string `json:"refs,omitempty"`
+	Files        int      `json:"files"`
 }
 
 type CommitDetail struct {

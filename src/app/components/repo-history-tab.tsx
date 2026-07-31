@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, Copy, GitBranch, GitCommit, GitMerge, TerminalSquare } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
+import { buildCommitGraph, CommitGraphRow } from './commit-graph';
 import { C } from '../theme';
 import type { AppSettings, CommitDetail, CommitSummary, RepoDetail } from '../domain/types';
 
@@ -104,9 +105,13 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     () => commits.find(commit => commit.hash === selectedHash) ?? null,
     [commits, selectedHash],
   );
+  const commitGraph = useMemo(() => {
+    const rows = buildCommitGraph(commits);
+    return { rows, laneCount: Math.max(1, ...rows.map(row => Math.max(row.lanesBefore, row.lanesAfter))) };
+  }, [commits]);
   const detailRefs = detail?.refs ?? [];
   const detailFilesChanged = detail?.filesChanged ?? [];
-  const historyLabel = total > 0 ? `最近提交 ${commits.length}/${total}` : `最近提交 ${commits.length}${hasMore ? '+' : ''}`;
+  const historyLabel = total > 0 ? `全部分支提交 ${commits.length}/${total}` : `全部分支提交 ${commits.length}${hasMore ? '+' : ''}`;
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
@@ -188,55 +193,66 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
             </button>
           )}
         </div>
-        {commits.map((commit, index) => (
-          <button
-            key={commit.hash}
-            onClick={() => setSelectedHash(commit.hash)}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              background: commit.hash === selectedHash ? `${C.btnPrimary}12` : 'transparent',
-              border: 'none',
-              borderBottom: `1px solid ${C.border}30`,
-              padding: '10px 14px 10px 12px',
-              cursor: 'pointer',
-              display: 'grid',
-              gridTemplateColumns: '16px 1fr auto',
-              gap: 10,
-              alignItems: 'start',
-            }}
-          >
-            <div style={{ position: 'relative', width: 16, minHeight: 42 }}>
-              <div style={{ position: 'absolute', left: 7, top: index === 0 ? 12 : -10, bottom: index === commits.length - 1 ? 20 : -10, width: 1, background: `${C.border}aa` }} />
-              <div style={{ position: 'absolute', left: 3, top: 12, width: 9, height: 9, borderRadius: commit.parents > 1 ? 2 : 999, background: commit.hash === selectedHash ? C.btnPrimary : C.panel3, border: `1px solid ${commit.parents > 1 ? C.modified : C.border}` }} />
+        <div>
+          {commits.map((commit, index) => (
+            <div
+              key={commit.hash}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'auto minmax(0, 1fr)',
+                minHeight: 56,
+                background: commit.hash === selectedHash ? `${C.btnPrimary}12` : 'transparent',
+                borderBottom: `1px solid ${C.border}30`,
+              }}
+            >
+              <CommitGraphRow row={commitGraph.rows[index]!} selected={commit.hash === selectedHash} laneCount={commitGraph.laneCount} />
+              <button
+                onClick={() => setSelectedHash(commit.hash)}
+                style={{
+                  width: '100%',
+                  height: 56,
+                  boxSizing: 'border-box',
+                  overflow: 'hidden',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 'none',
+                  padding: '7px 14px 7px 4px',
+                  cursor: 'pointer',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto',
+                  gap: 10,
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <span style={{ color: C.textPrimary, fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{commit.message}</span>
+                    {commit.parents > 1 && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: C.modified, fontSize: 10 }}>
+                        <GitMerge size={10} /> merge
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'nowrap', overflow: 'hidden', minWidth: 0, alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <span style={{ flexShrink: 0, color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>{commit.shortHash}</span>
+                    <span style={{ flexShrink: 0, color: C.textWeak, fontSize: 10 }}>{commit.author}</span>
+                    <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4, color: C.textWeak, fontSize: 10 }}><Clock3 size={9} /> {commit.time}</span>
+                    <span style={{ flexShrink: 0, color: C.textWeak, fontSize: 10 }}>{commit.files} 文件</span>
+                    {(commit.refs ?? []).map(ref => (
+                      <span key={`${commit.hash}-${ref}`} title={ref} style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: `${C.aiAccent}18`, border: `1px solid ${C.aiAccent}35`, color: C.aiAccent, borderRadius: 999, padding: '1px 7px', fontSize: 10 }}>
+                        {ref}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 70 }}>
+                  <span style={{ color: C.added, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>+{commit.additions}</span>
+                  <span style={{ color: C.deleted, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>-{commit.deletions}</span>
+                </div>
+              </button>
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <span style={{ color: C.textPrimary, fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{commit.message}</span>
-                {commit.parents > 1 && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: C.modified, fontSize: 10 }}>
-                    <GitMerge size={10} /> merge
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                <span style={{ color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>{commit.shortHash}</span>
-                <span style={{ color: C.textWeak, fontSize: 10 }}>{commit.author}</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: C.textWeak, fontSize: 10 }}><Clock3 size={9} /> {commit.time}</span>
-                <span style={{ color: C.textWeak, fontSize: 10 }}>{commit.files} 文件</span>
-                {(commit.refs ?? []).map(ref => (
-                  <span key={`${commit.hash}-${ref}`} style={{ background: `${C.aiAccent}18`, border: `1px solid ${C.aiAccent}35`, color: C.aiAccent, borderRadius: 999, padding: '1px 7px', fontSize: 10 }}>
-                    {ref}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 70 }}>
-              <span style={{ color: C.added, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>+{commit.additions}</span>
-              <span style={{ color: C.deleted, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>-{commit.deletions}</span>
-            </div>
-          </button>
-        ))}
+          ))}
+        </div>
       </div>
 
       <div style={{ width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>

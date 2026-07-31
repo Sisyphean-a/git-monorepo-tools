@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -45,6 +46,80 @@ func TestGetRepoHistoryMarksUnknownTotalWhenMoreCommitsRemain(t *testing.T) {
 	}
 	if len(page.Commits) != 2 {
 		t.Fatalf("expected 2 commits, got %d", len(page.Commits))
+	}
+}
+
+func TestGetRepoHistoryPagesWithoutDuplicatesOrOmissions(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	for index := 0; index < defaultHistoryPageSize+3; index++ {
+		commitTestFile(t, repoPath, "tracked.txt", strings.Repeat("x", index+1)+"\n", fmt.Sprintf("commit-%d", index))
+	}
+
+	service := NewService(root)
+	request := Request{ScanRoots: []ScanRoot{{Path: root, Category: "测试"}}}
+	snapshot, err := service.BuildAppSnapshot(request)
+	if err != nil {
+		t.Fatalf("build snapshot: %v", err)
+	}
+	first, err := service.GetRepoHistory(snapshot.Repos[0].ID, request, 0, defaultHistoryPageSize)
+	if err != nil {
+		t.Fatalf("get first history page: %v", err)
+	}
+	second, err := service.GetRepoHistory(snapshot.Repos[0].ID, request, len(first.Commits), defaultHistoryPageSize)
+	if err != nil {
+		t.Fatalf("get second history page: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, commit := range append(first.Commits, second.Commits...) {
+		if seen[commit.Hash] {
+			t.Fatalf("duplicate commit across history pages: %s", commit.Hash)
+		}
+		seen[commit.Hash] = true
+	}
+	if len(seen) != defaultHistoryPageSize+3 {
+		t.Fatalf("expected %d commits across pages, got %d", defaultHistoryPageSize+3, len(seen))
+	}
+}
+
+func TestGetRepoHistoryIncludesAllBranchesAndParentHashes(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "tracked.txt", "base\n", "base")
+	if _, err := runGitStrict(repoPath, []string{"branch", "feature"}); err != nil {
+		t.Fatalf("create feature branch: %v", err)
+	}
+	commitTestFile(t, repoPath, "tracked.txt", "base\nmain\n", "main")
+	if _, err := runGitStrict(repoPath, []string{"checkout", "feature"}); err != nil {
+		t.Fatalf("checkout feature: %v", err)
+	}
+	commitTestFile(t, repoPath, "feature.txt", "feature\n", "feature")
+	if _, err := runGitStrict(repoPath, []string{"checkout", "-"}); err != nil {
+		t.Fatalf("checkout original branch: %v", err)
+	}
+
+	service := NewService(root)
+	request := Request{ScanRoots: []ScanRoot{{Path: root, Category: "测试"}}}
+	snapshot, err := service.BuildAppSnapshot(request)
+	if err != nil {
+		t.Fatalf("build snapshot: %v", err)
+	}
+	page, err := service.GetRepoHistory(snapshot.Repos[0].ID, request, 0, 10)
+	if err != nil {
+		t.Fatalf("get repo history: %v", err)
+	}
+	messages := map[string]CommitSummary{}
+	for _, commit := range page.Commits {
+		messages[commit.Message] = commit
+	}
+	feature, ok := messages["feature"]
+	if !ok {
+		t.Fatalf("expected history across all branches, got %#v", page.Commits)
+	}
+	if feature.Parents != 1 || len(feature.ParentHashes) != 1 || feature.ParentHashes[0] == "" {
+		t.Fatalf("expected feature parent hash, got %#v", feature)
 	}
 }
 

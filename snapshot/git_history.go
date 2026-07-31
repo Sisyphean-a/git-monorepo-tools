@@ -8,6 +8,7 @@ import (
 
 const defaultHistoryPageSize = 50
 
+// Flow: Git determines the all-ref topological order; the returned parent hashes let the UI continue one graph while it appends pages.
 func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) ([]CommitSummary, bool, error) {
 	if offset < 0 {
 		offset = 0
@@ -16,7 +17,7 @@ func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) 
 		limit = defaultHistoryPageSize
 	}
 	output, err := executor.runGit(repoPath, []string{
-		"log", fmt.Sprintf("--skip=%d", offset), fmt.Sprintf("-%d", limit+1),
+		"log", "--all", "--topo-order", fmt.Sprintf("--skip=%d", offset), fmt.Sprintf("-%d", limit+1),
 		"--numstat", "--decorate=short", "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1f%P%x1f%D",
 	})
 	if err != nil {
@@ -119,7 +120,7 @@ func parseCommitDetail(output string) (CommitDetail, error) {
 	return CommitDetail{
 		CommitSummary: CommitSummary{
 			Hash: parts[0], ShortHash: parts[1], Author: parts[2], Time: parts[4], Message: parts[6],
-			Parents: len(strings.Fields(strings.TrimSpace(parts[8]))), Refs: parseHistoryRefs(parts[9]),
+			Parents: len(strings.Fields(strings.TrimSpace(parts[8]))), ParentHashes: parseParentHashes(parts[8]), Refs: parseHistoryRefs(parts[9]),
 		},
 		Body: strings.TrimSpace(parts[7]), AuthorEmail: parts[3], CommittedAt: parts[5],
 	}, nil
@@ -146,8 +147,16 @@ func parseHistoryCommit(line string) (CommitSummary, bool) {
 	}
 	return CommitSummary{
 		Hash: parts[0], ShortHash: parts[1], Author: parts[2], Time: parts[3], Message: parts[4],
-		Parents: len(strings.Fields(strings.TrimSpace(parts[5]))), Refs: parseHistoryRefs(parts[6]),
+		Parents: len(strings.Fields(strings.TrimSpace(parts[5]))), ParentHashes: parseParentHashes(parts[5]), Refs: parseHistoryRefs(parts[6]),
 	}, true
+}
+
+func parseParentHashes(raw string) []string {
+	parents := strings.Fields(strings.TrimSpace(raw))
+	if len(parents) == 0 {
+		return []string{}
+	}
+	return parents
 }
 
 func parseNumstatLine(line string) (int, int, bool) {

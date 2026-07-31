@@ -195,6 +195,7 @@ export interface CommitSummary {
   additions: number;
   deletions: number;
   parents: number;
+  parentHashes: string[];
   refs: string[];
   files: number;
 }
