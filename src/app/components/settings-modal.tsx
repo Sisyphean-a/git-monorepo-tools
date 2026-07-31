@@ -83,7 +83,7 @@ export function SettingsModal({
           transform: 'translate(-50%, -50%)',
           width: 760,
           maxWidth: '95vw',
-          maxHeight: '85vh',
+          height: 'min(85vh, 620px)',
           background: C.panel1,
           border: `1px solid ${C.border}`,
           borderRadius: 14,
