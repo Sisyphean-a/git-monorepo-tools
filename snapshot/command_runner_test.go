@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -285,4 +286,26 @@ func encodePowerShellCommand(value string) string {
 		binary.LittleEndian.PutUint16(bytes[index*2:], character)
 	}
 	return base64.StdEncoding.EncodeToString(bytes)
+}
+
+func TestWaitForCommandReportsTerminationFailure(t *testing.T) {
+	originalKill := terminateCommandTree
+	originalGrace := commandKillGracePeriod
+	terminateCommandTree = func(cmd *exec.Cmd) error { return errors.New("kill blocked") }
+	commandKillGracePeriod = 200 * time.Millisecond
+	defer func() {
+		terminateCommandTree = originalKill
+		commandKillGracePeriod = originalGrace
+	}()
+
+	cmd := buildShellCommand(t.TempDir(), slowShellCommand())
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start command: %v", err)
+	}
+	_, timedOut := waitForCommand(cmd, 100*time.Millisecond)
+	if !timedOut {
+		t.Fatal("expected timeout")
+	}
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
 }

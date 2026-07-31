@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
-const defaultAICommitSystemPrompt = `
+const (
+	aiRequestTimeout            = 30 * time.Second
+	defaultAICommitSystemPrompt = `
 You generate a single Git commit message from repository changes.
 
 Requirements:
@@ -23,6 +26,10 @@ Requirements:
 - If the changes span multiple areas, omit scope instead of guessing.
 - If you cannot infer a precise type, use chore.
 `
+)
+
+// aiHTTPClient 可注入以便测试超时行为
+var aiHTTPClient = &http.Client{Timeout: aiRequestTimeout}
 
 func requestAICompletion(settings AICommitSettings, prompt string) (string, error) {
 	payload := buildAIRequestPayload(settings, prompt)
@@ -34,7 +41,7 @@ func requestAICompletion(settings AICommitSettings, prompt string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	response, err := http.DefaultClient.Do(request)
+	response, err := aiHTTPClient.Do(request)
 	if err != nil {
 		return "", err
 	}

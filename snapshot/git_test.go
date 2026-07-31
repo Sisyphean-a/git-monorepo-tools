@@ -234,3 +234,21 @@ func TestBuildRepoSnapshotPreservesNonASCIIFilenames(t *testing.T) {
 		t.Fatalf("missing changes for %#v", expected)
 	}
 }
+
+func TestExtractBranchPreservesDottedBranchNames(t *testing.T) {
+	cases := []struct {
+		line string
+		want string
+	}{
+		{"## master...origin/master", "master"},
+		{"## release/1.0...origin/release/1.0", "release/1.0"},
+		{"## feature/foo-bar...origin/feature/foo-bar [ahead 2]", "feature/foo-bar"},
+		{"## HEAD (no branch)", "HEAD"},
+		{"## main", "main"},
+	}
+	for _, test := range cases {
+		if got := extractBranch(test.line); got != test.want {
+			t.Errorf("extractBranch(%q) = %q, want %q", test.line, got, test.want)
+		}
+	}
+}

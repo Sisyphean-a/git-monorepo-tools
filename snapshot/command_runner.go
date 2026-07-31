@@ -176,13 +176,16 @@ func (executor gitExecutor) runShellCommand(command shellCommand) (string, int, 
 	go streamCommand(stdout, command.onChunk, builder, &lock, &streamGroup)
 	go streamCommand(stderr, command.onChunk, builder, &lock, &streamGroup)
 	waitErr, timedOut := waitForCommand(cmd, executor.timeout)
-	streamGroup.Wait()
+	drainStreams(&streamGroup)
 
 	output := ""
 	if builder != nil {
 		output = builder.String()
 	}
 	if timedOut {
+		if waitErr != nil {
+			return output, -1, fmt.Errorf("命令执行超时（%s）：%v", executor.timeout, waitErr)
+		}
 		return output, -1, fmt.Errorf("命令执行超时（%s）", executor.timeout)
 	}
 	if waitErr == nil {

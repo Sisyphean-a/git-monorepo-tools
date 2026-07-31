@@ -20,7 +20,10 @@ func applyBackgroundProcessAttrs(cmd *exec.Cmd) {
 	cmd.SysProcAttr = attrs
 }
 
-func terminateCommandTree(cmd *exec.Cmd) error {
+// terminateCommandTree 可注入以便测试超时后无法终止的场景
+var terminateCommandTree = defaultTerminateCommandTree
+
+func defaultTerminateCommandTree(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return nil
 	}

@@ -1,6 +1,12 @@
 package snapshot
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestEnsureAISettingsDoesNotRequirePromptTemplate(t *testing.T) {
 	settings := AICommitSettings{
@@ -68,5 +74,25 @@ func TestBuildAIRequestPayloadAddsDeepSeekOnlyFields(t *testing.T) {
 	}
 	if _, ok := openAIPayload["thinking"]; ok {
 		t.Fatal("expected non-deepseek payload to omit thinking")
+	}
+}
+
+func TestRequestAICompletionHonorsClientTimeout(t *testing.T) {
+	originalClient := aiHTTPClient
+	aiHTTPClient = &http.Client{Timeout: 50 * time.Millisecond}
+	defer func() { aiHTTPClient = originalClient }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err := requestAICompletion(AICommitSettings{APIKey: "sk-test", BaseURL: server.URL, Model: "deepseek-chat"}, "prompt")
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "Client.Timeout") {
+		t.Fatalf("expected client timeout error, got %v", err)
 	}
 }

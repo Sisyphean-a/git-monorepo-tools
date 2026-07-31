@@ -202,11 +202,22 @@ func buildUntrackedChanges(repoPath string, entries []string, existing []FileCha
 }
 
 func extractBranch(line string) string {
-	match := regexp.MustCompile(`^## ([^.\s]+)`).FindStringSubmatch(line)
-	if len(match) < 2 {
+	// porcelain -b 格式：## <branch>...<upstream> [ahead N, behind M]；分支名可含点号，用 "..." 分隔
+	body := strings.TrimPrefix(line, "## ")
+	if index := strings.Index(body, "..."); index >= 0 {
+		body = body[:index]
+	}
+	if body == "" || body == "HEAD" {
 		return "HEAD"
 	}
-	return match[1]
+	if index := strings.IndexAny(body, " \t"); index >= 0 {
+		// 无 upstream 时的尾注，如 "HEAD (no branch)"
+		body = body[:index]
+	}
+	if body == "" {
+		return "HEAD"
+	}
+	return body
 }
 
 func extractRemote(line string) string {

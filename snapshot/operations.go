@@ -3,6 +3,7 @@ package snapshot
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -43,11 +44,11 @@ func (s *Service) RunBatch(operation string, request Request) (BatchResult, erro
 }
 
 func (s *Service) GetRepoLog(repoID string, request Request) (RepoLog, error) {
-	repo, err := s.resolveRepo(repoID, request)
+	entry, err := s.resolveRepoEntry(repoID, request)
 	if err != nil {
 		return RepoLog{}, err
 	}
-	content, err := newGitExecutor(request).runGit(repo.Path, []string{
+	content, err := newGitExecutor(request).runGit(entry.repoPath, []string{
 		"log", "--decorate", "-10", "--format=%h%x09%an%x09%ar%x09%s",
 	})
 	if err != nil {
@@ -56,20 +57,20 @@ func (s *Service) GetRepoLog(repoID string, request Request) (RepoLog, error) {
 	if content == "" {
 		content = "暂无日志内容"
 	}
-	return RepoLog{RepoID: repo.ID, RepoName: repo.Name, Path: repo.Path, Content: content}, nil
+	return RepoLog{RepoID: repoID, RepoName: filepath.Base(entry.repoPath), Path: entry.repoPath, Content: content}, nil
 }
 
 func (s *Service) GetRepoHistory(repoID string, request Request, offset, limit int) (RepoHistoryPage, error) {
-	repo, err := s.resolveRepo(repoID, request)
+	entry, err := s.resolveRepoEntry(repoID, request)
 	if err != nil {
 		return RepoHistoryPage{}, err
 	}
-	commits, hasMore, err := newGitExecutor(request).loadHistoryPage(repo.Path, offset, limit)
+	commits, hasMore, err := newGitExecutor(request).loadHistoryPage(entry.repoPath, offset, limit)
 	if isNoCommitHistoryError(err) {
 		return RepoHistoryPage{
-			RepoID:   repo.ID,
-			RepoName: repo.Name,
-			Path:     repo.Path,
+			RepoID:   repoID,
+			RepoName: filepath.Base(entry.repoPath),
+			Path:     entry.repoPath,
 			Offset:   max(offset, 0),
 			Limit:    normalizeHistoryLimit(limit),
 			Total:    0,
@@ -82,9 +83,9 @@ func (s *Service) GetRepoHistory(repoID string, request Request, offset, limit i
 	}
 	normalizedOffset := max(offset, 0)
 	return RepoHistoryPage{
-		RepoID:   repo.ID,
-		RepoName: repo.Name,
-		Path:     repo.Path,
+		RepoID:   repoID,
+		RepoName: filepath.Base(entry.repoPath),
+		Path:     entry.repoPath,
 		Offset:   normalizedOffset,
 		Limit:    normalizeHistoryLimit(limit),
 		Total:    pageHistoryTotal(normalizedOffset, len(commits), hasMore),
@@ -94,14 +95,14 @@ func (s *Service) GetRepoHistory(repoID string, request Request, offset, limit i
 }
 
 func (s *Service) GetCommitDetail(repoID string, request Request, hash string) (CommitDetail, error) {
-	repo, err := s.resolveRepo(repoID, request)
+	entry, err := s.resolveRepoEntry(repoID, request)
 	if err != nil {
 		return CommitDetail{}, err
 	}
 	if strings.TrimSpace(hash) == "" {
 		return CommitDetail{}, errors.New("缺少提交哈希")
 	}
-	return newGitExecutor(request).loadCommitDetail(repo.Path, hash)
+	return newGitExecutor(request).loadCommitDetail(entry.repoPath, hash)
 }
 
 func (executor gitExecutor) mutateRepo(repo RepoDetail, action string, request Request, body RepoActionRequest) error {

@@ -59,6 +59,9 @@ func (executor gitExecutor) runCommandRaw(spec gitCommandSpec) (string, error) {
 		return "", err
 	}
 	if err, timedOut := waitForCommand(cmd, executor.timeout); timedOut {
+		if err != nil {
+			return "", fmt.Errorf("git %s 超时（%s）：%v", strings.Join(spec.args, " "), executor.timeout, err)
+		}
 		return "", fmt.Errorf("git %s 超时（%s）", strings.Join(spec.args, " "), executor.timeout)
 	} else if err != nil && !spec.allowedExitCodes[cmd.ProcessState.ExitCode()] {
 		return "", buildGitError(spec.args, stdout.String(), stderr.String())

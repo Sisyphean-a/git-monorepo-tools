@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -530,5 +531,51 @@ func TestMutateRepoDiscardAllClearsTrackedAndUntrackedChanges(t *testing.T) {
 	}
 	if status != "" {
 		t.Fatalf("expected clean worktree after discard, got %q", status)
+	}
+}
+
+func TestGetRepoLogOnlyRunsGitLog(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "file.txt", "content\n", "seed")
+
+	binDir := t.TempDir()
+	spyFile := filepath.Join(binDir, "spy.txt")
+	var script string
+	if runtime.GOOS == "windows" {
+		script = "@echo off\r\necho %*>> \"" + spyFile + "\"\r\nif \"%2\"==\"log\" echo fake-log-marker\r\n"
+	} else {
+		script = "#!/bin/sh\necho \"$@\" >> \"" + spyFile + "\"\nif [ \"$2\" = \"log\" ]; then echo fake-log-marker; fi\n"
+	}
+	fakeGit := filepath.Join(binDir, "git")
+	if runtime.GOOS == "windows" {
+		fakeGit += ".cmd"
+	}
+	if err := os.WriteFile(fakeGit, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake git: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	service := NewService(root)
+	request := Request{ScanRoots: []ScanRoot{{Path: root, Category: "测试"}}}
+	repoID := createRepoID(filepath.Base(repoPath), normalizePath(repoPath))
+	_, err := service.GetRepoLog(repoID, request)
+	if err != nil {
+		t.Fatalf("get repo log: %v", err)
+	}
+
+	spy, err := os.ReadFile(spyFile)
+	if err != nil {
+		t.Fatalf("read spy: %v", err)
+	}
+	calls := string(spy)
+	if !strings.Contains(calls, "log") {
+		t.Fatalf("expected git log call, got %q", calls)
+	}
+	for _, banned := range []string{"status", "diff", "fetch"} {
+		if strings.Contains(calls, banned) {
+			t.Fatalf("expected no %q call for read-only query, got %q", banned, calls)
+		}
 	}
 }
