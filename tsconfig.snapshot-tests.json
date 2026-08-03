@@ -31,6 +31,7 @@
     "src/app/features/terminal/terminal-workspace.tsx",
     "src/app/features/terminal/terminal-workspace.test.ts",
     "src/app/features/commands/command-catalog.test.ts",
+    "src/app/features/commands/combo-commit-message-state.test.ts",
     "src/app/infrastructure/settings-store.ts",
     "src/app/infrastructure/settings-store.test.ts",
     "src/app/application/snapshot-coordinator.ts",

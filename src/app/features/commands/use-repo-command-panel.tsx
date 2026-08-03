@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Download, GitCommit, Layers3, MinusSquare, PlusSquare, RefreshCw, RotateCcw, Sparkles, TerminalSquare, Upload } from 'lucide-react';
 import { formatComboSummary, getBuiltInCommandLabel, getRepoCommands } from './command-catalog';
+import { createComboCommitMessageState } from './combo-commit-message-state';
 import { createCommandConsoleSession } from './repo-command-console';
 import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButton, RepoCommandResult, RepoDetail, RepoMutationAction } from '../../domain/types';
 import type { CommandConsoleState, PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
@@ -94,7 +95,7 @@ export function useRepoCommandPanel({
       try {
         if (isActive()) setAiError(null);
         const nextMessage = await backend.generateCommitMessage(repo.id, settings);
-        if (isActive()) setMessage(nextMessage);
+        setMessage(nextMessage);
         return nextMessage;
       } catch (error) {
         if (isActive()) setAiError(error instanceof Error ? error.message : 'AI 生成失败');
@@ -104,7 +105,7 @@ export function useRepoCommandPanel({
     if (action === 'commit') {
       const nextMessage = getMessage().trim();
       await onMutateRepo(repo.id, 'commit', repoActionBody({ message: nextMessage }));
-      if (isActive()) setMessage('');
+      setMessage('');
       return nextMessage ? `已提交：${nextMessage}` : '已提交';
     }
     if (action === 'pull') {
@@ -127,18 +128,19 @@ export function useRepoCommandPanel({
         formatComboSummary(combo.actions),
         isActive,
       );
-      let nextMessage = commitMessage;
-      const getMessage = () => nextMessage;
-      const setMessage = (value: string) => {
-        if (!isActive()) return;
-        nextMessage = value;
-        setCommitMessage(value);
-      };
+      const comboMessage = createComboCommitMessageState(commitMessage, value => {
+        if (isActive()) setCommitMessage(value);
+      });
 
       try {
         for (const action of combo.actions) {
           session.appendLine(`> ${getBuiltInCommandLabel(action)}`);
-          const result = await executeBuiltInAction(action, getMessage, setMessage, isActive);
+          const result = await executeBuiltInAction(
+            action,
+            comboMessage.getMessage,
+            comboMessage.setMessage,
+            isActive,
+          );
           if (result) session.appendLine(result);
         }
         session.finish('success');
@@ -202,7 +204,9 @@ export function useRepoCommandPanel({
     label,
     icon,
     onClick: () => triggerBusyAction(key, async isActive => {
-      await executeBuiltInAction(action, () => commitMessage, setCommitMessage, isActive);
+      await executeBuiltInAction(action, () => commitMessage, value => {
+        if (isActive()) setCommitMessage(value);
+      }, isActive);
     }),
     disabled,
     ...extras,
