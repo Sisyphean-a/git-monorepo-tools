@@ -47,6 +47,8 @@
     "src/app/domain/types.ts",
     "src/app/components/repo-terminal-shortcuts.ts",
     "src/app/components/repo-terminal-shortcuts.test.ts",
+    "src/app/components/terminal-input-trace.ts",
+    "src/app/components/terminal-input-trace.test.ts",
     "src/app/components/commit-graph.tsx",
     "src/app/components/commit-graph.test.ts"
   ]

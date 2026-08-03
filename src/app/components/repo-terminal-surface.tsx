@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Keyboard, RotateCcw } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -13,6 +13,13 @@ import {
   queueTerminalInput,
   type TerminalClipboardPasteSource,
 } from './repo-terminal-shortcuts';
+import { TerminalInputInspectorModal } from './terminal-input-inspector-modal';
+import {
+  describeTerminalKeyboardEvent,
+  describeTerminalShortcutAction,
+  type TerminalInputTraceEntry,
+  type TerminalInputTraceStage,
+} from './terminal-input-trace';
 
 type TerminalStatus = 'idle' | 'connecting' | 'running' | 'failed' | 'exited';
 type TerminalToast = { id: number; text: string } | null;
@@ -43,12 +50,37 @@ export function RepoTerminalSurface({
   const resizeFrameRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
+  const inputTraceSequenceRef = useRef(0);
 
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [shellLabel, setShellLabel] = useState('终端');
   const [error, setError] = useState<string | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [toast, setToast] = useState<TerminalToast>(null);
+  const [inputTrace, setInputTrace] = useState<readonly TerminalInputTraceEntry[]>([]);
+  const [inputInspectorOpen, setInputInspectorOpen] = useState(false);
+
+  const recordInputTrace = useCallback((stage: TerminalInputTraceStage, detail: string, data?: string) => {
+    inputTraceSequenceRef.current += 1;
+    setInputTrace(current => [...current, {
+      sequence: inputTraceSequenceRef.current,
+      time: Date.now(),
+      stage,
+      detail,
+      data,
+    }]);
+  }, []);
+
+  const writeTerminalInput = useCallback(async (targetSessionId: string, data: string, source: string) => {
+    recordInputTrace('写入终端', source, data);
+    try {
+      await terminalWorkspace.writeInput(targetSessionId, data);
+      recordInputTrace('后端写入完成', `${source}；Wails 写入调用已成功返回`, data);
+    } catch (inputError) {
+      recordInputTrace('终端写入失败', `${source}；${inputError instanceof Error ? inputError.message : '未知错误'}`, data);
+      throw inputError;
+    }
+  }, [recordInputTrace, terminalWorkspace]);
 
   const showToast = (text: string) => {
     toastIdRef.current += 1;
@@ -105,17 +137,28 @@ export function RepoTerminalSurface({
     });
   };
 
-  const enqueueTerminalInput = (data: string) => {
+  const openInputInspector = () => {
+    recordInputTrace('浏览器事件', '观测已开始；接下来按键会由窗口捕获阶段记录');
+    setInputInspectorOpen(true);
+    requestAnimationFrame(() => terminalRef.current?.focus());
+  };
+
+  const enqueueTerminalInput = (data: string, source: string) => {
     const session = sessionRef.current;
     if (!session) {
-      return;
+      const error = new Error('终端会话尚未就绪');
+      recordInputTrace('终端写入失败', `${source}；${error.message}`, data);
+      return Promise.reject(error);
     }
-    inputQueueRef.current = queueTerminalInput(
+    const write = queueTerminalInput(
       inputQueueRef.current,
-      input => terminalWorkspace.writeInput(session.sessionId, input),
+      input => writeTerminalInput(session.sessionId, input, source),
       data,
-    )
-      .catch(inputError => setError(inputError instanceof Error ? inputError.message : '终端输入失败'));
+    );
+    inputQueueRef.current = write.catch(inputError => {
+      setError(inputError instanceof Error ? inputError.message : '终端输入失败');
+    });
+    return write;
   };
 
   const startSession = async (resetTerminal: boolean) => {
@@ -221,6 +264,7 @@ export function RepoTerminalSurface({
             let pasteData = '';
             terminalPasteDataRef.current = data => {
               pasteData += data;
+              recordInputTrace('xterm 输出', 'xterm 对剪贴板文本的编码结果', data);
             };
             try {
               terminal.paste(text);
@@ -229,7 +273,7 @@ export function RepoTerminalSurface({
             }
             return pasteData;
           },
-          writeInput: data => terminalWorkspace.writeInput(session.sessionId, data),
+          writeInput: data => writeTerminalInput(session.sessionId, data, `剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`),
         });
         if (pasted) {
           terminal.focus();
@@ -294,8 +338,10 @@ export function RepoTerminalSurface({
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     outputWriterRef.current = new TerminalOutputWriter(terminal);
-    terminal.attachCustomKeyEventHandler(event => handleWindowsTerminalShortcutEvent(event, {
-      hasSelection: () => terminal.hasSelection(),
+    terminal.attachCustomKeyEventHandler(event => {
+      recordInputTrace('xterm 键盘事件', describeTerminalKeyboardEvent(event));
+      return handleWindowsTerminalShortcutEvent(event, {
+        hasSelection: () => terminal.hasSelection(),
       copySelection: () => {
         void copySelection(terminal)
           .then(copied => {
@@ -305,9 +351,17 @@ export function RepoTerminalSurface({
           })
           .catch(copyError => setError(copyError instanceof Error ? copyError.message : '复制失败'));
       },
-      pasteClipboard: () => pasteAndNotify(terminal, 'keyboard'),
-      writeInput: enqueueTerminalInput,
-    }, shortcutPlatform));
+        pasteClipboard: () => pasteAndNotify(terminal, 'keyboard'),
+        writeInput: data => {
+          void enqueueTerminalInput(data, '快捷键规则').catch(() => undefined);
+        },
+        onShortcutAction: action => recordInputTrace(
+          '快捷键处理',
+          describeTerminalShortcutAction(action),
+          action.type === 'send-input' ? action.input : undefined,
+        ),
+      }, shortcutPlatform);
+    });
     const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');
 
     const contextMenuHandler = (event: MouseEvent) => {
@@ -334,7 +388,8 @@ export function RepoTerminalSurface({
         capturePasteData(data);
         return;
       }
-      enqueueTerminalInput(data);
+      recordInputTrace('xterm 输出', 'xterm 编码后的输入字符', data);
+      void enqueueTerminalInput(data, 'xterm 输出').catch(() => undefined);
     });
 
     return () => {
@@ -421,6 +476,15 @@ export function RepoTerminalSurface({
           <span style={{ color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repo.path}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={openInputInspector}
+            title="查看终端输入观测"
+            aria-label="查看终端输入观测"
+            style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 4, color: C.textSecondary, cursor: 'pointer' }}
+          >
+            <Keyboard size={15} />
+          </button>
           {status === 'running' && (
             <button
               onClick={() => void clearSession()}
@@ -470,6 +534,18 @@ export function RepoTerminalSurface({
           />
         )}
       </div>
+      <TerminalInputInspectorModal
+        open={inputInspectorOpen}
+        sessionId={sessionId}
+        entries={inputTrace}
+        onClear={() => setInputTrace([])}
+        onClose={() => setInputInspectorOpen(false)}
+        onTrace={recordInputTrace}
+        onWriteInput={enqueueTerminalInput}
+        onSubscribeSession={(onOutput, onExit) => terminalWorkspace.subscribeSession(onOutput, onExit)}
+        onReadClipboardImagePath={terminalWorkspace.readClipboardImagePath}
+        onReadClipboardText={terminalWorkspace.readClipboardText}
+      />
     </div>
   );
 }

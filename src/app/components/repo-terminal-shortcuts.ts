@@ -28,6 +28,7 @@ interface TerminalShortcutBindings {
   readonly copySelection: () => void;
   readonly pasteClipboard: () => void;
   readonly writeInput: (input: string) => void;
+  readonly onShortcutAction?: (action: RepoTerminalShortcutAction) => void;
 }
 
 interface TerminalShortcutRule {
@@ -110,6 +111,7 @@ export function handleWindowsTerminalShortcutEvent(
   platform: string,
 ) {
   const action = getWindowsTerminalShortcutAction(event, bindings.hasSelection(), platform);
+  bindings.onShortcutAction?.(action);
   switch (action.type) {
     case 'copy-selection':
       bindings.copySelection();
