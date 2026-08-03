@@ -26,12 +26,12 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		// 深色标题栏跟随前端主题（theme.ts），非激活态文字弱化以区分窗口焦点
+		// 深色标题栏使用前端主题的 panel1（#101824），非激活态文字弱化以区分窗口焦点
 		Windows: &windows.Options{
 			Theme: windows.Dark,
 			CustomTheme: &windows.ThemeSettings{
-				DarkModeTitleBar:          windows.RGB(0x0b, 0x11, 0x18),
-				DarkModeTitleBarInactive:  windows.RGB(0x0b, 0x11, 0x18),
+				DarkModeTitleBar:          windows.RGB(0x10, 0x18, 0x24),
+				DarkModeTitleBarInactive:  windows.RGB(0x10, 0x18, 0x24),
 				DarkModeTitleText:         windows.RGB(0xdd, 0xeb, 0xff),
 				DarkModeTitleTextInactive: windows.RGB(0x5f, 0x70, 0x84),
 				DarkModeBorder:            windows.RGB(0x25, 0x32, 0x44),
