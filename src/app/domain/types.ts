@@ -108,6 +108,7 @@ export interface CommandCenterSettings {
 
 export interface AppSettings {
   scanRoots: ScanRootSetting[];
+  ignoredRepoPaths: string[];
   customCategories: string[];
   favoriteRepoIds: string[];
   aiCommit: AICommitSettings;

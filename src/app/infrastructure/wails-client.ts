@@ -15,6 +15,7 @@ import type {
 
 interface SnapshotRequest {
   scanRoots: AppSettings['scanRoots'];
+  ignoredRepoPaths: AppSettings['ignoredRepoPaths'];
   concurrency: AppSettings['gitBehavior']['concurrency'];
   pullStrategy: AppSettings['gitBehavior']['pullStrategy'];
   pushStrategy: AppSettings['gitBehavior']['pushStrategy'];
@@ -101,6 +102,7 @@ function buildSnapshotRequest(
 ): SnapshotRequest {
   return {
     scanRoots: settings?.scanRoots ?? [],
+    ignoredRepoPaths: settings?.ignoredRepoPaths ?? [],
     concurrency: settings?.gitBehavior.concurrency ?? 5,
     pullStrategy: settings?.gitBehavior.pullStrategy ?? 'ff-only',
     pushStrategy: settings?.gitBehavior.pushStrategy ?? 'upstream-only',

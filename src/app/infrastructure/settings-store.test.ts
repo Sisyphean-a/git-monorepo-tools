@@ -44,6 +44,14 @@ test('sanitizeSettings trims and deduplicates favorite repository IDs', () => {
   assert.deepEqual(settings.favoriteRepoIds, ['repo-a', 'repo-b']);
 });
 
+test('sanitizeSettings trims and deduplicates ignored repository paths', () => {
+  const settings = sanitizeSettings({
+    ignoredRepoPaths: [' E:/repos/skip ', 'e:/repos/skip', '', 'E:/repos/keep'],
+  });
+
+  assert.deepEqual(settings.ignoredRepoPaths, ['E:/repos/skip', 'E:/repos/keep']);
+});
+
 test('sanitizeSettings keeps commands scoped to their repository IDs', () => {
   const settings = sanitizeSettings({
     commandCenter: {

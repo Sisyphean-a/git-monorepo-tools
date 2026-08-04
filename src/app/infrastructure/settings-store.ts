@@ -6,6 +6,7 @@ const STORAGE_KEY = 'git-manager-ui-settings';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   scanRoots: [],
+  ignoredRepoPaths: [],
   customCategories: [],
   favoriteRepoIds: [],
   aiCommit: {
@@ -83,6 +84,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   const proxy: Partial<AppSettings['gitBehavior']['proxy']> = gitBehavior.proxy ?? {};
 
   draft.scanRoots = sanitizeScanRoots(source.scanRoots);
+  draft.ignoredRepoPaths = sanitizePaths(source.ignoredRepoPaths);
   draft.customCategories = sanitizeCategories(source.customCategories);
   draft.favoriteRepoIds = sanitizeRepoIDs(source.favoriteRepoIds);
   draft.aiCommit.apiKey = typeof aiCommit.apiKey === 'string' ? aiCommit.apiKey : draft.aiCommit.apiKey;
@@ -108,6 +110,21 @@ export function sanitizeSettings(value: unknown): AppSettings {
   draft.gitBehavior.proxy.port = sanitizePort(proxy.port, draft.gitBehavior.proxy.port);
   draft.commandCenter = sanitizeCommandCatalog(source.commandCenter);
   return draft;
+}
+
+function sanitizePaths(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const paths: string[] = [];
+  for (const item of value) {
+    const path = sanitizeText(item, '');
+    if (!path) continue;
+    const key = path.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    paths.push(path);
+  }
+  return paths;
 }
 
 function sanitizeCategories(value: unknown) {

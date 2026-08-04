@@ -397,6 +397,7 @@ export namespace snapshot {
 	}
 	export class Request {
 	    scanRoots: ScanRoot[];
+	    ignoredRepoPaths: string[];
 	    concurrency: number;
 	    pullStrategy: string;
 	    pushStrategy: string;
@@ -413,6 +414,7 @@ export namespace snapshot {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scanRoots = this.convertValues(source["scanRoots"], ScanRoot);
+	        this.ignoredRepoPaths = source["ignoredRepoPaths"];
 	        this.concurrency = source["concurrency"];
 	        this.pullStrategy = source["pullStrategy"];
 	        this.pushStrategy = source["pushStrategy"];

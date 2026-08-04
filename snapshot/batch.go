@@ -12,7 +12,7 @@ type batchRepoState struct {
 }
 
 func (s *Service) buildBatchStates(request Request) ([]batchRepoState, error) {
-	entries := s.discoverRepos(s.buildRoots(request))
+	entries := s.discoverRepos(request)
 	executor := newGitExecutor(request)
 	states := executor.buildBatchStates(entries, request.Concurrency, time.Now())
 	return s.sortBatchStates(states), nil

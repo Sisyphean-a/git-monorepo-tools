@@ -14,9 +14,11 @@ interface SettingsModalProps {
   initialTab?: SettingsTab;
   onClose: () => void;
   onSave: (settings: AppSettings) => void;
-  onAddScanRoot: () => Promise<void>;
-  onAddCategory: () => void;
+  onAddScanRoot: () => Promise<AppSettings | null>;
+  onAddCategory: () => AppSettings | null;
   onRemoveScanRoot: (path: string) => AppSettings;
+  onIgnoreRepo: (path: string) => AppSettings;
+  onUnignoreRepo: (path: string) => AppSettings;
 }
 
 export function SettingsModal({
@@ -29,6 +31,8 @@ export function SettingsModal({
   onAddScanRoot,
   onAddCategory,
   onRemoveScanRoot,
+  onIgnoreRepo,
+  onUnignoreRepo,
 }: SettingsModalProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [draft, setDraft] = useState(settings);
@@ -52,6 +56,26 @@ export function SettingsModal({
   const removeScanRoot = (path: string) => {
     const next = onRemoveScanRoot(path);
     setDraft(current => withScanRoots(current, next.scanRoots));
+  };
+
+  const addScanRoot = async () => {
+    const next = await onAddScanRoot();
+    if (next) setDraft(current => withScanRoots(current, next.scanRoots));
+  };
+
+  const addCategory = () => {
+    const next = onAddCategory();
+    if (next) setDraft(current => ({ ...current, customCategories: next.customCategories }));
+  };
+
+  const ignoreRepo = (path: string) => {
+    const next = onIgnoreRepo(path);
+    setDraft(current => ({ ...current, ignoredRepoPaths: next.ignoredRepoPaths }));
+  };
+
+  const unignoreRepo = (path: string) => {
+    const next = onUnignoreRepo(path);
+    setDraft(current => ({ ...current, ignoredRepoPaths: next.ignoredRepoPaths }));
   };
 
   const toggleFavorite = (repoId: string) => {
@@ -131,9 +155,11 @@ export function SettingsModal({
               <RepositoriesSettingsTab
                 repos={repos}
                 settings={draft}
-                onAddScanRoot={onAddScanRoot}
-                onAddCategory={onAddCategory}
+                onAddScanRoot={addScanRoot}
+                onAddCategory={addCategory}
                 onRemoveScanRoot={removeScanRoot}
+                onIgnoreRepo={ignoreRepo}
+                onUnignoreRepo={unignoreRepo}
                 onToggleFavorite={toggleFavorite}
               />
             )}

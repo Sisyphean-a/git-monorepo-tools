@@ -1,15 +1,16 @@
 package snapshot
 
 type Request struct {
-	ScanRoots      []ScanRoot       `json:"scanRoots"`
-	Concurrency    int              `json:"concurrency"`
-	PullStrategy   string           `json:"pullStrategy"`
-	PushStrategy   string           `json:"pushStrategy"`
-	TimeoutSeconds int              `json:"timeoutSeconds"`
-	RefreshRemotes bool             `json:"refreshRemotes,omitempty"`
-	Proxy          GitProxySettings `json:"proxy"`
-	RepoPath       string           `json:"repoPath,omitempty"`
-	RepoCategory   string           `json:"repoCategory,omitempty"`
+	ScanRoots        []ScanRoot       `json:"scanRoots"`
+	IgnoredRepoPaths []string         `json:"ignoredRepoPaths"`
+	Concurrency      int              `json:"concurrency"`
+	PullStrategy     string           `json:"pullStrategy"`
+	PushStrategy     string           `json:"pushStrategy"`
+	TimeoutSeconds   int              `json:"timeoutSeconds"`
+	RefreshRemotes   bool             `json:"refreshRemotes,omitempty"`
+	Proxy            GitProxySettings `json:"proxy"`
+	RepoPath         string           `json:"repoPath,omitempty"`
+	RepoCategory     string           `json:"repoCategory,omitempty"`
 }
 
 type RepoActionRequest struct {

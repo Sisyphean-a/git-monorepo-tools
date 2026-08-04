@@ -19,19 +19,21 @@ import {
   runRepoCommand,
   writeTerminalInput,
 } from './wails-client.js';
+import { DEFAULT_SETTINGS } from './settings-store.js';
 import type { AppSettings } from '../domain/types.js';
 
 test('fetchSnapshot can opt into remote refresh after page load', async () => {
-  const calls: Array<{ refreshRemotes: boolean; proxyEnabled: boolean; proxyPort: number; timeoutSeconds: number }> = [];
+  const calls: Array<{ refreshRemotes: boolean; ignoredRepoPaths: string[]; proxyEnabled: boolean; proxyPort: number; timeoutSeconds: number }> = [];
   const originalWindow = globalThis.window;
 
   const bindings = {
     GetWorkspaceBootstrap: async () => {
       throw new Error('unused');
     },
-    GetSnapshot: async (request: { refreshRemotes: boolean; proxy: { enabled: boolean; port: number }; timeoutSeconds: number }) => {
+    GetSnapshot: async (request: { refreshRemotes: boolean; ignoredRepoPaths: string[]; proxy: { enabled: boolean; port: number }; timeoutSeconds: number }) => {
       calls.push({
         refreshRemotes: request.refreshRemotes,
+        ignoredRepoPaths: request.ignoredRepoPaths,
         proxyEnabled: request.proxy.enabled,
         proxyPort: request.proxy.port,
         timeoutSeconds: request.timeoutSeconds,
@@ -103,6 +105,7 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
   try {
     await fetchSnapshot();
     await fetchSnapshot(undefined, { refreshRemotes: true });
+    await fetchSnapshot({ ...DEFAULT_SETTINGS, ignoredRepoPaths: ['E:/repos/skip'] });
     assert.equal(await readClipboardImagePath(), 'C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png');
   } finally {
     Object.defineProperty(globalThis, 'window', {
@@ -112,8 +115,9 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
   }
 
   assert.deepEqual(calls, [
-    { refreshRemotes: false, proxyEnabled: false, proxyPort: 7897, timeoutSeconds: 60 },
-    { refreshRemotes: true, proxyEnabled: false, proxyPort: 7897, timeoutSeconds: 60 },
+    { refreshRemotes: false, ignoredRepoPaths: [], proxyEnabled: false, proxyPort: 7897, timeoutSeconds: 60 },
+    { refreshRemotes: true, ignoredRepoPaths: [], proxyEnabled: false, proxyPort: 7897, timeoutSeconds: 60 },
+    { refreshRemotes: false, ignoredRepoPaths: ['E:/repos/skip'], proxyEnabled: false, proxyPort: 7897, timeoutSeconds: 60 },
   ]);
 });
 
@@ -351,6 +355,7 @@ test('generateCommitMessage uses dedicated binding', async () => {
   try {
     const message = await generateCommitMessage('repo-1', {
       scanRoots: [],
+      ignoredRepoPaths: [],
       customCategories: [],
       favoriteRepoIds: [],
       aiCommit: {

@@ -37,6 +37,48 @@ test('saveSettings persists first and reports a refresh failure', async () => {
   ]);
 });
 
+test('addScanRoot returns the persisted settings for an open settings draft', async () => {
+  const settings: AppSettings = { ...DEFAULT_SETTINGS, scanRoots: [] };
+  const actions = createSettingsActions({
+    backend: { pickFolder: async () => 'D:/repos' },
+    settingsStore: {
+      loadSettings: () => settings,
+      saveSettings: () => undefined,
+      sanitizeSettings: value => value as AppSettings,
+    },
+    settings,
+    setSettings: () => undefined,
+    snapshot: null,
+    refreshSnapshot: async () => undefined,
+    reportError: () => undefined,
+  });
+
+  const next = await actions.addScanRoot();
+
+  assert.deepEqual(next?.scanRoots, [{ path: 'D:/repos', category: 'repos 工作区' }]);
+});
+
+test('addCategory returns the persisted settings for an open settings draft', () => {
+  const settings: AppSettings = { ...DEFAULT_SETTINGS, customCategories: [] };
+  const actions = createSettingsActions({
+    backend: { pickFolder: async () => null },
+    settingsStore: {
+      loadSettings: () => settings,
+      saveSettings: () => undefined,
+      sanitizeSettings: value => value as AppSettings,
+    },
+    settings,
+    setSettings: () => undefined,
+    snapshot: null,
+    refreshSnapshot: async () => undefined,
+    reportError: () => undefined,
+  });
+
+  const next = actions.addCategory('团队');
+
+  assert.deepEqual(next?.customCategories, ['团队']);
+});
+
 test('removeScanRoot returns, persists, and refreshes with the remaining roots', async () => {
   const events: string[] = [];
   const settings: AppSettings = {
@@ -68,6 +110,33 @@ test('removeScanRoot returns, persists, and refreshes with the remaining roots',
 
   assert.deepEqual(next.scanRoots, [{ path: 'D:/repos/keep', category: '保留' }]);
   assert.deepEqual(events, ['state:1', 'save:1', 'refresh:1']);
+});
+
+test('ignoreRepo persists the path and refreshes without the ignored project', async () => {
+  const events: string[] = [];
+  const settings: AppSettings = { ...DEFAULT_SETTINGS, ignoredRepoPaths: [] };
+  const actions = createSettingsActions({
+    backend: { pickFolder: async () => null },
+    settingsStore: {
+      loadSettings: () => settings,
+      saveSettings: value => events.push(`save:${value.ignoredRepoPaths.join(',')}`),
+      sanitizeSettings: value => value as AppSettings,
+    },
+    settings,
+    setSettings: value => {
+      const next = typeof value === 'function' ? value(settings) : value;
+      events.push(`state:${next.ignoredRepoPaths.join(',')}`);
+    },
+    snapshot: null,
+    refreshSnapshot: async value => { events.push(`refresh:${value.ignoredRepoPaths.join(',')}`); },
+    reportError: () => undefined,
+  });
+
+  const next = actions.ignoreRepo('D:/repos/skip');
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  assert.deepEqual(next.ignoredRepoPaths, ['D:/repos/skip']);
+  assert.deepEqual(events, ['state:D:/repos/skip', 'save:D:/repos/skip', 'refresh:D:/repos/skip']);
 });
 
 test('withScanRoots preserves other unsaved draft settings', () => {

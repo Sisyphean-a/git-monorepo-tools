@@ -5,6 +5,7 @@ import type { AppSettings, RepoLog } from '../domain/types.js';
 
 const settings: AppSettings = {
   scanRoots: [],
+  ignoredRepoPaths: [],
   customCategories: [],
   favoriteRepoIds: [],
   aiCommit: {

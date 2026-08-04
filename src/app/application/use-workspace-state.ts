@@ -15,13 +15,6 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [selectedRepoId, setSelectedRepoId] = useState('');
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const sidebar = useSidebarScan({
-    settings,
-    selectedRepoId,
-    reportError: setRefreshError,
-    refreshRepo: backend.refreshRepo,
-  });
-
   const applySnapshot = (nextSnapshot: AppSnapshot) => {
     setSnapshot(nextSnapshot);
     sidebar.syncSidebarSnapshot(nextSnapshot);
@@ -38,6 +31,11 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     reportError: setRefreshError,
     fetchSnapshot: backend.fetchSnapshot,
     skipInitialRefresh: true,
+  });
+  const sidebar = useSidebarScan({
+    settings,
+    reportError: setRefreshError,
+    refreshSnapshot: refresh.refreshSnapshot,
   });
   const startup = useProgressiveStartupScan({
     settings,

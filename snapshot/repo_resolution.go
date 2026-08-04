@@ -14,7 +14,7 @@ func (s *Service) resolveRepoForAction(repoID, action string, request Request, b
 		action,
 		body,
 		func() []repoEntry {
-			return s.discoverRepos(s.buildRoots(request))
+			return s.discoverRepos(request)
 		},
 		time.Now(),
 		executor.buildRepoSnapshot,
@@ -23,7 +23,7 @@ func (s *Service) resolveRepoForAction(repoID, action string, request Request, b
 
 func (s *Service) resolveRepo(repoID string, request Request) (RepoDetail, error) {
 	executor := newGitExecutor(request)
-	return resolveRepoFromEntries(repoID, s.discoverRepos(s.buildRoots(request)), time.Now(), executor.buildRepoSnapshot)
+	return resolveRepoFromEntries(repoID, s.discoverRepos(request), time.Now(), executor.buildRepoSnapshot)
 }
 
 func (s *Service) resolveRepoEntry(repoID string, request Request) (repoEntry, error) {
@@ -32,7 +32,7 @@ func (s *Service) resolveRepoEntry(repoID string, request Request) (repoEntry, e
 	} else if ok {
 		return hinted, nil
 	}
-	return resolveRepoEntryFromEntries(repoID, s.discoverRepos(s.buildRoots(request)))
+	return resolveRepoEntryFromEntries(repoID, s.discoverRepos(request))
 }
 
 func resolveRepoByPath(

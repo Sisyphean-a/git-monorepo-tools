@@ -116,7 +116,10 @@ function AppDialogs({
   };
   const addCategory = () => {
     const name = window.prompt('输入新分类名称');
-    if (name && workspace.addCategory(name)) dialogs.closeAddMenu();
+    if (!name) return null;
+    const next = workspace.addCategory(name);
+    if (next) dialogs.closeAddMenu();
+    return next;
   };
 
   return (
@@ -142,9 +145,11 @@ function AppDialogs({
           workspace.saveSettings(settings);
           dialogs.closeSettings();
         }}
-        onAddScanRoot={async () => { await workspace.addScanRoot(); }}
+        onAddScanRoot={workspace.addScanRoot}
         onAddCategory={addCategory}
         onRemoveScanRoot={workspace.removeScanRoot}
+        onIgnoreRepo={workspace.ignoreRepo}
+        onUnignoreRepo={workspace.unignoreRepo}
       />
       <CommandModal
         repo={snapshot.repos.find(repo => repo.id === workspace.selectedRepoId) ?? null}

@@ -36,7 +36,7 @@ func BenchmarkResolveRepo(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		repo, err := resolveRepoFromEntries(targetID, service.discoverRepos(service.buildRoots(request)), scanTime, buildRepoSnapshot)
+		repo, err := resolveRepoFromEntries(targetID, service.discoverRepos(request), scanTime, buildRepoSnapshot)
 		if err != nil {
 			b.Fatal(err)
 		}

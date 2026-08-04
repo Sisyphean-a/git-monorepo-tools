@@ -196,6 +196,36 @@ func TestBuildWorkspaceBootstrapReturnsCheckingRepos(t *testing.T) {
 	}
 }
 
+func TestBuildWorkspaceBootstrapExcludesIgnoredRepos(t *testing.T) {
+	root := t.TempDir()
+	repoA := filepath.Join(root, "repo-a")
+	repoB := filepath.Join(root, "repo-b")
+	initTestRepo(t, repoA)
+	initTestRepo(t, repoB)
+
+	service := NewService(repoA)
+	bootstrap, err := service.BuildWorkspaceBootstrap(Request{
+		ScanRoots:        []ScanRoot{{Path: root, Category: "测试工作区"}},
+		IgnoredRepoPaths: []string{repoB},
+	})
+	if err != nil {
+		t.Fatalf("build workspace bootstrap: %v", err)
+	}
+	if len(bootstrap.Repos) != 1 {
+		t.Fatalf("expected 1 monitored repo, got %d", len(bootstrap.Repos))
+	}
+	if bootstrap.Repos[0].ID != repoIDForPath(repoA) {
+		t.Fatalf("expected repo-a to remain monitored, got %q", bootstrap.Repos[0].ID)
+	}
+}
+
+func TestIgnoredRepoPathSetNormalizesCaseSeparatorsAndTrailingSlash(t *testing.T) {
+	ignoredPaths := ignoredRepoPathSet([]string{" E:\\repos\\skip\\ "})
+	if _, ignored := ignoredPaths[normalizedRepoPathKey("e:/repos/skip")]; !ignored {
+		t.Fatal("expected equivalent repository path to be ignored")
+	}
+}
+
 func TestBuildRepoSnapshotUsesRequestHintWithoutScanRoots(t *testing.T) {
 	root := t.TempDir()
 	repoPath := filepath.Join(root, "repo-a")

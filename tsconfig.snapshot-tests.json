@@ -20,6 +20,7 @@
     "src/app/application/settings-actions.test.ts",
     "src/app/application/use-batch-controller.test.ts",
     "src/app/application/use-progressive-startup-scan.test.ts",
+    "src/app/application/use-sidebar-scan.test.ts",
     "src/app/domain/repo-snapshot-merge.ts",
     "src/app/domain/repo-snapshot-merge.test.ts",
     "src/app/domain/pull-results.ts",
@@ -50,6 +51,7 @@
     "src/app/components/terminal-input-trace.ts",
     "src/app/components/terminal-input-trace.test.ts",
     "src/app/components/commit-graph.tsx",
-    "src/app/components/commit-graph.test.ts"
+    "src/app/components/commit-graph.test.ts",
+    "src/app/components/repositories-settings-tab.test.ts"
   ]
 }

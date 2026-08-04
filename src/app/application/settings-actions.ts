@@ -19,6 +19,8 @@ export function createSettingsActions(context: SettingsActionContext) {
     addScanRoot: () => addScanRoot(context),
     addCategory: (name: string) => addCategory(context, name),
     removeScanRoot: (path: string) => removeScanRoot(context, path),
+    ignoreRepo: (path: string) => ignoreRepo(context, path),
+    unignoreRepo: (path: string) => unignoreRepo(context, path),
   };
 }
 
@@ -51,28 +53,27 @@ function toggleAutoScan(context: SettingsActionContext) {
 async function addScanRoot(context: SettingsActionContext) {
   try {
     const folder = await context.backend.pickFolder();
-    if (!folder || hasScanRoot(context.settings, folder)) return false;
+    if (!folder || hasScanRoot(context.settings, folder)) return null;
     const rootName = folder.split('/').at(-1) ?? '自定义工作区';
     const next = persistSettings(context, {
       ...context.settings,
       scanRoots: [...context.settings.scanRoots, { path: folder, category: `${rootName} 工作区` }],
     });
     await context.refreshSnapshot(next);
-    return true;
+    return next;
   } catch (error) {
     context.reportError(error, '添加目录失败');
-    return false;
+    return null;
   }
 }
 
 function addCategory(context: SettingsActionContext, name: string) {
   const category = name.trim();
-  if (!category || hasCategory(context.settings, context.snapshot, category)) return false;
-  persistSettings(context, {
+  if (!category || hasCategory(context.settings, context.snapshot, category)) return null;
+  return persistSettings(context, {
     ...context.settings,
     customCategories: [...context.settings.customCategories, category],
   });
-  return true;
 }
 
 function removeScanRoot(context: SettingsActionContext, path: string) {
@@ -81,6 +82,24 @@ function removeScanRoot(context: SettingsActionContext, path: string) {
     scanRoots: context.settings.scanRoots.filter(item => item.path !== path),
   });
   void context.refreshSnapshot(next).catch(error => context.reportError(error, '移除目录后刷新失败'));
+  return next;
+}
+
+function ignoreRepo(context: SettingsActionContext, path: string) {
+  const next = persistSettings(context, {
+    ...context.settings,
+    ignoredRepoPaths: [...context.settings.ignoredRepoPaths, path],
+  });
+  void context.refreshSnapshot(next).catch(error => context.reportError(error, '忽略项目后刷新失败'));
+  return next;
+}
+
+function unignoreRepo(context: SettingsActionContext, path: string) {
+  const next = persistSettings(context, {
+    ...context.settings,
+    ignoredRepoPaths: context.settings.ignoredRepoPaths.filter(item => item.toLowerCase() !== path.toLowerCase()),
+  });
+  void context.refreshSnapshot(next).catch(error => context.reportError(error, '恢复项目监控后刷新失败'));
   return next;
 }
 

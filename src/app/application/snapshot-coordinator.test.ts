@@ -5,6 +5,7 @@ import type { AppSettings, AppSnapshot } from '../domain/types.js';
 
 const settings = (concurrency: number): AppSettings => ({
   scanRoots: [],
+  ignoredRepoPaths: [],
   customCategories: [],
   favoriteRepoIds: [],
   aiCommit: {

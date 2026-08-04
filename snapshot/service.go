@@ -42,7 +42,7 @@ func (s *Service) BuildAppSnapshot(request Request) (AppSnapshot, error) {
 
 func (s *Service) BuildWorkspaceBootstrap(request Request) (WorkspaceBootstrap, error) {
 	scanTime := time.Now()
-	entries := s.discoverRepos(s.buildRoots(request))
+	entries := s.discoverRepos(request)
 	snapshots := s.sortSnapshots(buildBootstrapSnapshots(entries, scanTime))
 
 	return WorkspaceBootstrap{
@@ -63,7 +63,7 @@ func (s *Service) BuildRepoSnapshot(repoID string, request Request, refreshRemot
 
 func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppSnapshot, error) {
 	scanTime := time.Now()
-	repoEntries := s.discoverRepos(s.buildRoots(request))
+	repoEntries := s.discoverRepos(request)
 	snapshots := newGitExecutor(request).buildSnapshots(repoEntries, snapshotBuildOptions{
 		scanTime:       scanTime,
 		concurrency:    request.Concurrency,
@@ -104,11 +104,15 @@ func (s *Service) buildRoots(request Request) []ScanRoot {
 	return dedupeRoots(roots)
 }
 
-func (s *Service) discoverRepos(roots []ScanRoot) []repoEntry {
+func (s *Service) discoverRepos(request Request) []repoEntry {
+	ignoredPaths := ignoredRepoPathSet(request.IgnoredRepoPaths)
 	repos := map[string]repoEntry{}
-	for _, root := range roots {
+	for _, root := range s.buildRoots(request) {
 		for _, repoPath := range collectRepoPaths(root.Path) {
-			key := strings.ToLower(repoPath)
+			key := normalizedRepoPathKey(repoPath)
+			if _, ignored := ignoredPaths[key]; ignored {
+				continue
+			}
 			if _, exists := repos[key]; exists {
 				continue
 			}
@@ -121,6 +125,21 @@ func (s *Service) discoverRepos(roots []ScanRoot) []repoEntry {
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+func ignoredRepoPathSet(paths []string) map[string]struct{} {
+	ignoredPaths := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		ignoredPaths[normalizedRepoPathKey(path)] = struct{}{}
+	}
+	return ignoredPaths
+}
+
+func normalizedRepoPathKey(path string) string {
+	return strings.ToLower(normalizePath(filepath.Clean(normalizePath(strings.TrimSpace(path)))))
 }
 
 func buildBootstrapSnapshots(entries []repoEntry, scanTime time.Time) []repoSnapshot {
