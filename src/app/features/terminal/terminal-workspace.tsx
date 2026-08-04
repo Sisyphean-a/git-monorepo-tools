@@ -56,6 +56,7 @@ export class TerminalWorkspace {
   private readonly listeners = new Set<() => void>();
   private readonly entries = new Map<string, TerminalSessionEntry>();
   private readonly pendingEntries = new Map<string, RepoTerminalState>();
+  private readonly pendingOutputBySession = new Map<string, string[]>();
   private readonly subscribers = new Set<TerminalSessionSubscriber>();
   private snapshot: TerminalStatusSnapshot = {};
   private outputStop: (() => void) | null;
@@ -133,6 +134,14 @@ export class TerminalWorkspace {
     return {
       bindSession: sessionId => {
         subscriber.sessionId = sessionId;
+        const pendingOutput = this.pendingOutputBySession.get(sessionId);
+        if (!pendingOutput) {
+          return;
+        }
+        this.pendingOutputBySession.delete(sessionId);
+        for (const chunk of pendingOutput) {
+          subscriber.onOutput(chunk);
+        }
       },
       dispose: () => {
         this.subscribers.delete(subscriber);
@@ -150,6 +159,7 @@ export class TerminalWorkspace {
       this.decayTimer = null;
     }
     this.listeners.clear();
+    this.pendingOutputBySession.clear();
     this.subscribers.clear();
   }
 
@@ -215,10 +225,17 @@ export class TerminalWorkspace {
       }
     }
 
+    let delivered = false;
     for (const subscriber of this.subscribers) {
       if (subscriber.sessionId === event.sessionId) {
+        delivered = true;
         subscriber.onOutput(event.chunk);
       }
+    }
+    if (!delivered) {
+      const pendingOutput = this.pendingOutputBySession.get(event.sessionId) ?? [];
+      pendingOutput.push(event.chunk);
+      this.pendingOutputBySession.set(event.sessionId, pendingOutput);
     }
   }
 

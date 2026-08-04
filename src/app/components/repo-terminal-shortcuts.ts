@@ -8,7 +8,8 @@ export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
 export const ctrlVInput = '\x16';
 export const ctrlJInput = '\x0a';
 export const ctrlWInput = '\x17';
-export const shiftEnterInput = '\x1b[13;2u';
+// Pi handles a raw line feed as its cross-terminal newline action.
+export const shiftEnterInput = ctrlJInput;
 
 interface RepoTerminalShortcutEvent {
   readonly type: string;
@@ -111,7 +112,9 @@ export function handleWindowsTerminalShortcutEvent(
   platform: string,
 ) {
   const action = getWindowsTerminalShortcutAction(event, bindings.hasSelection(), platform);
-  bindings.onShortcutAction?.(action);
+  if (event.type === 'keydown') {
+    bindings.onShortcutAction?.(action);
+  }
   switch (action.type) {
     case 'copy-selection':
       bindings.copySelection();

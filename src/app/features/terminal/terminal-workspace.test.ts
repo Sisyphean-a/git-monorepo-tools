@@ -93,6 +93,23 @@ test('keeps default and independent sessions in one lifecycle', async () => {
   workspace.dispose();
 });
 
+test('replays startup output that arrives before a surface binds its session', async () => {
+  const runtime = createRuntime();
+  const workspace = new TerminalWorkspace(runtime);
+  const session = await workspace.ensureSession({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
+  const output: string[] = [];
+
+  runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: '\x1b[?2004h' });
+  runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: '\x1b[>7u' });
+
+  const subscription = workspace.subscribeSession(chunk => output.push(chunk), () => {});
+  subscription.bindSession(session.sessionId);
+
+  assert.deepEqual(output, ['\x1b[?2004h', '\x1b[>7u']);
+  subscription.dispose();
+  workspace.dispose();
+});
+
 test('releases independent sessions, including a session that starts after disposal', async () => {
   const runtime = createRuntime();
   const workspace = new TerminalWorkspace(runtime);

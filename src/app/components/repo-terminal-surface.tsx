@@ -140,7 +140,6 @@ export function RepoTerminalSurface({
   const openInputInspector = () => {
     recordInputTrace('浏览器事件', '观测已开始；接下来按键会由窗口捕获阶段记录');
     setInputInspectorOpen(true);
-    requestAnimationFrame(() => terminalRef.current?.focus());
   };
 
   const enqueueTerminalInput = (data: string, source: string) => {
@@ -536,15 +535,12 @@ export function RepoTerminalSurface({
       </div>
       <TerminalInputInspectorModal
         open={inputInspectorOpen}
-        sessionId={sessionId}
+        terminal={terminalRef.current}
         entries={inputTrace}
         onClear={() => setInputTrace([])}
         onClose={() => setInputInspectorOpen(false)}
         onTrace={recordInputTrace}
-        onWriteInput={enqueueTerminalInput}
-        onSubscribeSession={(onOutput, onExit) => terminalWorkspace.subscribeSession(onOutput, onExit)}
-        onReadClipboardImagePath={terminalWorkspace.readClipboardImagePath}
-        onReadClipboardText={terminalWorkspace.readClipboardText}
+        onTerminalViewportChanged={scheduleResize}
       />
     </div>
   );

@@ -6,7 +6,7 @@ import {
   formatTerminalInputTrace,
 } from './terminal-input-trace.js';
 
-test('input trace preserves the Shift+Enter event and Pi protocol sequence', () => {
+test('input trace preserves the Shift+Enter event and its stable Pi newline input', () => {
   const keyboardEvent = describeTerminalKeyboardEvent({
     type: 'keydown',
     key: 'Enter',
@@ -18,18 +18,18 @@ test('input trace preserves the Shift+Enter event and Pi protocol sequence', () 
     repeat: false,
     isComposing: false,
   });
-  const mapped = describeTerminalShortcutAction({ type: 'send-input', input: '\x1b[13;2u' });
+  const mapped = describeTerminalShortcutAction({ type: 'send-input', input: '\n' });
   const trace = formatTerminalInputTrace({
     sequence: 1,
     time: new Date(2026, 0, 2, 3, 4, 5, 6).getTime(),
     stage: '写入终端',
     detail: mapped,
-    data: '\x1b[13;2u',
+    data: '\n',
   });
 
   assert.match(keyboardEvent, /Shift\+Enter/);
   assert.equal(mapped, '规则转换并直接写入');
-  assert.match(trace, /data="\\u001b\[13;2u" \(7 字符\)/);
+  assert.match(trace, /data="\\n" \(1 字符\)/);
 });
 
 test('input trace identifies xterm pass-through handling', () => {

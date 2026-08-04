@@ -1,175 +1,79 @@
 import { Copy, Trash2, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import { Terminal } from '@xterm/xterm';
-import '@xterm/xterm/css/xterm.css';
+import type { Terminal } from '@xterm/xterm';
 import { C } from '../theme';
-import { TerminalOutputWriter } from '../features/terminal/terminal-output-writer';
-import {
-  handleWindowsTerminalShortcutEvent,
-  pasteTerminalClipboard,
-  type TerminalClipboardPasteSource,
-} from './repo-terminal-shortcuts';
-import {
-  describeTerminalKeyboardEvent,
-  describeTerminalShortcutAction,
-  formatTerminalInputTrace,
-  type TerminalInputTraceEntry,
-  type TerminalInputTraceStage,
-} from './terminal-input-trace';
+import { describeTerminalKeyboardEvent, formatTerminalInputTrace, type TerminalInputTraceEntry, type TerminalInputTraceStage } from './terminal-input-trace';
 
 interface TerminalInputInspectorModalProps {
   open: boolean;
-  sessionId: string | null;
+  terminal: Terminal | null;
   entries: readonly TerminalInputTraceEntry[];
   onClear: () => void;
   onClose: () => void;
   onTrace: (stage: TerminalInputTraceStage, detail: string, data?: string) => void;
-  onWriteInput: (data: string, source: string) => Promise<void>;
-  onSubscribeSession: (onOutput: (chunk: string) => void, onExit: (exitCode: number) => void) => {
-    bindSession: (sessionId: string) => void;
-    dispose: () => void;
-  };
-  onReadClipboardImagePath: () => Promise<string | null>;
-  onReadClipboardText: () => Promise<string>;
+  onTerminalViewportChanged: () => void;
 }
 
 export function TerminalInputInspectorModal({
   open,
-  sessionId,
+  terminal,
   entries,
   onClear,
   onClose,
   onTrace,
-  onWriteInput,
-  onSubscribeSession,
-  onReadClipboardImagePath,
-  onReadClipboardText,
+  onTerminalViewportChanged,
 }: TerminalInputInspectorModalProps) {
   const inputViewportRef = useRef<HTMLDivElement | null>(null);
-  const traceViewportRef = useRef<HTMLDivElement | null>(null);
-  const traceTerminalRef = useRef<Terminal | null>(null);
   const onTraceRef = useRef(onTrace);
-  const onWriteInputRef = useRef(onWriteInput);
-  const onSubscribeSessionRef = useRef(onSubscribeSession);
-  const onReadClipboardImagePathRef = useRef(onReadClipboardImagePath);
-  const onReadClipboardTextRef = useRef(onReadClipboardText);
-  const entriesRef = useRef(entries);
+  const onTerminalViewportChangedRef = useRef(onTerminalViewportChanged);
 
   onTraceRef.current = onTrace;
-  onWriteInputRef.current = onWriteInput;
-  onSubscribeSessionRef.current = onSubscribeSession;
-  onReadClipboardImagePathRef.current = onReadClipboardImagePath;
-  onReadClipboardTextRef.current = onReadClipboardText;
-  entriesRef.current = entries;
+  onTerminalViewportChangedRef.current = onTerminalViewportChanged;
 
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      onTraceRef.current('浏览器事件', describeTerminalKeyboardEvent(event));
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [onClose, open]);
 
   useEffect(() => {
-    if (!open || !inputViewportRef.current || !traceViewportRef.current) return;
+    if (!open || !terminal || !inputViewportRef.current) return;
+    const terminalElement = terminal.element;
+    const originalParent = terminalElement?.parentElement;
+    if (!terminalElement || !originalParent) return;
 
-    const inputTerminal = createTerminal();
-    const traceTerminal = createTerminal();
-    inputTerminal.open(inputViewportRef.current);
-    traceTerminal.open(traceViewportRef.current);
-    traceTerminalRef.current = traceTerminal;
-    traceTerminal.options.disableStdin = true;
-
-    let sequence = Math.max(0, ...entriesRef.current.map(entry => entry.sequence));
-    for (const entry of entriesRef.current) {
-      traceTerminal.writeln(formatTerminalInputTrace(entry));
-    }
-
-    const record = (stage: TerminalInputTraceStage, detail: string, data?: string) => {
-      sequence += 1;
-      traceTerminal.writeln(formatTerminalInputTrace({ sequence, time: Date.now(), stage, detail, data }));
-      onTraceRef.current(stage, detail, data);
-    };
-
-    const outputWriter = new TerminalOutputWriter(inputTerminal);
-    const subscription = onSubscribeSessionRef.current(
-      chunk => outputWriter.enqueue(chunk),
-      exitCode => outputWriter.enqueue(`\r\n\x1b[90m[process exited ${exitCode}]\x1b[0m\r\n`),
-    );
-    const pasteDataRef: { current: ((data: string) => void) | null } = { current: null };
-    const pasteClipboard = (source: TerminalClipboardPasteSource) => {
-      void pasteTerminalClipboard({
-        source,
-        getClipboardImagePath: onReadClipboardImagePathRef.current,
-        getClipboardText: onReadClipboardTextRef.current,
-        transformPastedText: text => {
-          let data = '';
-          pasteDataRef.current = chunk => {
-            data += chunk;
-            record('xterm 输出', '真实 xterm 对剪贴板文本的编码结果', chunk);
-          };
-          try {
-            inputTerminal.paste(text);
-          } finally {
-            pasteDataRef.current = null;
-          }
-          return data;
-        },
-        writeInput: data => onWriteInputRef.current(data, `剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`),
-      }).catch(error => record('终端写入失败', `剪贴板读取或写入失败；${error instanceof Error ? error.message : '未知错误'}`));
-    };
-    subscription.bindSession(sessionId ?? '');
-
-    record('浏览器事件', sessionId ? '真实终端输入观测已就绪；焦点在左侧终端' : '终端会话尚未就绪');
-    const captureKeyboardEvent = (event: KeyboardEvent) => {
-      record('浏览器事件', describeTerminalKeyboardEvent(event));
-    };
-    window.addEventListener('keydown', captureKeyboardEvent, true);
-    inputTerminal.attachCustomKeyEventHandler(event => {
-      record('xterm 键盘事件', describeTerminalKeyboardEvent(event));
-      return handleWindowsTerminalShortcutEvent(event, {
-        hasSelection: () => inputTerminal.hasSelection(),
-        copySelection: () => record('快捷键处理', '真实终端复制选区'),
-        pasteClipboard: () => pasteClipboard('keyboard'),
-        writeInput: data => onWriteInputRef.current(data, '快捷键规则'),
-        onShortcutAction: action => record(
-          '快捷键处理',
-          describeTerminalShortcutAction(action),
-          action.type === 'send-input' ? action.input : undefined,
-        ),
-      }, window.navigator.platform ?? '');
-    });
-    const inputDisposable = inputTerminal.onData(data => {
-      const capturePasteData = pasteDataRef.current;
-      if (capturePasteData) {
-        capturePasteData(data);
-        return;
-      }
-      record('xterm 输出', '真实 xterm 编码后的输入字符', data);
-      onWriteInputRef.current(data, 'xterm 输出');
+    inputViewportRef.current.appendChild(terminalElement);
+    requestAnimationFrame(() => {
+      onTerminalViewportChangedRef.current();
+      terminal.focus();
     });
 
-    requestAnimationFrame(() => inputTerminal.focus());
     return () => {
-      inputDisposable.dispose();
-      window.removeEventListener('keydown', captureKeyboardEvent, true);
-      subscription.dispose();
-      outputWriter.dispose();
-      inputTerminal.dispose();
-      traceTerminal.dispose();
-      traceTerminalRef.current = null;
+      originalParent.appendChild(terminalElement);
+      requestAnimationFrame(() => {
+        onTerminalViewportChangedRef.current();
+        terminal.focus();
+      });
     };
-  }, [open, sessionId]);
+  }, [open, terminal]);
 
   if (!open) return null;
 
+  const content = entries.length > 0
+    ? entries.map(formatTerminalInputTrace).join('\n')
+    : '等待真实终端输入...';
+
   const copyTrace = () => {
-    navigator.clipboard.writeText(entries.map(formatTerminalInputTrace).join('\n'))
-      .catch(error => console.error('复制终端输入观测失败', error));
+    navigator.clipboard.writeText(content).catch(error => console.error('复制终端输入观测失败', error));
   };
 
   return (
@@ -205,16 +109,7 @@ export function TerminalInputInspectorModal({
           <button type="button" onClick={copyTrace} title="复制观测结果" aria-label="复制观测结果" style={iconButtonStyle}>
             <Copy size={15} />
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              traceTerminalRef.current?.clear();
-              onClear();
-            }}
-            title="清空观测结果"
-            aria-label="清空观测结果"
-            style={iconButtonStyle}
-          >
+          <button type="button" onClick={onClear} title="清空观测结果" aria-label="清空观测结果" style={iconButtonStyle}>
             <Trash2 size={15} />
           </button>
           <button type="button" onClick={onClose} title="关闭" aria-label="关闭" style={iconButtonStyle}>
@@ -222,64 +117,42 @@ export function TerminalInputInspectorModal({
           </button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', flex: 1, minHeight: 0, background: '#0b1220' }}>
-          <TerminalPane label="真实终端输入区域" viewportRef={inputViewportRef} />
-          <TerminalPane label="输入观测结果" viewportRef={traceViewportRef} bordered />
+          <TerminalPane label="真实终端输入区域">
+            <div ref={inputViewportRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '10px 12px' }} />
+          </TerminalPane>
+          <TerminalPane label="输入观测结果" bordered>
+            <pre
+              style={{
+                margin: 0,
+                padding: '10px 12px',
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: '#dbe7f5',
+                fontSize: 12,
+                lineHeight: 1.65,
+                fontFamily: 'JetBrains Mono, Consolas, monospace',
+                flex: 1,
+              }}
+            >
+              {content}
+            </pre>
+          </TerminalPane>
         </div>
       </section>
     </>
   );
 }
 
-function TerminalPane({
-  label,
-  viewportRef,
-  bordered = false,
-}: {
-  label: string;
-  viewportRef: React.RefObject<HTMLDivElement>;
-  bordered?: boolean;
-}) {
+function TerminalPane({ children, label, bordered = false }: { children: React.ReactNode; label: string; bordered?: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, borderLeft: bordered ? `1px solid ${C.border}` : 'none' }}>
       <div style={{ flexShrink: 0, padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.panel2, color: C.textSecondary, fontSize: 11, fontWeight: 600 }}>
         {label}
       </div>
-      <div ref={viewportRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '10px 12px' }} />
+      {children}
     </div>
   );
-}
-
-function createTerminal() {
-  return new Terminal({
-    allowTransparency: true,
-    cursorBlink: true,
-    fontFamily: 'JetBrains Mono, Consolas, monospace',
-    fontSize: 12,
-    rows: 28,
-    scrollback: 2000,
-    theme: {
-      background: '#0b1220',
-      foreground: '#dbe7f5',
-      cursor: '#7dd3fc',
-      selectionBackground: '#1d4ed866',
-      black: '#0f172a',
-      blue: '#60a5fa',
-      brightBlack: '#64748b',
-      brightBlue: '#93c5fd',
-      brightCyan: '#67e8f9',
-      brightGreen: '#86efac',
-      brightMagenta: '#f9a8d4',
-      brightRed: '#fda4af',
-      brightWhite: '#f8fafc',
-      brightYellow: '#fde68a',
-      cyan: '#22d3ee',
-      green: '#4ade80',
-      magenta: '#f472b6',
-      red: '#f87171',
-      white: '#e2e8f0',
-      yellow: '#facc15',
-    },
-  });
 }
 
 const iconButtonStyle = {

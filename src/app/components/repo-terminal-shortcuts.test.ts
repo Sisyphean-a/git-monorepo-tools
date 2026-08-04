@@ -47,7 +47,7 @@ test('windows ctrl+c without selection passes through to terminal', () => {
   }, false, 'Win32'), { type: 'pass-through' });
 });
 
-test('windows shift+enter sends the Pi keyboard protocol sequence', () => {
+test('windows shift+enter sends Pi newline input without enhanced keyboard negotiation', () => {
   assert.deepEqual(getWindowsTerminalShortcutAction({
     type: 'keydown',
     ctrlKey: false,
@@ -182,6 +182,7 @@ test('windows application and compatibility shortcuts write their mapped input',
   assert.equal(ctrlBackspaceAllowed, false);
   assert.equal(preventDefaultCalls, 3);
   assert.deepEqual(writes, [shiftEnterInput, ctrlJInput, ctrlWInput]);
+  assert.equal(shiftEnterInput, ctrlJInput);
 });
 
 test('application clipboard text paste checks for an image before preserving terminal-transformed text', async () => {
