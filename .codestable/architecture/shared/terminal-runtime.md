@@ -6,8 +6,8 @@
 
 - 默认终端按仓库路径复用会话：`EnsureTerminalSession` 返回现有会话或创建新会话。用户新增的终端标签调用 `CreateTerminalSession`，即使同一仓库已有终端也必须创建独立会话；独立标签只在创建它的仓库处展示，切换仓库时不得复用或展示其他仓库的会话。工作区主标签的选择按仓库独立保留，首次打开仓库默认展示“变更”，切回仓库时恢复该仓库此前选择。关闭独立终端标签调用 `CloseTerminalSession` 时，必须先让会话不再可复用，再终止对应进程。`RestartTerminalSession` 只替换指定会话。
 - 终端输入按会话串行写入；会话结束、未知会话和启动失败必须显式报错。
-- Windows 粘贴先用原生剪贴板格式检查图片；仅检测到图片时才启动隐藏的 PowerShell，将它落为 `%TEMP%/pi-clipboard-*.png` 并按输入队列写入终端。没有图片时不启动子进程，直接保留 xterm 的文本粘贴转换。终端快捷键规则表只拦截应用占用或因浏览器编码丢失语义的组合键；其余按键（包括 `Ctrl+←/→`）保持 xterm 默认透传。`Ctrl+V`、`Alt+V`、`Shift+Enter`、`Ctrl+J` 与 `Ctrl+Backspace` 分别由规则表转换后写入同一队列，其中 `Ctrl+Backspace` 发送 `Ctrl+W`，匹配 PowerShell PSReadLine 的按词删除绑定。
-- 后端把终端输出合并为批次再通过 `repo-terminal-output` 事件发送，关闭时先发送尾部内容；前端 `terminal-workspace` module 通过最小 `TerminalRuntime` interface 拥有会话 lifecycle、按 `sessionId` 的事件分发和按仓库的状态聚合，不能把一个终端的事件写入另一个终端。各终端即使暂时不可见，也必须持续写入自身 xterm，项目切换不得由前端中转层裁剪输出或清空已有历史；历史淘汰仅遵循 xterm 自身的正常滚动缓冲策略。`RepoTerminalSurface` 只负责 xterm 显示与输入转发，不直接订阅运行时事件或调用会话绑定。
+- Windows 粘贴先用原生剪贴板格式检查图片；仅检测到图片时才启动隐藏的 PowerShell，将它落为 `%TEMP%/pi-clipboard-*.png` 并按输入队列写入终端。没有图片时不启动子进程，直接保留 xterm 的文本粘贴转换。终端快捷键规则表只拦截应用占用或因浏览器编码丢失语义的组合键；其余按键（包括 `Ctrl+←/→`）保持 xterm 默认透传。`Ctrl+V`、`Alt+V`、`Shift+Enter`、`Ctrl+J` 与 `Ctrl+Backspace` 分别由规则表转换后写入同一队列；Windows 的 `Shift+Enter` 与 `Ctrl+J` 都发送原始 LF，作为 Pi 跨终端稳定识别的新行输入；`Ctrl+Backspace` 发送 `Ctrl+W`，匹配 PowerShell PSReadLine 的按词删除绑定。
+- 后端把终端输出合并为批次再通过 `repo-terminal-output` 事件发送，关闭时先发送尾部内容；前端 `terminal-workspace` module 通过最小 `TerminalRuntime` interface 拥有会话 lifecycle、按 `sessionId` 的事件分发和按仓库的状态聚合，不能把一个终端的事件写入另一个终端。会话创建和 xterm 绑定之间到达的输出必须按会话缓存并在绑定时按原顺序回放，不能丢弃；Pi 等交互程序会在启动时用这些输出开启 bracketed paste 并协商键盘协议。各终端即使暂时不可见，也必须持续写入自身 xterm，项目切换不得由前端中转层裁剪输出或清空已有历史；历史淘汰仅遵循 xterm 自身的正常滚动缓冲策略。`RepoTerminalSurface` 只负责 xterm 显示与输入转发，不直接订阅运行时事件或调用会话绑定。
 - 应用关闭时终止全部会话；Windows ConPTY 进程放入 kill-on-close Job，避免遗留子进程。
 
 ## 代码锚点
