@@ -25,6 +25,14 @@ export type TerminalRuntime = Pick<
 type TerminalStatusSnapshot = Readonly<Record<string, RepoTerminalState>>;
 type TerminalOutputHandler = (chunk: string) => void;
 type TerminalExitHandler = (exitCode: number) => void;
+type TerminalDeliveryFailureHandler = (message: string) => void;
+
+export interface TerminalWorkspaceOptions {
+  maxPendingOutputBytes?: number;
+}
+
+const DEFAULT_MAX_PENDING_OUTPUT_BYTES = 1024 * 1024;
+const textEncoder = new TextEncoder();
 
 type TerminalSessionEntry = {
   repoId: string;
@@ -37,6 +45,7 @@ type TerminalSessionSubscriber = {
   sessionId: string | null;
   onOutput: TerminalOutputHandler;
   onExit: TerminalExitHandler;
+  onDeliveryFailure: TerminalDeliveryFailureHandler;
 };
 
 export interface TerminalSessionSubscription {
@@ -57,13 +66,22 @@ export class TerminalWorkspace {
   private readonly entries = new Map<string, TerminalSessionEntry>();
   private readonly pendingEntries = new Map<string, RepoTerminalState>();
   private readonly pendingOutputBySession = new Map<string, string[]>();
+  private readonly pendingOutputBytesBySession = new Map<string, number>();
+  private readonly pendingExitBySession = new Map<string, number>();
+  private readonly pendingDeliveryFailures = new Map<string, string>();
+  private readonly discardedSessionIDs = new Set<string>();
   private readonly subscribers = new Set<TerminalSessionSubscriber>();
+  private readonly maxPendingOutputBytes: number;
   private snapshot: TerminalStatusSnapshot = {};
   private outputStop: (() => void) | null;
   private exitStop: (() => void) | null;
   private decayTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly runtime: TerminalRuntime) {
+  constructor(
+    private readonly runtime: TerminalRuntime,
+    options: TerminalWorkspaceOptions = {},
+  ) {
+    this.maxPendingOutputBytes = Math.max(1024, options.maxPendingOutputBytes ?? DEFAULT_MAX_PENDING_OUTPUT_BYTES);
     this.outputStop = runtime.onEvent(TERMINAL_OUTPUT_EVENT, (payload: unknown) => this.handleOutput(payload));
     this.exitStop = runtime.onEvent(TERMINAL_EXIT_EVENT, (payload: unknown) => this.handleExit(payload));
   }
@@ -128,23 +146,49 @@ export class TerminalWorkspace {
     return new TerminalSurfaceSession(this, createIndependentSession);
   }
 
-  subscribeSession(onOutput: TerminalOutputHandler, onExit: TerminalExitHandler): TerminalSessionSubscription {
-    const subscriber: TerminalSessionSubscriber = { sessionId: null, onOutput, onExit };
+  discardSessionDelivery(sessionId: string) {
+    this.discardDeliveryIfUnobserved(sessionId);
+  }
+
+  subscribeSession(
+    onOutput: TerminalOutputHandler,
+    onExit: TerminalExitHandler,
+    onDeliveryFailure: TerminalDeliveryFailureHandler = () => {},
+  ): TerminalSessionSubscription {
+    const subscriber: TerminalSessionSubscriber = { sessionId: null, onOutput, onExit, onDeliveryFailure };
     this.subscribers.add(subscriber);
     return {
       bindSession: sessionId => {
-        subscriber.sessionId = sessionId;
-        const pendingOutput = this.pendingOutputBySession.get(sessionId);
-        if (!pendingOutput) {
+        if (subscriber.sessionId && subscriber.sessionId !== sessionId) {
+          this.discardDeliveryIfUnobserved(subscriber.sessionId, subscriber);
+        }
+        subscriber.sessionId = sessionId || null;
+        if (!sessionId) {
           return;
         }
+
+        this.discardedSessionIDs.delete(sessionId);
+        const deliveryFailure = this.pendingDeliveryFailures.get(sessionId);
+        this.pendingDeliveryFailures.delete(sessionId);
+        const pendingOutput = this.pendingOutputBySession.get(sessionId);
         this.pendingOutputBySession.delete(sessionId);
-        for (const chunk of pendingOutput) {
+        this.pendingOutputBytesBySession.delete(sessionId);
+        const pendingExit = this.pendingExitBySession.get(sessionId);
+        this.pendingExitBySession.delete(sessionId);
+
+        if (deliveryFailure) {
+          subscriber.onDeliveryFailure(deliveryFailure);
+        }
+        for (const chunk of pendingOutput ?? []) {
           subscriber.onOutput(chunk);
+        }
+        if (pendingExit !== undefined) {
+          subscriber.onExit(pendingExit);
         }
       },
       dispose: () => {
         this.subscribers.delete(subscriber);
+        this.discardDeliveryIfUnobserved(subscriber.sessionId);
       },
     };
   }
@@ -160,6 +204,10 @@ export class TerminalWorkspace {
     }
     this.listeners.clear();
     this.pendingOutputBySession.clear();
+    this.pendingOutputBytesBySession.clear();
+    this.pendingExitBySession.clear();
+    this.pendingDeliveryFailures.clear();
+    this.discardedSessionIDs.clear();
     this.subscribers.clear();
   }
 
@@ -232,10 +280,8 @@ export class TerminalWorkspace {
         subscriber.onOutput(event.chunk);
       }
     }
-    if (!delivered) {
-      const pendingOutput = this.pendingOutputBySession.get(event.sessionId) ?? [];
-      pendingOutput.push(event.chunk);
-      this.pendingOutputBySession.set(event.sessionId, pendingOutput);
+    if (!delivered && !this.discardedSessionIDs.has(event.sessionId)) {
+      this.queuePendingOutput(event.sessionId, event.chunk);
     }
   }
 
@@ -245,21 +291,79 @@ export class TerminalWorkspace {
       return;
     }
 
+    const wasDiscarded = this.discardedSessionIDs.has(event.sessionId);
     const current = this.entries.get(event.sessionId);
     if (current) {
-      this.entries.set(event.sessionId, {
-        repoId: current.repoId,
-        sessionId: null,
-        state: 'exited',
-        lastOutputAt: null,
-      });
+      if (wasDiscarded) {
+        this.entries.delete(event.sessionId);
+      } else {
+        this.entries.set(event.sessionId, {
+          repoId: current.repoId,
+          sessionId: null,
+          state: 'exited',
+          lastOutputAt: null,
+        });
+      }
       this.publishSnapshot();
     }
 
+    let delivered = false;
     for (const subscriber of this.subscribers) {
       if (subscriber.sessionId === event.sessionId) {
+        delivered = true;
         subscriber.onExit(event.exitCode ?? -1);
       }
+    }
+    if (!delivered && !wasDiscarded) {
+      this.pendingExitBySession.set(event.sessionId, event.exitCode ?? -1);
+    }
+    this.discardedSessionIDs.delete(event.sessionId);
+  }
+
+  /**
+   * Failure: an unbound session never receives a partial replay after its bounded startup cache overflows.
+   */
+  private queuePendingOutput(sessionId: string, chunk: string) {
+    if (this.pendingDeliveryFailures.has(sessionId)) {
+      return;
+    }
+
+    const chunkBytes = textEncoder.encode(chunk).byteLength;
+    const pendingBytes = this.pendingOutputBytesBySession.get(sessionId) ?? 0;
+    if (pendingBytes + chunkBytes > this.maxPendingOutputBytes) {
+      this.pendingOutputBySession.delete(sessionId);
+      this.pendingOutputBytesBySession.delete(sessionId);
+      this.pendingDeliveryFailures.set(
+        sessionId,
+        `终端在界面绑定前输出超过 ${this.maxPendingOutputBytes} 字节，已停止缓存；请重新打开终端`,
+      );
+      return;
+    }
+
+    const pendingOutput = this.pendingOutputBySession.get(sessionId) ?? [];
+    pendingOutput.push(chunk);
+    this.pendingOutputBySession.set(sessionId, pendingOutput);
+    this.pendingOutputBytesBySession.set(sessionId, pendingBytes + chunkBytes);
+  }
+
+  /**
+   * Effect: releasing the final surface abandons undelivered data and removes an already-resolved exit entry.
+   */
+  private discardDeliveryIfUnobserved(sessionId: string | null, except?: TerminalSessionSubscriber) {
+    if (!sessionId || [...this.subscribers].some(subscriber => subscriber !== except && subscriber.sessionId === sessionId)) {
+      return;
+    }
+    this.pendingOutputBySession.delete(sessionId);
+    this.pendingOutputBytesBySession.delete(sessionId);
+    this.pendingExitBySession.delete(sessionId);
+    this.pendingDeliveryFailures.delete(sessionId);
+    if (this.entries.get(sessionId)?.sessionId === null) {
+      this.entries.delete(sessionId);
+      this.publishSnapshot();
+      return;
+    }
+    if (this.entries.get(sessionId)?.sessionId === sessionId) {
+      this.discardedSessionIDs.add(sessionId);
     }
   }
 
@@ -330,13 +434,14 @@ export class TerminalSurfaceSession {
   ) {}
 
   /**
-   * Flow: a late independent start is immediately closed after release; a default session remains reusable.
+   * Flow: a released surface abandons delivery; a late independent start is also closed while default sessions remain reusable.
    */
   async start(request: TerminalSessionRequest) {
     const session = await (this.independent
       ? this.workspace.createSession(request)
       : this.workspace.ensureSession(request));
     if (this.released) {
+      this.workspace.discardSessionDelivery(session.sessionId);
       if (this.independent) {
         await this.workspace.closeSession(session.sessionId);
       }
@@ -352,6 +457,7 @@ export class TerminalSurfaceSession {
     }
     const session = await this.workspace.restartSession(repoId, this.session.sessionId, cols, rows);
     if (this.released) {
+      this.workspace.discardSessionDelivery(session.sessionId);
       if (this.independent) {
         await this.workspace.closeSession(session.sessionId);
       }
@@ -365,8 +471,11 @@ export class TerminalSurfaceSession {
     this.released = true;
     const session = this.session;
     this.session = null;
-    if (this.independent && session) {
-      await this.workspace.closeSession(session.sessionId);
+    if (session) {
+      this.workspace.discardSessionDelivery(session.sessionId);
+      if (this.independent) {
+        await this.workspace.closeSession(session.sessionId);
+      }
     }
   }
 }

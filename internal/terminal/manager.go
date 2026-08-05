@@ -291,7 +291,6 @@ func (s *terminalSession) Resize(cols, rows int) error {
 func (s *terminalSession) streamOutput() {
 	buffer := make([]byte, 32*1024)
 	outputs := newTerminalOutputBatcher(s.id, s.emit)
-	defer outputs.Close()
 
 	for {
 		readBytes, err := s.host.Read(buffer)
@@ -307,6 +306,7 @@ func (s *terminalSession) streamOutput() {
 	}
 
 	<-s.waitDone
+	outputs.Close()
 	s.finish()
 }
 

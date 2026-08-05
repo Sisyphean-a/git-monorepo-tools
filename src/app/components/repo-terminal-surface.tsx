@@ -14,6 +14,7 @@ import {
   type TerminalClipboardPasteSource,
 } from './repo-terminal-shortcuts';
 import { TerminalInputInspectorModal } from './terminal-input-inspector-modal';
+import { TerminalProtocolObserver, type TerminalProtocolSnapshot } from './terminal-protocol-observer';
 import {
   describeTerminalKeyboardEvent,
   describeTerminalShortcutAction,
@@ -51,6 +52,7 @@ export function RepoTerminalSurface({
   const toastTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
   const inputTraceSequenceRef = useRef(0);
+  const protocolObserverRef = useRef(new TerminalProtocolObserver());
 
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [shellLabel, setShellLabel] = useState('终端');
@@ -59,6 +61,21 @@ export function RepoTerminalSurface({
   const [toast, setToast] = useState<TerminalToast>(null);
   const [inputTrace, setInputTrace] = useState<readonly TerminalInputTraceEntry[]>([]);
   const [inputInspectorOpen, setInputInspectorOpen] = useState(false);
+  const [protocolSnapshot, setProtocolSnapshot] = useState<TerminalProtocolSnapshot>(() => protocolObserverRef.current.getSnapshot());
+
+  const updateProtocolSnapshot = useCallback((changed: boolean) => {
+    if (changed) {
+      setProtocolSnapshot(protocolObserverRef.current.getSnapshot());
+    }
+  }, []);
+
+  const resetProtocolObserver = useCallback(() => {
+    updateProtocolSnapshot(protocolObserverRef.current.reset());
+  }, [updateProtocolSnapshot]);
+
+  const observeProtocolOutput = useCallback((chunk: string) => {
+    updateProtocolSnapshot(protocolObserverRef.current.observeOutput(chunk));
+  }, [updateProtocolSnapshot]);
 
   const recordInputTrace = useCallback((stage: TerminalInputTraceStage, detail: string, data?: string) => {
     inputTraceSequenceRef.current += 1;
@@ -138,7 +155,7 @@ export function RepoTerminalSurface({
   };
 
   const openInputInspector = () => {
-    recordInputTrace('浏览器事件', '观测已开始；接下来按键会由窗口捕获阶段记录');
+    recordInputTrace('浏览器事件', '协议与输入观测已开始；接下来按键会由窗口捕获阶段记录');
     setInputInspectorOpen(true);
   };
 
@@ -168,6 +185,7 @@ export function RepoTerminalSurface({
     if (resetTerminal) {
       outputWriterRef.current?.reset();
       terminal.reset();
+      resetProtocolObserver();
     }
 
     setStatus('connecting');
@@ -177,18 +195,20 @@ export function RepoTerminalSurface({
     if (!nextSize) return;
 
     try {
-      const session = await surfaceSession.start({
-        repoId: repo.id,
-        repoPath: repo.path,
-        cols: nextSize.cols,
-        rows: nextSize.rows,
-      });
+      const existingSession = resetTerminal ? sessionRef.current : null;
+      const session = existingSession
+        ? await surfaceSession.restart(repo.id, nextSize.cols, nextSize.rows)
+        : await surfaceSession.start({
+          repoId: repo.id,
+          repoPath: repo.path,
+          cols: nextSize.cols,
+          rows: nextSize.rows,
+        });
       if (!session) {
         return;
       }
       sessionRef.current = session;
       setSessionId(session.sessionId);
-      sessionBindingRef.current?.bindSession(session.sessionId);
       setShellLabel(session.shell);
       setStatus('running');
       scheduleResize();
@@ -209,6 +229,7 @@ export function RepoTerminalSurface({
 
     outputWriterRef.current?.reset();
     terminal.reset();
+    resetProtocolObserver();
     setStatus('connecting');
     setError(null);
     setExitCode(null);
@@ -221,7 +242,6 @@ export function RepoTerminalSurface({
       }
       sessionRef.current = replacement;
       setSessionId(replacement.sessionId);
-      sessionBindingRef.current?.bindSession(replacement.sessionId);
       setShellLabel(replacement.shell);
       setStatus('running');
       scheduleResize();
@@ -382,6 +402,7 @@ export function RepoTerminalSurface({
     xtermViewport?.addEventListener('scroll', scrollGuard, { passive: true });
 
     const inputDisposable = terminal.onData(data => {
+      updateProtocolSnapshot(protocolObserverRef.current.observeTerminalInput(data));
       const capturePasteData = terminalPasteDataRef.current;
       if (capturePasteData) {
         capturePasteData(data);
@@ -389,6 +410,9 @@ export function RepoTerminalSurface({
       }
       recordInputTrace('xterm 输出', 'xterm 编码后的输入字符', data);
       void enqueueTerminalInput(data, 'xterm 输出').catch(() => undefined);
+    });
+    const parsedDisposable = terminal.onWriteParsed(() => {
+      updateProtocolSnapshot(protocolObserverRef.current.observeXtermParsed(terminal.modes));
     });
 
     return () => {
@@ -400,6 +424,7 @@ export function RepoTerminalSurface({
       viewportRef.current?.removeEventListener('contextmenu', contextMenuHandler);
       xtermViewport?.removeEventListener('scroll', scrollGuard);
       inputDisposable.dispose();
+      parsedDisposable.dispose();
       sessionBindingRef.current?.dispose();
       sessionBindingRef.current = null;
       outputWriterRef.current?.dispose();
@@ -420,14 +445,19 @@ export function RepoTerminalSurface({
 
     sessionBindingRef.current = terminalWorkspace.subscribeSession(
       chunk => {
+        observeProtocolOutput(chunk);
         outputWriterRef.current?.enqueue(chunk);
       },
       exitCode => {
         sessionRef.current = null;
         setSessionId(null);
-        setStatus('exited');
+        setStatus(current => current === 'failed' ? 'failed' : 'exited');
         setExitCode(exitCode);
         outputWriterRef.current?.enqueue(`\r\n\x1b[90m[process exited ${exitCode}]\x1b[0m\r\n`);
+      },
+      message => {
+        setStatus('failed');
+        setError(message);
       },
     );
     sessionBindingRef.current.bindSession(sessionId);
@@ -478,8 +508,8 @@ export function RepoTerminalSurface({
           <button
             type="button"
             onClick={openInputInspector}
-            title="查看终端输入观测"
-            aria-label="查看终端输入观测"
+            title="查看终端协议与输入观测"
+            aria-label="查看终端协议与输入观测"
             style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 4, color: C.textSecondary, cursor: 'pointer' }}
           >
             <Keyboard size={15} />
@@ -537,6 +567,7 @@ export function RepoTerminalSurface({
         open={inputInspectorOpen}
         terminal={terminalRef.current}
         entries={inputTrace}
+        protocol={protocolSnapshot}
         onClear={() => setInputTrace([])}
         onClose={() => setInputInspectorOpen(false)}
         onTrace={recordInputTrace}

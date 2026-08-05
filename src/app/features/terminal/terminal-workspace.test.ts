@@ -93,19 +93,51 @@ test('keeps default and independent sessions in one lifecycle', async () => {
   workspace.dispose();
 });
 
-test('replays startup output that arrives before a surface binds its session', async () => {
+test('replays startup output and exit that arrive before a surface binds its session', async () => {
   const runtime = createRuntime();
   const workspace = new TerminalWorkspace(runtime);
   const session = await workspace.ensureSession({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
   const output: string[] = [];
+  const exits: number[] = [];
 
   runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: '\x1b[?2004h' });
-  runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: '\x1b[>7u' });
+  runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: '\x1b[>1u' });
+  runtime.emit('repo-terminal-exit', { sessionId: session.sessionId, exitCode: 7 });
 
-  const subscription = workspace.subscribeSession(chunk => output.push(chunk), () => {});
+  const subscription = workspace.subscribeSession(chunk => output.push(chunk), code => exits.push(code));
+  subscription.bindSession(session.sessionId);
   subscription.bindSession(session.sessionId);
 
-  assert.deepEqual(output, ['\x1b[?2004h', '\x1b[>7u']);
+  assert.deepEqual(output, ['\x1b[?2004h', '\x1b[>1u']);
+  assert.deepEqual(exits, [7]);
+  assert.equal(workspace.getSnapshot()['repo-a'], 'exited');
+  subscription.dispose();
+  assert.equal(workspace.getSnapshot()['repo-a'], undefined);
+  workspace.dispose();
+});
+
+test('fails explicitly instead of growing an unbound output cache forever', async () => {
+  const runtime = createRuntime();
+  const workspace = new TerminalWorkspace(runtime, { maxPendingOutputBytes: 1024 });
+  const session = await workspace.ensureSession({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
+  const failures: string[] = [];
+  const exits: number[] = [];
+
+  runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: 'a'.repeat(600) });
+  runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: 'b'.repeat(600) });
+  runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: 'c'.repeat(600) });
+  runtime.emit('repo-terminal-exit', { sessionId: session.sessionId, exitCode: 3 });
+
+  const subscription = workspace.subscribeSession(
+    () => assert.fail('overflowed startup output must not be replayed as a partial stream'),
+    code => exits.push(code),
+    failure => failures.push(failure),
+  );
+  subscription.bindSession(session.sessionId);
+
+  assert.deepEqual(exits, [3]);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0] ?? '', /超过 1024 字节/);
   subscription.dispose();
   workspace.dispose();
 });
@@ -142,6 +174,30 @@ test('releases independent sessions, including a session that starts after dispo
 
   assert.equal(await starting, null);
   assert.deepEqual(runtime.closedSessionIDs, [independentSession.sessionId, 'term-delayed']);
+
+  let resolveDefaultStart!: (session: TerminalSessionInfo) => void;
+  const delayedDefaultStart = new Promise<TerminalSessionInfo>(resolve => {
+    resolveDefaultStart = resolve;
+  });
+  runtime.ensureTerminalSession = async () => delayedDefaultStart;
+  const delayedDefault = workspace.createSurfaceSession(false);
+  const startingDefault = delayedDefault.start({ repoId: 'repo-c', repoPath: 'E:/repo-c' });
+  await delayedDefault.release();
+  resolveDefaultStart({
+    sessionId: 'term-default-delayed',
+    repoId: 'repo-c',
+    repoPath: 'E:/repo-c',
+    shell: 'powershell',
+    startedAt: 4,
+  });
+
+  assert.equal(await startingDefault, null);
+  runtime.emit('repo-terminal-output', { sessionId: 'term-default-delayed', chunk: 'must not cache after release' });
+  const abandonedOutput: string[] = [];
+  const abandonedSubscription = workspace.subscribeSession(chunk => abandonedOutput.push(chunk), () => {});
+  abandonedSubscription.bindSession('term-default-delayed');
+  assert.deepEqual(abandonedOutput, []);
+  abandonedSubscription.dispose();
   workspace.dispose();
 });
 

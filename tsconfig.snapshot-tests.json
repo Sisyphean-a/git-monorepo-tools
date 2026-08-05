@@ -50,6 +50,8 @@
     "src/app/components/repo-terminal-shortcuts.test.ts",
     "src/app/components/terminal-input-trace.ts",
     "src/app/components/terminal-input-trace.test.ts",
+    "src/app/components/terminal-protocol-observer.ts",
+    "src/app/components/terminal-protocol-observer.test.ts",
     "src/app/components/commit-graph.tsx",
     "src/app/components/commit-graph.test.ts",
     "src/app/components/repositories-settings-tab.test.ts"

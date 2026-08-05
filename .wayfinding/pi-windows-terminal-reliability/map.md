@@ -31,22 +31,19 @@ Windows 上运行 Pi 时，终端启动、协议协商、快捷键和文本粘�
 - Pi Windows 输入配置 -> [Pi 快捷键归一策略](decisions/02-pi-shortcut-profile.md)
 - 启动协议与诊断状态 -> [协议状态观测](decisions/03-protocol-observability.md)
 - 自动化防线 -> [时序与协议测试边界](decisions/04-deterministic-terminal-tests.md)
-- 现有确定事实 -> `architecture/shared/terminal-runtime.md`：启动输出按会话缓存回放；Windows 的 `Shift+Enter` 与 `Ctrl+J` 发送 LF。
+- 权威当前态 -> `.codestable/architecture/shared/terminal-runtime.md`
+- 高代价取舍 -> `.codestable/requirements/adrs/003-pi-windows-terminal-protocol-delivery.md`
 
-## 迄今决定
+## 已关闭决定
 
-- 无。本图只记录尚待结清的路线决定。
+- [会话流所有权](decisions/01-session-stream-ownership.md)：后端在退出前冲刷输出，前端独占事件交付并对绑定竞态实施有界、显式失败的缓存。
+- [Pi 快捷键归一策略](decisions/02-pi-shortcut-profile.md)：精确 Windows 规则集中定义，其余按键交给 xterm。
+- [协议状态观测](decisions/03-protocol-observability.md)：旁路观察原始副本，并用 xterm 公开状态和协商响应确认链路。
+- [时序与协议测试边界](decisions/04-deterministic-terminal-tests.md)：时序、快捷键和协议均由确定性测试覆盖；真实 ConPTY 仅为可选烟测。
 
-## 打开决策项
+## 后续信号
 
-- [会话流所有权](decisions/01-session-stream-ownership.md)
-- [Pi 快捷键归一策略](decisions/02-pi-shortcut-profile.md)
-- [协议状态观测](decisions/03-protocol-observability.md)
-- [时序与协议测试边界](decisions/04-deterministic-terminal-tests.md)
-
-## 迷雾
-
-- Pi 版本升级后，是否会改变受控粘贴或增强键盘协议的协商顺序；需要先确定协议状态的观测模型，才能准确提出兼容策略问题。
+Pi 版本升级如引入新的启动控制序列，先由协议诊断和纯函数观察器测试确认事实，再决定是否扩展支持；当前不预设兼容规则。
 
 ## 范围外
 

@@ -349,3 +349,32 @@ test('non-windows platforms keep default terminal shortcuts', () => {
     key: 'v',
   }, false, 'MacIntel'), { type: 'pass-through' });
 });
+
+test('shortcut matching requires the complete Windows modifier profile', () => {
+  const strictWindowsRules = [
+    { key: 'Enter', ctrlKey: true, altKey: false, metaKey: false, shiftKey: true },
+    { key: 'j', ctrlKey: true, altKey: true, metaKey: false, shiftKey: false },
+    { key: 'Backspace', ctrlKey: true, altKey: false, metaKey: true, shiftKey: false },
+    { key: 'v', ctrlKey: true, altKey: false, metaKey: true, shiftKey: false },
+  ];
+
+  for (const event of strictWindowsRules) {
+    assert.deepEqual(getWindowsTerminalShortcutAction({ type: 'keydown', ...event }, false, 'Win64'), { type: 'pass-through' });
+  }
+});
+
+test('only Windows platform labels activate the Pi shortcut profile', () => {
+  const event = {
+    type: 'keydown',
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    shiftKey: true,
+    key: 'Enter',
+  };
+
+  assert.deepEqual(getWindowsTerminalShortcutAction(event, false, 'Windows'), { type: 'send-input', input: shiftEnterInput });
+  for (const platform of ['', 'Linux x86_64', 'MacIntel']) {
+    assert.deepEqual(getWindowsTerminalShortcutAction(event, false, platform), { type: 'pass-through' });
+  }
+});

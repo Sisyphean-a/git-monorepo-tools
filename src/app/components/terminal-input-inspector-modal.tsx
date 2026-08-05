@@ -3,11 +3,13 @@ import { useEffect, useRef } from 'react';
 import type { Terminal } from '@xterm/xterm';
 import { C } from '../theme';
 import { describeTerminalKeyboardEvent, formatTerminalInputTrace, type TerminalInputTraceEntry, type TerminalInputTraceStage } from './terminal-input-trace';
+import { formatTerminalProtocolSnapshot, type TerminalProtocolSnapshot } from './terminal-protocol-observer';
 
 interface TerminalInputInspectorModalProps {
   open: boolean;
   terminal: Terminal | null;
   entries: readonly TerminalInputTraceEntry[];
+  protocol: TerminalProtocolSnapshot;
   onClear: () => void;
   onClose: () => void;
   onTrace: (stage: TerminalInputTraceStage, detail: string, data?: string) => void;
@@ -18,6 +20,7 @@ export function TerminalInputInspectorModal({
   open,
   terminal,
   entries,
+  protocol,
   onClear,
   onClose,
   onTrace,
@@ -68,9 +71,10 @@ export function TerminalInputInspectorModal({
 
   if (!open) return null;
 
-  const content = entries.length > 0
+  const traceContent = entries.length > 0
     ? entries.map(formatTerminalInputTrace).join('\n')
     : '等待真实终端输入...';
+  const content = `${formatTerminalProtocolSnapshot(protocol)}\n\n输入链路：\n${traceContent}`;
 
   const copyTrace = () => {
     navigator.clipboard.writeText(content).catch(error => console.error('复制终端输入观测失败', error));
@@ -105,7 +109,7 @@ export function TerminalInputInspectorModal({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ color: C.textPrimary, fontSize: 13, fontWeight: 600, flex: 1 }}>终端输入观测</div>
+          <div style={{ color: C.textPrimary, fontSize: 13, fontWeight: 600, flex: 1 }}>终端协议与输入观测</div>
           <button type="button" onClick={copyTrace} title="复制观测结果" aria-label="复制观测结果" style={iconButtonStyle}>
             <Copy size={15} />
           </button>
@@ -120,7 +124,7 @@ export function TerminalInputInspectorModal({
           <TerminalPane label="真实终端输入区域">
             <div ref={inputViewportRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden', padding: '10px 12px' }} />
           </TerminalPane>
-          <TerminalPane label="输入观测结果" bordered>
+          <TerminalPane label="协议状态与输入观测结果" bordered>
             <pre
               style={{
                 margin: 0,

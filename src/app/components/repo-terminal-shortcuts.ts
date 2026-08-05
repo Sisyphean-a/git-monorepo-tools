@@ -48,6 +48,10 @@ interface TerminalShortcutModifiers {
 
 const passThroughAction: RepoTerminalShortcutAction = { type: 'pass-through' };
 
+/**
+ * Rule: only combinations whose browser encoding loses Pi-required meaning are intercepted here.
+ * Guarantee: every unlisted key and every extra modifier stays on xterm's native path.
+ */
 const windowsTerminalShortcutRules: readonly TerminalShortcutRule[] = [
   {
     key: 'enter',
