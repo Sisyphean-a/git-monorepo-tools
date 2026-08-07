@@ -14,7 +14,14 @@ import {
   type TerminalClipboardPasteSource,
 } from './repo-terminal-shortcuts';
 import { TerminalInputInspectorModal } from './terminal-input-inspector-modal';
-import { TerminalProtocolObserver, type TerminalProtocolSnapshot } from './terminal-protocol-observer';
+import {
+  extractTerminalProtocolCommands,
+  needsPiFullscreenMouseCompatibility,
+  PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
+  PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
+  TerminalProtocolObserver,
+  type TerminalProtocolSnapshot,
+} from './terminal-protocol-observer';
 import {
   describeTerminalKeyboardEvent,
   describeTerminalShortcutAction,
@@ -53,6 +60,7 @@ export function RepoTerminalSurface({
   const toastIdRef = useRef(0);
   const inputTraceSequenceRef = useRef(0);
   const protocolObserverRef = useRef(new TerminalProtocolObserver());
+  const piMouseCompatibilityActiveRef = useRef(false);
 
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [shellLabel, setShellLabel] = useState('终端');
@@ -185,6 +193,7 @@ export function RepoTerminalSurface({
     if (resetTerminal) {
       outputWriterRef.current?.reset();
       terminal.reset();
+      piMouseCompatibilityActiveRef.current = false;
       resetProtocolObserver();
     }
 
@@ -229,6 +238,7 @@ export function RepoTerminalSurface({
 
     outputWriterRef.current?.reset();
     terminal.reset();
+    piMouseCompatibilityActiveRef.current = false;
     resetProtocolObserver();
     setStatus('connecting');
     setError(null);
@@ -411,8 +421,31 @@ export function RepoTerminalSurface({
       recordInputTrace('xterm 输出', 'xterm 编码后的输入字符', data);
       void enqueueTerminalInput(data, 'xterm 输出').catch(() => undefined);
     });
+    /**
+     * Rule: Windows ConPTY drops Pi 0.84.1's DEC mouse-mode controls while preserving
+     * Pi's fullscreen, bracketed-paste, and keyboard controls.
+     * Effect: only for that complete Pi fingerprint, restore the controls in xterm so
+     * xterm natively encodes wheel events; no browser wheel event is synthesized.
+     */
+    const synchronizePiFullscreenMouse = () => {
+      const snapshot = protocolObserverRef.current.getSnapshot();
+      if (piMouseCompatibilityActiveRef.current) {
+        if (snapshot.alternateScreenRequested === false) {
+          piMouseCompatibilityActiveRef.current = false;
+          terminal.write(PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
+          recordInputTrace('xterm 输出', 'Windows ConPTY 兼容：Pi 已退出全屏，已关闭本地鼠标协议', PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
+        }
+        return;
+      }
+      if (needsPiFullscreenMouseCompatibility(snapshot)) {
+        piMouseCompatibilityActiveRef.current = true;
+        terminal.write(PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE);
+        recordInputTrace('xterm 输出', 'Windows ConPTY 兼容：已补回 Pi 被丢弃的鼠标协议', PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE);
+      }
+    };
     const parsedDisposable = terminal.onWriteParsed(() => {
       updateProtocolSnapshot(protocolObserverRef.current.observeXtermParsed(terminal.modes));
+      synchronizePiFullscreenMouse();
     });
 
     return () => {
@@ -446,9 +479,18 @@ export function RepoTerminalSurface({
     sessionBindingRef.current = terminalWorkspace.subscribeSession(
       chunk => {
         observeProtocolOutput(chunk);
+        const protocolCommands = extractTerminalProtocolCommands(chunk);
+        if (protocolCommands) {
+          recordInputTrace('xterm 输出', 'Pi 终端协议输出', protocolCommands);
+        }
         outputWriterRef.current?.enqueue(chunk);
       },
       exitCode => {
+        if (piMouseCompatibilityActiveRef.current) {
+          piMouseCompatibilityActiveRef.current = false;
+          terminalRef.current?.write(PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
+          recordInputTrace('xterm 输出', 'Windows ConPTY 兼容：终端进程已退出，已关闭本地鼠标协议', PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
+        }
         sessionRef.current = null;
         setSessionId(null);
         setStatus(current => current === 'failed' ? 'failed' : 'exited');

@@ -44,9 +44,49 @@ export function TerminalInputInspectorModal({
       }
       onTraceRef.current('浏览器事件', describeTerminalKeyboardEvent(event));
     };
+    const handleWheel = (event: WheelEvent) => {
+      const terminalElement = terminal?.element;
+      if (!terminalElement || !(event.target instanceof Node) || !terminalElement.contains(event.target)) {
+        return;
+      }
+      const target = event.target instanceof Element ? event.target : null;
+      const viewport = terminalElement.querySelector('.xterm-viewport, .xterm-scrollable-element');
+      onTraceRef.current(
+        '浏览器事件',
+        'xterm 内滚轮事件',
+        JSON.stringify({
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          deltaZ: event.deltaZ,
+          deltaMode: event.deltaMode,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          metaKey: event.metaKey,
+          cancelable: event.cancelable,
+          defaultPrevented: event.defaultPrevented,
+          target: describeTerminalElement(target),
+          terminal: {
+            cols: terminal.cols,
+            rows: terminal.rows,
+            mouseTrackingMode: terminal.modes.mouseTrackingMode,
+            sendFocusMode: terminal.modes.sendFocusMode,
+          },
+          screenRect: readTerminalElementRect(terminalElement.querySelector('.xterm-screen')),
+          viewportRect: readTerminalElementRect(viewport),
+          viewportScrollTop: viewport instanceof HTMLElement ? viewport.scrollTop : null,
+        }),
+      );
+    };
     window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onClose, open]);
+    window.addEventListener('wheel', handleWheel, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('wheel', handleWheel, true);
+    };
+  }, [onClose, open, terminal]);
 
   useEffect(() => {
     if (!open || !terminal || !inputViewportRef.current) return;
@@ -74,7 +114,7 @@ export function TerminalInputInspectorModal({
   const traceContent = entries.length > 0
     ? entries.map(formatTerminalInputTrace).join('\n')
     : '等待真实终端输入...';
-  const content = `${formatTerminalProtocolSnapshot(protocol)}\n\n输入链路：\n${traceContent}`;
+  const content = `${formatTerminalProtocolSnapshot(protocol)}\n\n滚轮观测：只记录进入 xterm DOM 的 wheel 事件。\n\n输入链路：\n${traceContent}`;
 
   const copyTrace = () => {
     navigator.clipboard.writeText(content).catch(error => console.error('复制终端输入观测失败', error));
@@ -146,6 +186,31 @@ export function TerminalInputInspectorModal({
       </section>
     </>
   );
+}
+
+function describeTerminalElement(element: Element | null) {
+  if (!element) {
+    return null;
+  }
+  const className = typeof element.className === 'string'
+    ? element.className.trim().replace(/\s+/g, '.')
+    : '';
+  return `${element.tagName.toLowerCase()}${className ? `.${className}` : ''}`;
+}
+
+function readTerminalElementRect(element: Element | null) {
+  if (!element) {
+    return null;
+  }
+  const rect = element.getBoundingClientRect();
+  return {
+    left: Math.round(rect.left),
+    top: Math.round(rect.top),
+    right: Math.round(rect.right),
+    bottom: Math.round(rect.bottom),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  };
 }
 
 function TerminalPane({ children, label, bordered = false }: { children: React.ReactNode; label: string; bordered?: boolean }) {

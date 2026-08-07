@@ -10,8 +10,9 @@
 - 后端把终端输出合并为批次再通过 `repo-terminal-output` 事件发送；`terminalSession` 在发送 `repo-terminal-exit` 前关闭批次，所以尾部输出一定先到达。前端 `terminal-workspace` module 通过最小 `TerminalRuntime` interface 拥有会话 lifecycle、按 `sessionId` 的事件分发和按仓库的状态聚合，不能把一个终端的事件写入另一个终端。会话创建和 xterm 绑定之间到达的输出和退出码按会话缓存，绑定时严格先回放输出再交付退出；每会话最多缓存 1 MiB，溢出必须显式失败且不得回放部分流。最后一个表面释放后清理未交付数据并停止重新缓存。各终端即使暂时不可见，也必须持续写入自身 xterm，项目切换不得由前端中转层裁剪输出或清空已有历史；历史淘汰仅遵循 xterm 自身的正常滚动缓冲策略。`RepoTerminalSurface` 只负责 xterm 显示与输入转发，不直接订阅运行时事件或调用会话绑定。
 - 应用关闭时终止全部会话；Windows ConPTY 进程放入 kill-on-close Job，避免遗留子进程。
 - `TerminalProtocolObserver` 只观察交给 xterm 的输出副本，绝不筛除、改写或路由该输出；它在 xterm `onWriteParsed` 后读取公开的受控粘贴 mode，并在 `onData` 观察键盘协商响应。终端诊断弹窗因此能区分“Pi 已请求”“输出待 xterm 处理”“xterm 已确认”和“已收到协商响应”。
+- Windows ConPTY 会在 Pi 0.84.1 全屏启动时丢弃 DEC 鼠标开启序列，却保留备用屏幕、受控粘贴和增强键盘序列。`RepoTerminalSurface` 只有在观察到“已进入备用屏幕、已请求受控粘贴、增强键盘已请求或协商、且未收到鼠标序列”这一完整 Pi 指纹时，才把同一组鼠标模式写入本地 xterm；原始后端输出不改写，也不伪造浏览器滚轮。Pi 退出备用屏幕或终端进程退出时必须关闭这组本地模式，使 xterm 原生把滚轮编码为 SGR 鼠标输入且不影响其他终端程序。
 - 不依赖真实时钟的后端脚本化 host 和前端假 Wails 测试负责事件先后、缓存上限和回放；快捷键与协议观察器使用纯函数测试。真实 ConPTY/PowerShell 测试仅是带 `windows && integration` 标签的 Windows 烟测。
 
 ## 代码锚点
 
-`internal/terminal/manager.go`、`internal/terminal/manager_lifecycle_test.go`、`internal/terminal/output_batcher.go`、`internal/terminal/host_windows.go`、`app.go`、`src/app/features/terminal/terminal-workspace.tsx`、`src/app/components/repo-terminal-surface.tsx`、`src/app/components/repo-terminal-shortcuts.ts`、`src/app/components/terminal-protocol-observer.ts`。
+`internal/terminal/manager.go`、`internal/terminal/manager_lifecycle_test.go`、`internal/terminal/output_batcher.go`、`internal/terminal/host_windows.go`、`app.go`、`src/app/features/terminal/terminal-workspace.tsx`、`src/app/components/repo-terminal-surface.tsx`、`src/app/components/repo-terminal-shortcuts.ts`、`src/app/components/terminal-protocol-observer.ts`、`src/app/components/terminal-protocol-observer.test.ts`。
