@@ -57,6 +57,56 @@ func TestWindowsPowerShellTerminalEnvironmentUsesBuiltInPSReadLine(t *testing.T)
 	}
 }
 
+func TestMergeWindowsPersistentEnvironmentRefreshesAddedChangedAndDeletedVariables(t *testing.T) {
+	environment := mergeWindowsPersistentEnvironment(
+		[]string{
+			"KEEP=inherited",
+			"UPDATE=stale",
+			"REMOVE=stale",
+			"Path=C:\\stale",
+		},
+		windowsPersistentEnvironmentSnapshot{
+			system: []windowsEnvironmentVariable{
+				{name: "UPDATE", value: "stale"},
+				{name: "REMOVE", value: "stale"},
+				{name: "Path", value: `C:\Windows`},
+			},
+		},
+		windowsPersistentEnvironmentSnapshot{
+			system: []windowsEnvironmentVariable{
+				{name: "UPDATE", value: "system"},
+				{name: "SystemRoot", value: `C:\Windows`},
+				{name: "ComSpec", value: `%SystemRoot%\System32\cmd.exe`, expand: true},
+				{name: "Path", value: `C:\Windows;C:\Windows\System32`},
+			},
+			user: []windowsEnvironmentVariable{
+				{name: "update", value: "user"},
+				{name: "ADDED", value: "available"},
+				{name: "Path", value: `C:\Users\tester\bin`},
+			},
+		},
+	)
+
+	if value := environmentVariableValue(environment, "KEEP"); value != "inherited" {
+		t.Fatalf("expected inherited variable to remain, got %q", value)
+	}
+	if value := environmentVariableValue(environment, "UPDATE"); value != "user" {
+		t.Fatalf("expected user variable to override system variable, got %q", value)
+	}
+	if value := environmentVariableValue(environment, "ADDED"); value != "available" {
+		t.Fatalf("expected added variable to be available, got %q", value)
+	}
+	if value := environmentVariableValue(environment, "REMOVE"); value != "" {
+		t.Fatalf("expected deleted variable to be removed, got %q", value)
+	}
+	if value := environmentVariableValue(environment, "Path"); value != `C:\Users\tester\bin;C:\Windows;C:\Windows\System32` {
+		t.Fatalf("unexpected refreshed Path %q", value)
+	}
+	if value := environmentVariableValue(environment, "ComSpec"); value != `C:\Windows\System32\cmd.exe` {
+		t.Fatalf("expected expandable value to use refreshed environment, got %q", value)
+	}
+}
+
 func TestResolveWindowsTerminalShellPrefersPwshAndLoadsProfile(t *testing.T) {
 	t.Parallel()
 

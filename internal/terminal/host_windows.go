@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/charmbracelet/x/conpty"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 type conptyHost struct {
@@ -25,13 +27,39 @@ type conptyHost struct {
 	closeOnce sync.Once
 }
 
+type windowsEnvironmentVariable struct {
+	name   string
+	value  string
+	expand bool
+}
+
+var windowsEnvironmentReferencePattern = regexp.MustCompile(`%([^%]+)%`)
+
+type windowsPersistentEnvironmentSnapshot struct {
+	system []windowsEnvironmentVariable
+	user   []windowsEnvironmentVariable
+	err    error
+}
+
+// Guarantee: this startup snapshot lets later terminal launches remove persistent variables
+// that a user deleted after the desktop application had already inherited them.
+var initialWindowsPersistentEnvironment = loadWindowsPersistentEnvironment()
+
 func newTerminalHost(repoPath string, cols, rows int) (terminalHost, string, error) {
 	workingDir := filepath.Clean(repoPath)
 	shellPath, shellArgs, shellLabel, err := resolveWindowsTerminalShell()
 	if err != nil {
 		return nil, "", err
 	}
-	processEnvironment, err := powerShellTerminalProcessEnvironment(shellLabel, os.Environ(), os.Getenv)
+	processEnvironment, err := refreshedWindowsTerminalEnvironment(os.Environ(), initialWindowsPersistentEnvironment)
+	if err != nil {
+		return nil, "", err
+	}
+	processEnvironment, err = powerShellTerminalProcessEnvironment(
+		shellLabel,
+		processEnvironment,
+		func(name string) string { return environmentVariableValue(processEnvironment, name) },
+	)
 	if err != nil {
 		return nil, "", err
 	}
@@ -114,6 +142,212 @@ func (h *conptyHost) Close() error {
 		closeErr = h.pty.Close()
 	})
 	return closeErr
+}
+
+func refreshedWindowsTerminalEnvironment(
+	environ []string,
+	initial windowsPersistentEnvironmentSnapshot,
+) ([]string, error) {
+	current := loadWindowsPersistentEnvironment()
+	if current.err != nil {
+		return nil, current.err
+	}
+	return mergeWindowsPersistentEnvironment(environ, initial, current), nil
+}
+
+func loadWindowsPersistentEnvironment() windowsPersistentEnvironmentSnapshot {
+	system, err := readWindowsEnvironmentRegistry(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\Session Manager\Environment`)
+	if err != nil {
+		return windowsPersistentEnvironmentSnapshot{err: fmt.Errorf("读取系统环境变量失败: %w", err)}
+	}
+	user, err := readWindowsEnvironmentRegistry(registry.CURRENT_USER, `Environment`)
+	if err != nil {
+		return windowsPersistentEnvironmentSnapshot{err: fmt.Errorf("读取用户环境变量失败: %w", err)}
+	}
+	return windowsPersistentEnvironmentSnapshot{system: system, user: user}
+}
+
+func readWindowsEnvironmentRegistry(root registry.Key, path string) ([]windowsEnvironmentVariable, error) {
+	key, err := registry.OpenKey(root, path, registry.QUERY_VALUE)
+	if err != nil {
+		return nil, err
+	}
+	defer key.Close()
+
+	names, err := key.ReadValueNames(-1)
+	if err != nil {
+		return nil, err
+	}
+	variables := make([]windowsEnvironmentVariable, 0, len(names))
+	for _, name := range names {
+		value, valueType, err := key.GetStringValue(name)
+		if errors.Is(err, registry.ErrUnexpectedType) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		variables = append(variables, windowsEnvironmentVariable{
+			name: name, value: value, expand: valueType == registry.EXPAND_SZ,
+		})
+	}
+	return variables, nil
+}
+
+func mergeWindowsPersistentEnvironment(
+	environ []string,
+	initial windowsPersistentEnvironmentSnapshot,
+	current windowsPersistentEnvironmentSnapshot,
+) []string {
+	if initial.err == nil {
+		currentNames := environmentVariableNames(current.system, current.user)
+		initialNames := environmentVariableNames(initial.system, initial.user)
+		environment := make([]string, 0, len(environ))
+		for _, entry := range environ {
+			name, _, found := strings.Cut(entry, "=")
+			if found && initialNames[strings.ToUpper(name)] && !currentNames[strings.ToUpper(name)] {
+				continue
+			}
+			environment = append(environment, entry)
+		}
+		environ = environment
+	}
+
+	for _, variable := range current.system {
+		if !strings.EqualFold(variable.name, "Path") {
+			environ = replaceEnvironmentVariable(environ, variable.name, variable.value)
+		}
+	}
+	for _, variable := range current.user {
+		if !strings.EqualFold(variable.name, "Path") {
+			environ = replaceEnvironmentVariable(environ, variable.name, variable.value)
+		}
+	}
+
+	systemPath, hasSystemPath := persistentEnvironmentValue(current.system, "Path")
+	userPath, hasUserPath := persistentEnvironmentValue(current.user, "Path")
+	switch {
+	case hasSystemPath && hasUserPath:
+		environ = replaceEnvironmentVariable(environ, "Path", userPath+";"+systemPath)
+	case hasUserPath:
+		environ = replaceEnvironmentVariable(environ, "Path", userPath)
+	case hasSystemPath:
+		environ = replaceEnvironmentVariable(environ, "Path", systemPath)
+	}
+	return expandWindowsPersistentEnvironmentValues(environ, current)
+}
+
+func expandWindowsPersistentEnvironmentValues(
+	environ []string,
+	current windowsPersistentEnvironmentSnapshot,
+) []string {
+	variables := effectiveWindowsPersistentEnvironmentVariables(current)
+	for range 16 {
+		changed := false
+		for _, variable := range variables {
+			if !variable.expand {
+				continue
+			}
+			expanded := expandWindowsEnvironmentValue(variable.value, environ)
+			if environmentVariableValue(environ, variable.name) != expanded {
+				environ = replaceEnvironmentVariable(environ, variable.name, expanded)
+				changed = true
+			}
+		}
+		if !changed {
+			return environ
+		}
+	}
+	return environ
+}
+
+func effectiveWindowsPersistentEnvironmentVariables(
+	current windowsPersistentEnvironmentSnapshot,
+) []windowsEnvironmentVariable {
+	variables := make([]windowsEnvironmentVariable, 0, len(current.system)+len(current.user))
+	positions := make(map[string]int)
+	setVariable := func(variable windowsEnvironmentVariable) {
+		key := strings.ToUpper(variable.name)
+		if index, found := positions[key]; found {
+			variables[index] = variable
+			return
+		}
+		positions[key] = len(variables)
+		variables = append(variables, variable)
+	}
+	for _, variable := range current.system {
+		if !strings.EqualFold(variable.name, "Path") {
+			setVariable(variable)
+		}
+	}
+	for _, variable := range current.user {
+		if !strings.EqualFold(variable.name, "Path") {
+			setVariable(variable)
+		}
+	}
+
+	systemPath, hasSystemPath := persistentEnvironmentVariable(current.system, "Path")
+	userPath, hasUserPath := persistentEnvironmentVariable(current.user, "Path")
+	switch {
+	case hasSystemPath && hasUserPath:
+		setVariable(windowsEnvironmentVariable{
+			name: "Path", value: userPath.value + ";" + systemPath.value, expand: userPath.expand || systemPath.expand,
+		})
+	case hasUserPath:
+		setVariable(userPath)
+	case hasSystemPath:
+		setVariable(systemPath)
+	}
+	return variables
+}
+
+func expandWindowsEnvironmentValue(value string, environ []string) string {
+	return windowsEnvironmentReferencePattern.ReplaceAllStringFunc(value, func(reference string) string {
+		name := reference[1 : len(reference)-1]
+		if expanded, found := environmentVariableValueExists(environ, name); found {
+			return expanded
+		}
+		return reference
+	})
+}
+
+func environmentVariableNames(groups ...[]windowsEnvironmentVariable) map[string]bool {
+	names := make(map[string]bool)
+	for _, group := range groups {
+		for _, variable := range group {
+			names[strings.ToUpper(variable.name)] = true
+		}
+	}
+	return names
+}
+
+func persistentEnvironmentValue(variables []windowsEnvironmentVariable, name string) (string, bool) {
+	variable, found := persistentEnvironmentVariable(variables, name)
+	return variable.value, found
+}
+
+func persistentEnvironmentVariable(variables []windowsEnvironmentVariable, name string) (windowsEnvironmentVariable, bool) {
+	for index := len(variables) - 1; index >= 0; index-- {
+		if strings.EqualFold(variables[index].name, name) {
+			return variables[index], true
+		}
+	}
+	return windowsEnvironmentVariable{}, false
+}
+
+func environmentVariableValue(environ []string, name string) string {
+	value, _ := environmentVariableValueExists(environ, name)
+	return value
+}
+
+func environmentVariableValueExists(environ []string, name string) (string, bool) {
+	for index := len(environ) - 1; index >= 0; index-- {
+		key, value, found := strings.Cut(environ[index], "=")
+		if found && strings.EqualFold(key, name) {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 func powerShellTerminalProcessEnvironment(
