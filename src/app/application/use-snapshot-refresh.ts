@@ -79,6 +79,9 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
     runQueuedTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
       return coordinatorRef.current.runTask(task, onSuccess);
     },
+    runBackgroundTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
+      return coordinatorRef.current.runBackgroundTask(task, onSuccess);
+    },
     runSnapshotTask<T>(task: () => Promise<T>, readSnapshot: (result: T) => AppSnapshot | null | undefined) {
       return coordinatorRef.current.runSnapshotTask(task, readSnapshot);
     },

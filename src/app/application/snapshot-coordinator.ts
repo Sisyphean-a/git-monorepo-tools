@@ -92,6 +92,21 @@ export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
       foregroundTail = queued.settled;
       return queued.promise;
     },
+    runBackgroundTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
+      const revision = interactionRevision;
+      return task()
+        .then(result => {
+          if (revision === interactionRevision) {
+            onSuccess?.(result);
+            options.reportError?.(null);
+          }
+          return result;
+        })
+        .catch(error => {
+          if (revision === interactionRevision) options.reportError?.(formatError(error));
+          throw error;
+        });
+    },
   };
 }
 

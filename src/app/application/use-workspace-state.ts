@@ -3,6 +3,7 @@ import { mergeRepoSnapshotUpdate } from '../domain/repo-snapshot-merge';
 import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types';
 import type { WorkspaceBackend } from './ports';
 import { useProgressiveStartupScan } from './use-progressive-startup-scan';
+import { useRepoStatusPolling } from './use-repo-status-polling';
 import { useSidebarScan } from './use-sidebar-scan';
 import { useSnapshotRefresh } from './use-snapshot-refresh';
 
@@ -45,6 +46,14 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     reportError: setRefreshError,
     coordinator: refresh,
     backend,
+  });
+  useRepoStatusPolling({
+    backend,
+    settings,
+    snapshot,
+    selectedRepoId,
+    applyRepoUpdate,
+    runBackgroundTask: refresh.runBackgroundTask,
   });
 
   return { snapshot, selectedRepoId, setSelectedRepoId, refreshError, sidebar, refresh, applyRepoUpdate, retryStartupScan: startup.retryStartupScan };

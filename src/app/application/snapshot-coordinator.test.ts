@@ -177,6 +177,26 @@ test('drops a refresh that started while an interaction was running', async () =
   assert.deepEqual(applied, ['interaction-update']);
 });
 
+test('applies background tasks only when no interaction superseded them', async () => {
+  const applied: string[] = [];
+  const staleGate = deferred<void>();
+  const coordinator = createSnapshotCoordinator({
+    applySnapshot: () => undefined,
+    fetchSnapshot: async () => snapshot('unused'),
+  });
+
+  await coordinator.runBackgroundTask(async () => 'current-background', value => applied.push(value));
+  const staleBackground = coordinator.runBackgroundTask(async () => {
+    await staleGate.promise;
+    return 'stale-background';
+  }, value => applied.push(value));
+  await coordinator.runTask(async () => 'interaction');
+  staleGate.resolve();
+  await staleBackground;
+
+  assert.deepEqual(applied, ['current-background']);
+});
+
 test('continues after refresh failure and reports error visibility', async () => {
   const messages: (string | null)[] = [];
   const applied: string[] = [];

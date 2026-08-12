@@ -43,7 +43,7 @@ export function useRepoCommandPanel({
     setBusyAction(null);
     setCommitMessage('');
     setAiError(null);
-    setCommandConsole(null);
+    // Rule: 命令输出属于工作区日志，只能由用户显式清空，切换项目不得重置。
   }, [repo.id]);
 
   const repoActionBody = (body?: Record<string, unknown>) => ({
