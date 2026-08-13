@@ -7,7 +7,6 @@ import {
   getWindowsTerminalShortcutAction,
   handleWindowsTerminalShortcutEvent,
   pasteTerminalClipboard,
-  piClipboardInput,
   queueTerminalInput,
   shiftEnterInput,
 } from './repo-terminal-shortcuts.js';
@@ -218,23 +217,22 @@ test('application clipboard text paste checks for an image before preserving ter
   assert.deepEqual(pasted, ['\x1b[200~first line\rsecond line\x1b[201~']);
 });
 
-test('confirmed Pi sessions delegate clipboard paste to Pi without reading or transforming it in the application', async () => {
+test('confirmed Pi sessions write clipboard text with raw LF instead of bracketed paste', async () => {
   const pasted: string[] = [];
 
   const pastedClipboard = await pasteTerminalClipboard({
     source: 'keyboard',
-    delegateToPiClipboard: true,
-    getClipboardImagePath: () => assert.fail('Pi must own image clipboard reads'),
-    getClipboardText: () => assert.fail('Pi must own text clipboard reads'),
-    transformPastedText: () => assert.fail('Pi must not receive ConPTY-stripped paste markers'),
+    usePiLineFeedPaste: true,
+    getClipboardImagePath: async () => null,
+    getClipboardText: async () => 'first\r\nsecond\rthird\nfourth',
+    transformPastedText: () => assert.fail('Pi line-feed compatibility must bypass xterm paste encoding'),
     writeInput: async text => {
       pasted.push(text);
     },
   });
 
   assert.equal(pastedClipboard, true);
-  assert.deepEqual(pasted, [piClipboardInput]);
-  assert.equal(piClipboardInput, '\x1b[27;3;118~');
+  assert.deepEqual(pasted, ['first\nsecond\nthird\nfourth']);
 });
 
 test('application clipboard image paste writes its temporary path after text lookup finds nothing', async () => {
@@ -372,14 +370,17 @@ test('non-windows platforms keep default terminal shortcuts', () => {
 
 test('shortcut matching requires the complete Windows modifier profile', () => {
   const strictWindowsRules = [
-    { key: 'Enter', ctrlKey: true, altKey: false, metaKey: false, shiftKey: true },
-    { key: 'j', ctrlKey: true, altKey: true, metaKey: false, shiftKey: false },
-    { key: 'Backspace', ctrlKey: true, altKey: false, metaKey: true, shiftKey: false },
-    { key: 'v', ctrlKey: true, altKey: false, metaKey: true, shiftKey: false },
+    { event: { key: 'Enter', ctrlKey: true, altKey: false, metaKey: false, shiftKey: true }, hasSelection: false },
+    { event: { key: 'j', ctrlKey: true, altKey: true, metaKey: false, shiftKey: false }, hasSelection: false },
+    { event: { key: 'Backspace', ctrlKey: true, altKey: false, metaKey: true, shiftKey: false }, hasSelection: false },
+    { event: { key: 'v', ctrlKey: true, altKey: false, metaKey: true, shiftKey: false }, hasSelection: false },
+    { event: { key: 'v', ctrlKey: true, altKey: false, metaKey: false, shiftKey: true }, hasSelection: false },
+    { event: { key: 'v', ctrlKey: false, altKey: true, metaKey: false, shiftKey: true }, hasSelection: false },
+    { event: { key: 'c', ctrlKey: true, altKey: false, metaKey: false, shiftKey: true }, hasSelection: true },
   ];
 
-  for (const event of strictWindowsRules) {
-    assert.deepEqual(getWindowsTerminalShortcutAction({ type: 'keydown', ...event }, false, 'Win64'), { type: 'pass-through' });
+  for (const { event, hasSelection } of strictWindowsRules) {
+    assert.deepEqual(getWindowsTerminalShortcutAction({ type: 'keydown', ...event }, hasSelection, 'Win64'), { type: 'pass-through' });
   }
 });
 

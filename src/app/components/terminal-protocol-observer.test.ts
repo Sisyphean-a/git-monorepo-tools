@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   TerminalProtocolObserver,
   extractTerminalProtocolCommands,
-  needsPiClipboardCompatibility,
+  needsPiLineFeedPasteCompatibility,
   needsPiFullscreenMouseCompatibility,
   PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
   PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
@@ -42,33 +42,53 @@ test('observes split Pi startup controls without changing their delivery', () =>
   assert.match(formatTerminalProtocolSnapshot(observer.getSnapshot()), /受控粘贴：已开启（xterm 已确认）/);
 });
 
-test('uses Pi native clipboard only after its title and complete input protocol fingerprint are observed', () => {
+test('uses Pi line-feed paste after its title and complete input protocol fingerprint are observed', () => {
   const observer = new TerminalProtocolObserver();
 
   observer.observeOutput('\x1b]0;π - git-');
   observer.observeOutput('monorepo-tools\x07\x1b[?2004h\x1b[>1u');
   observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
-  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), false);
+  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
 
   observer.observeTerminalInput('\x1b[?1u');
-  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), true);
+  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
 
   observer.observeOutput('Pi is rendering another frame');
   assert.equal(observer.getSnapshot().delivery, 'pending-xterm');
-  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), true);
+  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
 
-  observer.observeOutput('\x1b]0;π - \x07');
-  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), false);
+  observer.observeOutput('\x1b]0;π - \x07\x1b]0;PowerShell\x07');
+  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), false);
 
-  observer.observeOutput('\x1b]0;PowerShell\x07');
-  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), false);
+  observer.observeOutput('\x1b]0;π - git-monorepo-tools\x07');
+  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
+
+  // Pi's update checker launches cmd/npm children that replace OSC 0 briefly.
+  observer.observeOutput('\x1b]0;管理员: C:\\Windows\\system32\\cmd.exe \x07');
+  observer.observeOutput('\x1b]0;npm view pi-mcp-adapter version\x07');
+  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
+
+  // Pi protocol shutdown, not a child title, ends the confirmed Pi session.
+  observer.observeOutput('\x1b]0;PowerShell\x07\x1b[?2004l\x1b[>0u');
+  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), false);
+});
+
+test('recognizes a Pi title split beyond the former protocol-tail limit', () => {
+  const observer = new TerminalProtocolObserver();
+  const title = `π - ${'x'.repeat(512)}`;
+
+  observer.observeOutput(`\x1b]0;${title}`);
+  observer.observeOutput('\x07\x1b[?2004h\x1b[>1u');
+  observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+
+  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
 });
 
 test('does not reapply a completed keyboard request retained in a full protocol tail', () => {
   const observer = new TerminalProtocolObserver();
   const request = '\x1b[>1u';
 
-  observer.observeOutput(`${request}${'x'.repeat(256 - request.length)}`);
+  observer.observeOutput(`${request}${'x'.repeat(4096 - request.length)}`);
   assert.equal(observer.getSnapshot().keyboard, 'requested');
 
   observer.observeTerminalInput('\x1b[?1u');

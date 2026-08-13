@@ -28,7 +28,8 @@ const KEYBOARD_PROTOCOL_RESPONSE = /\x1b\[\?([0-9;]*)u/g;
 const DEC_PRIVATE_MODE_COMMAND = /\x1b\[\?([0-9;]+)([hl])/g;
 const TERMINAL_TITLE_COMMAND = /\x1b]0;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 const OBSERVED_DEC_PRIVATE_MODES = new Set(['9', '1000', '1002', '1003', '1004', '1006', '1049', '2004']);
-const PROTOCOL_TAIL_LENGTH = 256;
+// Retain enough of a split OSC 0 title to cover Windows extended paths.
+const PROTOCOL_TAIL_LENGTH = 4096;
 
 /**
  * Flow: observes copies of terminal protocol bytes and xterm parse completion.
@@ -92,9 +93,19 @@ export class TerminalProtocolObserver {
       }
     }
     for (const match of output.matchAll(TERMINAL_TITLE_COMMAND)) {
-      if (isNewProtocolMatch(match, tailLength)) {
-        piTitle = isPiTerminalTitle(match[1] ?? '');
+      if (!isNewProtocolMatch(match, tailLength)) {
+        continue;
       }
+      // Apply OSC 0 titles in stream order. A batched protocol shutdown can
+      // contain an incomplete Pi title followed by a shell title.
+      const terminalTitle = match[1] ?? '';
+      if (isPiTerminalTitle(terminalTitle)) {
+        piTitle = true;
+      } else if (isIncompletePiTerminalTitle(terminalTitle)) {
+        piTitle = false;
+      }
+      // Other titles can be emitted by Pi's cmd/npm child processes. They do
+      // not revoke an already confirmed Pi identity while its modes remain on.
     }
     for (const match of output.matchAll(DEC_PRIVATE_MODE_COMMAND)) {
       if (!isNewProtocolMatch(match, tailLength)) {
@@ -113,6 +124,10 @@ export class TerminalProtocolObserver {
             : 'none';
         }
       }
+    }
+
+    if (bracketedPasteRequested === false || keyboard === 'disabled') {
+      piTitle = false;
     }
 
     this.outputTail = output.slice(-PROTOCOL_TAIL_LENGTH);
@@ -168,14 +183,14 @@ export class TerminalProtocolObserver {
   }
 }
 
-export function needsPiClipboardCompatibility(snapshot: TerminalProtocolSnapshot) {
+export function needsPiLineFeedPasteCompatibility(snapshot: TerminalProtocolSnapshot) {
   // Pi remains identifiable while later output waits for xterm's asynchronous parser.
-  // Its previously confirmed bracketed-paste mode is still active in that interval.
-  // The explicit Alt+V sequence is safe only after xterm confirmed keyboard protocol support.
+  // ConPTY strips bracketed-paste delimiters and modified-key CSI, but raw LF survives
+  // and Pi treats it as a newline rather than an Enter submission.
   return snapshot.piTitle
     && snapshot.bracketedPasteRequested === true
     && snapshot.bracketedPasteEnabled === true
-    && snapshot.keyboard === 'negotiated';
+    && (snapshot.keyboard === 'requested' || snapshot.keyboard === 'negotiated');
 }
 
 export function needsPiFullscreenMouseCompatibility(snapshot: TerminalProtocolSnapshot) {
@@ -199,6 +214,10 @@ function isNewProtocolMatch(match: RegExpMatchArray, tailLength: number) {
 
 function isPiTerminalTitle(title: string) {
   return title === 'π' || /^π - \S/.test(title);
+}
+
+function isIncompletePiTerminalTitle(title: string) {
+  return /^π - \s*$/.test(title);
 }
 
 function protocolFlagsAreEnabled(flags: string) {

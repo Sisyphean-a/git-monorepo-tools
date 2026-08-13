@@ -6,9 +6,6 @@ export type RepoTerminalShortcutAction =
 export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
 
 export const ctrlVInput = '\x16';
-// Pi's Windows clipboard action is Alt+V. It is sent only after xterm has
-// confirmed the keyboard protocol; otherwise preserve the standard paste path.
-export const piClipboardInput = '\x1b[27;3;118~';
 export const ctrlJInput = '\x0a';
 export const ctrlWInput = '\x17';
 // Pi handles a raw line feed as its cross-terminal newline action.
@@ -73,18 +70,18 @@ const windowsTerminalShortcutRules: readonly TerminalShortcutRule[] = [
   },
   {
     key: 'c',
-    modifiers: { ctrlKey: true, altKey: false, metaKey: false },
+    modifiers: { ctrlKey: true, shiftKey: false, altKey: false, metaKey: false },
     action: { type: 'copy-selection' },
     requiresSelection: true,
   },
   {
     key: 'v',
-    modifiers: { ctrlKey: true, altKey: false, metaKey: false },
+    modifiers: { ctrlKey: true, shiftKey: false, altKey: false, metaKey: false },
     action: { type: 'paste-clipboard' },
   },
   {
     key: 'v',
-    modifiers: { ctrlKey: false, altKey: true, metaKey: false },
+    modifiers: { ctrlKey: false, shiftKey: false, altKey: true, metaKey: false },
     action: { type: 'paste-clipboard' },
   },
 ];
@@ -142,10 +139,10 @@ export function handleWindowsTerminalShortcutEvent(
 interface TerminalClipboardPasteOptions {
   readonly source: TerminalClipboardPasteSource;
   /**
-   * Rule: a confirmed Pi session owns clipboard reading so Windows ConPTY never
-   * consumes the bracketed-paste delimiters before Pi receives them.
+   * Rule: write confirmed Pi text pastes with raw LF so ConPTY cannot turn
+   * pasted line separators into Enter submissions after stripping paste markers.
    */
-  readonly delegateToPiClipboard?: boolean;
+  readonly usePiLineFeedPaste?: boolean;
   readonly getClipboardImagePath?: () => Promise<string | null>;
   readonly getClipboardText: () => Promise<string>;
   readonly transformPastedText: (text: string) => string;
@@ -153,11 +150,6 @@ interface TerminalClipboardPasteOptions {
 }
 
 export async function pasteTerminalClipboard(options: TerminalClipboardPasteOptions) {
-  if (options.delegateToPiClipboard) {
-    await options.writeInput(piClipboardInput);
-    return true;
-  }
-
   const fallbackInput = options.source === 'keyboard' ? ctrlVInput : undefined;
   const imagePath = await options.getClipboardImagePath?.();
   if (imagePath) {
@@ -175,7 +167,9 @@ export async function pasteTerminalClipboard(options: TerminalClipboardPasteOpti
     return true;
   }
   const input = text
-    ? options.transformPastedText(text)
+    ? options.usePiLineFeedPaste
+      ? normalizePiLineFeedPaste(text)
+      : options.transformPastedText(text)
     : fallbackInput;
   if (!input) {
     return false;
@@ -190,6 +184,10 @@ export function queueTerminalInput(
   data: string,
 ) {
   return inputQueue.then(() => writeInput(data));
+}
+
+function normalizePiLineFeedPaste(text: string) {
+  return text.replace(/\r\n?|\n/g, '\n');
 }
 
 function isWindowsPlatform(platform: string) {
