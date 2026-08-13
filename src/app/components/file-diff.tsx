@@ -14,9 +14,9 @@ interface FileDiffPanelProps {
 }
 
 type DiffState =
-  | { status: 'loading'; source: FileDiffLoader }
-  | { status: 'ready'; source: FileDiffLoader; content: string }
-  | { status: 'error'; source: FileDiffLoader; message: string };
+  | { status: 'loading' }
+  | { status: 'ready'; content: string }
+  | { status: 'error'; message: string };
 
 function diffLineStyle(line: string) {
   if (line.startsWith('@@')) {
@@ -97,34 +97,17 @@ function DiffContent({ content }: { content: string }) {
 
 export function FileDiffPanel({ file, loader }: FileDiffPanelProps) {
   const revision = fileDiffKey(file);
-  const cached = loader.getCached(file);
-  const [state, setState] = useState<DiffState>(() => cached
-    ? { status: 'ready', source: loader, content: cached.content }
-    : { status: 'loading', source: loader });
-  const displayedState = state.source === loader
-    ? state
-    : cached
-      ? { status: 'ready' as const, source: loader, content: cached.content }
-      : { status: 'loading' as const, source: loader };
+  const [state, setState] = useState<DiffState>({ status: 'loading' });
 
   useEffect(() => {
     let active = true;
-    const current = loader.getCached(file);
-    if (current) {
-      setState(previous => previous.source === loader && previous.status === 'ready' && previous.content === current.content
-        ? previous
-        : { status: 'ready', source: loader, content: current.content });
-      return () => {
-        active = false;
-      };
-    }
-    setState({ status: 'loading', source: loader });
+    setState({ status: 'loading' });
     void loader.load(file).then(
       diff => {
-        if (active) setState({ status: 'ready', source: loader, content: diff.content });
+        if (active) setState({ status: 'ready', content: diff.content });
       },
       error => {
-        if (active) setState({ status: 'error', source: loader, message: error instanceof Error ? error.message : '差异加载失败' });
+        if (active) setState({ status: 'error', message: error instanceof Error ? error.message : '差异加载失败' });
       },
     );
     return () => {
@@ -134,9 +117,9 @@ export function FileDiffPanel({ file, loader }: FileDiffPanelProps) {
 
   return (
     <div style={{ margin: '0 10px 8px', border: `1px solid ${C.border}`, borderRadius: 6, background: C.appBg, overflow: 'hidden' }}>
-      {displayedState.status === 'loading' && <div style={{ padding: 14, color: C.textWeak, fontSize: 11 }}>正在读取代码差异…</div>}
-      {displayedState.status === 'error' && <div style={{ padding: 14, color: C.deleted, fontSize: 11 }}>{displayedState.message}</div>}
-      {displayedState.status === 'ready' && <DiffContent content={displayedState.content} />}
+      {state.status === 'loading' && <div style={{ padding: 14, color: C.textWeak, fontSize: 11 }}>正在读取代码差异…</div>}
+      {state.status === 'error' && <div style={{ padding: 14, color: C.deleted, fontSize: 11 }}>{state.message}</div>}
+      {state.status === 'ready' && <DiffContent content={state.content} />}
     </div>
   );
 }

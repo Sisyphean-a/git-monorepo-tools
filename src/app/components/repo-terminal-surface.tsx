@@ -26,6 +26,8 @@ import {
 import {
   describeTerminalKeyboardEvent,
   describeTerminalShortcutAction,
+  appendTraceEntry,
+  clipTraceData,
   type TerminalInputTraceEntry,
   type TerminalInputTraceStage,
 } from './terminal-input-trace';
@@ -60,6 +62,8 @@ export function RepoTerminalSurface({
   const toastTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
   const inputTraceSequenceRef = useRef(0);
+  const traceBufferRef = useRef<readonly TerminalInputTraceEntry[]>([]);
+  const inputInspectorOpenRef = useRef(false);
   const protocolObserverRef = useRef(new TerminalProtocolObserver());
   const piMouseCompatibilityActiveRef = useRef(false);
 
@@ -86,15 +90,28 @@ export function RepoTerminalSurface({
     updateProtocolSnapshot(protocolObserverRef.current.observeOutput(chunk));
   }, [updateProtocolSnapshot]);
 
+  /**
+   * Rule: the trace stays bounded while the observer is closed.
+   * Effect: entries always accumulate in a capped buffer; React state only mirrors it while the inspector is open.
+   */
   const recordInputTrace = useCallback((stage: TerminalInputTraceStage, detail: string, data?: string) => {
     inputTraceSequenceRef.current += 1;
-    setInputTrace(current => [...current, {
+    const entry: TerminalInputTraceEntry = {
       sequence: inputTraceSequenceRef.current,
       time: Date.now(),
       stage,
       detail,
-      data,
-    }]);
+      data: clipTraceData(data),
+    };
+    traceBufferRef.current = appendTraceEntry(traceBufferRef.current, entry);
+    if (inputInspectorOpenRef.current) {
+      setInputTrace(traceBufferRef.current);
+    }
+  }, []);
+
+  const clearInputTrace = useCallback(() => {
+    traceBufferRef.current = [];
+    setInputTrace([]);
   }, []);
 
   const writeTerminalInput = useCallback(async (targetSessionId: string, data: string, source: string) => {
@@ -165,6 +182,8 @@ export function RepoTerminalSurface({
 
   const openInputInspector = () => {
     recordInputTrace('浏览器事件', '协议与输入观测已开始；接下来按键会由窗口捕获阶段记录');
+    inputInspectorOpenRef.current = true;
+    setInputTrace(traceBufferRef.current);
     setInputInspectorOpen(true);
   };
 
@@ -620,8 +639,11 @@ export function RepoTerminalSurface({
         terminal={terminalRef.current}
         entries={inputTrace}
         protocol={protocolSnapshot}
-        onClear={() => setInputTrace([])}
-        onClose={() => setInputInspectorOpen(false)}
+        onClear={clearInputTrace}
+        onClose={() => {
+          inputInspectorOpenRef.current = false;
+          setInputInspectorOpen(false);
+        }}
         onTrace={recordInputTrace}
         onTerminalViewportChanged={scheduleResize}
       />

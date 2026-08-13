@@ -17,6 +17,26 @@ export interface TerminalInputTraceEntry {
   readonly data?: string;
 }
 
+/**
+ * Rule: terminal events stream in while the observer is closed; the trace must stay bounded.
+ * Effect: entries beyond the cap drop the oldest ones, and oversized data is clipped.
+ */
+export const MAX_TRACE_ENTRIES = 2000;
+export const MAX_TRACE_DATA_CHARS = 1000;
+
+export function clipTraceData(data: string | undefined): string | undefined {
+  if (data === undefined) return undefined;
+  return data.length > MAX_TRACE_DATA_CHARS ? `${data.slice(0, MAX_TRACE_DATA_CHARS)}…` : data;
+}
+
+export function appendTraceEntry(
+  entries: readonly TerminalInputTraceEntry[],
+  entry: TerminalInputTraceEntry,
+): TerminalInputTraceEntry[] {
+  const next = [...entries, entry];
+  return next.length > MAX_TRACE_ENTRIES ? next.slice(next.length - MAX_TRACE_ENTRIES) : next;
+}
+
 type TerminalKeyboardEvent = Pick<KeyboardEvent,
   'type' | 'key' | 'code' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey' | 'repeat' | 'isComposing'>;
 

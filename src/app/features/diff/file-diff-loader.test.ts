@@ -20,7 +20,7 @@ const diff: FileDiff = {
   content: '+change',
 };
 
-test('file diff loader reuses in-flight and resolved requests', async () => {
+test('file diff loader deduplicates concurrent requests and refetches after resolution', async () => {
   let calls = 0;
   const load = createFileDiffLoader(async () => {
     calls += 1;
@@ -31,9 +31,8 @@ test('file diff loader reuses in-flight and resolved requests', async () => {
   const second = load.load(file);
   assert.equal(first, second);
   assert.equal(await first, diff);
-  assert.equal(load.getCached(file), diff);
   assert.equal(await load.load(file), diff);
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
 });
 
 test('file diff loader separates staged and unstaged requests', async () => {
@@ -52,7 +51,7 @@ test('unchanged snapshot objects keep the same semantic diff revision', () => {
   assert.notEqual(fileDiffKey({ ...file, additions: file.additions + 1 }), fileDiffKey(file));
 });
 
-test('file diff loader keeps an open diff across unchanged snapshot objects', async () => {
+test('file diff loader refetches after resolution without retaining a cache', async () => {
   let calls = 0;
   const load = createFileDiffLoader(async () => {
     calls += 1;
@@ -60,25 +59,7 @@ test('file diff loader keeps an open diff across unchanged snapshot objects', as
   });
 
   await load.load(file);
-  const unchangedNextSnapshot = { ...file };
-
-  assert.equal(load.getCached(unchangedNextSnapshot), diff);
-  assert.equal(await load.load(unchangedNextSnapshot), diff);
-  assert.equal(calls, 1);
-});
-
-test('file diff loader invalidates cache when the observable file summary changes', async () => {
-  let calls = 0;
-  const load = createFileDiffLoader(async current => {
-    calls += 1;
-    return { ...diff, content: `+change-${current.additions}` };
-  });
-
-  await load.load(file);
-  const changedNextSnapshot = { ...file, additions: file.additions + 1 };
-
-  assert.equal(load.getCached(changedNextSnapshot), undefined);
-  assert.equal((await load.load(changedNextSnapshot)).content, '+change-2');
+  await load.load({ ...file });
   assert.equal(calls, 2);
 });
 
@@ -91,7 +72,6 @@ test('file diff loader retries after a failed request', async () => {
   });
 
   await assert.rejects(load.load(file), /failed/);
-  assert.equal(load.getCached(file), undefined);
   assert.equal(await load.load(file), diff);
   assert.equal(calls, 2);
 });
@@ -108,6 +88,6 @@ test('separate loader generations isolate late results', async () => {
   assert.equal(await currentLoader.load(file), currentDiff);
 
   resolveOld?.({ ...diff, content: '+old' });
-  await oldRequest;
-  assert.equal(currentLoader.getCached(file), currentDiff);
+  assert.equal((await oldRequest).content, '+old');
+  assert.equal(await currentLoader.load(file), currentDiff);
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCommandConsoleSession } from './repo-command-console.js';
+import { appendCommandOutput, createCommandConsoleSession, MAX_COMMAND_OUTPUT_CHARS } from './repo-command-console.js';
 import type { CommandConsoleState } from './command-console-state.js';
 
 function createConsoleState() {
@@ -46,4 +46,40 @@ test('clearing the console prevents a running command from reopening it', () => 
   session.finish('success');
 
   assert.equal(state.get(), null);
+});
+
+test('command output keeps only the tail once it exceeds the cap and marks itself truncated', () => {
+  const state = createConsoleState();
+  const session = createCommandConsoleSession(state.setState, '命令', 'npm test');
+
+  const head = 'a'.repeat(MAX_COMMAND_OUTPUT_CHARS);
+  const tail = 'tail-data';
+  session.write(head);
+  session.write(tail);
+  session.finish('success');
+
+  const current = state.get();
+  assert.equal(current?.truncated, true);
+  assert.equal(current?.output.length, MAX_COMMAND_OUTPUT_CHARS);
+  assert.ok(current?.output.endsWith(tail));
+});
+
+test('truncation flag survives later writes without growing the output', () => {
+  const state = createConsoleState();
+  const session = createCommandConsoleSession(state.setState, '命令', 'npm test');
+
+  session.write('x'.repeat(MAX_COMMAND_OUTPUT_CHARS + 1));
+  session.write('more output');
+  session.finish('success');
+
+  const current = state.get();
+  assert.equal(current?.truncated, true);
+  assert.equal(current?.output.length, MAX_COMMAND_OUTPUT_CHARS);
+  assert.ok(current?.output.endsWith('more output'));
+});
+
+test('appendCommandOutput leaves short output untouched', () => {
+  const appended = appendCommandOutput('abc', 'def');
+  assert.equal(appended.output, 'abcdef');
+  assert.equal(appended.truncated, false);
 });

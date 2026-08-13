@@ -167,7 +167,7 @@ export function Workspace({
       settings,
       target: { path: repo.path, category: repo.category },
     })),
-    // Rule: periodic snapshots replace RepoDetail objects; only stable request inputs may invalidate an open diff.
+    // Rule: periodic snapshots replace RepoDetail objects; only stable request inputs may reload an open diff.
     [backend, repo.id, repo.path, repo.category, settings],
   );
   const handleSendToTerminal = async (command: string) => {

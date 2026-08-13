@@ -166,7 +166,8 @@ function CommandConsole({
 
   const handleCopy = () => {
     if (!commandConsole) return;
-    const text = [`$ ${commandConsole.command}`, commandConsole.output].filter(Boolean).join('\n');
+    const text = [`$ ${commandConsole.command}`, commandConsole.output].filter(Boolean).join('\n')
+      + (commandConsole.truncated ? '\n\n[输出过长，仅显示末尾内容]' : '');
     navigator.clipboard.writeText(text).catch(error => console.error('复制提交信息失败', error));
   };
 
@@ -219,7 +220,7 @@ function CommandConsole({
             fontFamily: 'JetBrains Mono, monospace',
           }}
         >
-          {commandConsole ? `$ ${commandConsole.command}${commandConsole.output ? `\n${commandConsole.output}` : ''}` : ''}
+          {commandConsole ? `$ ${commandConsole.command}${commandConsole.output ? `\n${commandConsole.output}` : ''}${commandConsole.truncated ? '\n\n[输出过长，仅显示末尾内容]' : ''}` : ''}
         </pre>
       )}
     </div>

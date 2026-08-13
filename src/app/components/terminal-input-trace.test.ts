@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  appendTraceEntry,
+  clipTraceData,
   describeTerminalKeyboardEvent,
   describeTerminalShortcutAction,
   formatTerminalInputTrace,
+  MAX_TRACE_DATA_CHARS,
+  MAX_TRACE_ENTRIES,
+  type TerminalInputTraceEntry,
 } from './terminal-input-trace.js';
 
 test('input trace preserves the Shift+Enter event and its stable Pi newline input', () => {
@@ -34,4 +39,28 @@ test('input trace preserves the Shift+Enter event and its stable Pi newline inpu
 
 test('input trace identifies xterm pass-through handling', () => {
   assert.equal(describeTerminalShortcutAction({ type: 'pass-through' }), '交给 xterm 编码');
+});
+
+test('trace buffer drops the oldest entries once the cap is exceeded', () => {
+  let entries: readonly TerminalInputTraceEntry[] = [];
+  for (let index = 0; index < MAX_TRACE_ENTRIES + 5; index += 1) {
+    entries = appendTraceEntry(entries, {
+      sequence: index + 1,
+      time: index,
+      stage: 'xterm 键盘事件',
+      detail: `事件 ${index + 1}`,
+    });
+  }
+  assert.equal(entries.length, MAX_TRACE_ENTRIES);
+  assert.equal(entries[0]?.sequence, 6);
+  assert.equal(entries[entries.length - 1]?.sequence, MAX_TRACE_ENTRIES + 5);
+});
+
+test('trace entry data is clipped to a bounded length', () => {
+  const long = 'x'.repeat(MAX_TRACE_DATA_CHARS + 100);
+  const clipped = clipTraceData(long);
+  assert.equal(clipped?.length, MAX_TRACE_DATA_CHARS + 1);
+  assert.ok(clipped?.endsWith('…'));
+  assert.equal(clipTraceData('short'), 'short');
+  assert.equal(clipTraceData(undefined), undefined);
 });
