@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { mergeRepoSnapshotUpdate } from '../domain/repo-snapshot-merge';
 import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types';
 import type { WorkspaceBackend } from './ports';
@@ -15,6 +15,7 @@ interface WorkspaceStateConfig {
 export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [selectedRepoId, setSelectedRepoId] = useState('');
+  const interactionRevisionRef = useRef(0);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const applySnapshot = (nextSnapshot: AppSnapshot) => {
     setSnapshot(nextSnapshot);
@@ -22,7 +23,14 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     setSelectedRepoId(current => nextSnapshot.repoDetails[current] ? current : nextSnapshot.selectedRepoId);
   };
   const applyRepoUpdate = (update: RepoSnapshotUpdate) => {
-    setSnapshot(current => current ? mergeRepoSnapshotUpdate(current, update) : current);
+    interactionRevisionRef.current += 1;
+    const historyRevision = `interaction-${interactionRevisionRef.current}`;
+    setSnapshot(current => current ? mergeRepoSnapshotUpdate(current, update, 'interaction', historyRevision) : current);
+    sidebar.applySidebarRepoUpdate(update);
+    setSelectedRepoId(current => current || update.repo.id);
+  };
+  const applyBackgroundRepoUpdate = (update: RepoSnapshotUpdate) => {
+    setSnapshot(current => current ? mergeRepoSnapshotUpdate(current, update, 'background') : current);
     sidebar.applySidebarRepoUpdate(update);
     setSelectedRepoId(current => current || update.repo.id);
   };
@@ -52,7 +60,7 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     settings,
     snapshot,
     selectedRepoId,
-    applyRepoUpdate,
+    applyRepoUpdate: applyBackgroundRepoUpdate,
     runBackgroundTask: refresh.runBackgroundTask,
   });
 

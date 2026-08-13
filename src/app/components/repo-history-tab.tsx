@@ -4,26 +4,28 @@ import { Clock3, Copy, GitBranch, GitCommit, GitMerge, TerminalSquare } from 'lu
 import { useAppBackend } from '../application/backend-context';
 import { buildCommitGraph, CommitGraphRow } from './commit-graph';
 import { C } from '../theme';
-import type { AppSettings, CommitDetail, CommitSummary, RepoDetail } from '../domain/types';
+import type { AppSettings, CommitDetail, CommitSummary } from '../domain/types';
 
 const HISTORY_PAGE_SIZE = 50;
 
 interface RepoHistoryTabProps {
-  repo: RepoDetail;
+  repoId: string;
+  initialCommits: CommitSummary[];
+  initialTotal: number;
+  initialHasMore: boolean;
   settings: AppSettings;
   active: boolean;
   onOpenTerminal: () => void;
   onSendToTerminal?: (command: string) => Promise<void>;
 }
 
-export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendToTerminal }: RepoHistoryTabProps) {
+export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHasMore, settings, active, onOpenTerminal, onSendToTerminal }: RepoHistoryTabProps) {
   const backend = useAppBackend();
-  const repoHistory = Array.isArray(repo.history) ? repo.history : [];
-  const [commits, setCommits] = useState<CommitSummary[]>(repoHistory);
-  const [total, setTotal] = useState(repo.historyTotal);
-  const [hasMore, setHasMore] = useState(repo.historyHasMore);
+  const [commits, setCommits] = useState<CommitSummary[]>(initialCommits);
+  const [total, setTotal] = useState(initialTotal);
+  const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [selectedHash, setSelectedHash] = useState<string>(repoHistory[0]?.hash ?? '');
+  const [selectedHash, setSelectedHash] = useState<string>(initialCommits[0]?.hash ?? '');
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -31,32 +33,18 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
-  const loadedRepoId = useRef(repoHistory.length > 0 ? repo.id : '');
+  const loadedRepoId = useRef(initialCommits.length > 0 ? repoId : '');
 
   useEffect(() => {
-    setCommits(repoHistory);
-    setTotal(repo.historyTotal);
-    setHasMore(repo.historyHasMore);
-    setSelectedHash(current => {
-      if (current && repoHistory.some(commit => commit.hash === current)) {
-        return current;
-      }
-      return repoHistory[0]?.hash ?? '';
-    });
-    loadedRepoId.current = repoHistory.length > 0 ? repo.id : '';
-    setInitialLoadError(null);
-  }, [repo]);
-
-  useEffect(() => {
-    if (!active || loadedRepoId.current === repo.id) return;
+    if (!active || loadedRepoId.current === repoId) return;
     let cancelled = false;
     setInitialLoading(true);
     setInitialLoadError(null);
-    void backend.fetchRepoHistory({ repoId: repo.id, offset: 0, limit: HISTORY_PAGE_SIZE, settings })
+    void backend.fetchRepoHistory({ repoId, offset: 0, limit: HISTORY_PAGE_SIZE, settings })
       .then(next => {
         if (cancelled) return;
         const nextCommits = Array.isArray(next.commits) ? next.commits : [];
-        loadedRepoId.current = repo.id;
+        loadedRepoId.current = repoId;
         setCommits(nextCommits);
         setTotal(next.total);
         setHasMore(next.hasMore);
@@ -71,7 +59,7 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     return () => {
       cancelled = true;
     };
-  }, [active, backend, repo, settings]);
+  }, [active, backend, repoId, settings]);
 
   useEffect(() => {
     if (!selectedHash) {
@@ -82,7 +70,7 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     let cancelled = false;
     setDetailLoading(true);
     setDetailError(null);
-    void backend.fetchCommitDetail({ repoId: repo.id, hash: selectedHash, settings })
+    void backend.fetchCommitDetail({ repoId, hash: selectedHash, settings })
       .then(next => {
         if (cancelled) return;
         setDetail(next);
@@ -99,7 +87,7 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     return () => {
       cancelled = true;
     };
-  }, [backend, repo.id, selectedHash, settings]);
+  }, [backend, repoId, selectedHash, settings]);
 
   const selectedSummary = useMemo(
     () => commits.find(commit => commit.hash === selectedHash) ?? null,
@@ -118,7 +106,7 @@ export function RepoHistoryTab({ repo, settings, active, onOpenTerminal, onSendT
     setLoadingMore(true);
     try {
       const next = await backend.fetchRepoHistory({
-        repoId: repo.id,
+        repoId,
         offset: commits.length,
         limit: HISTORY_PAGE_SIZE,
         settings,

@@ -7,6 +7,7 @@ export interface Repo {
   id: string;
   name: string;
   branch: string;
+  headRevision?: string;
   path: string;
   remote: string;
   category: string;
@@ -132,6 +133,7 @@ export interface RepoDetail extends Repo {
   history: CommitSummary[];
   historyTotal: number;
   historyHasMore: boolean;
+  historyRevision?: string;
 }
 
 export interface RepoSnapshotUpdate {

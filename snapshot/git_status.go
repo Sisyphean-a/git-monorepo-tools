@@ -20,16 +20,17 @@ var (
 )
 
 type parsedStatus struct {
-	branch    string
-	remote    string
-	ahead     int
-	behind    int
-	conflicts int
-	entries   []string
+	branch       string
+	headRevision string
+	remote       string
+	ahead        int
+	behind       int
+	conflicts    int
+	entries      []string
 }
 
 func (executor gitExecutor) readStatus(repoPath string) (parsedStatus, error) {
-	output, err := executor.runGitRaw(repoPath, []string{"status", "--porcelain=v1", "-b", "-z", "--untracked-files=all"})
+	output, err := executor.runGitRaw(repoPath, []string{"status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"})
 	return parseStatus(output), err
 }
 
@@ -70,26 +71,39 @@ func parseStatus(output string) parsedStatus {
 	if !strings.Contains(output, "\x00") {
 		records = strings.Split(output, "\n")
 	}
+	parsed := parsedStatus{branch: "HEAD", remote: "—", entries: []string{}}
 	branchLine := "## HEAD"
-	entries := []string{}
 	for _, record := range records {
-		if strings.TrimSpace(record) == "" {
+		record = strings.TrimSpace(record)
+		if record == "" {
 			continue
 		}
-		if strings.HasPrefix(record, "## ") {
-			branchLine = strings.TrimSpace(record)
-			continue
+		switch {
+		case strings.HasPrefix(record, "# branch.oid "):
+			parsed.headRevision = strings.TrimPrefix(record, "# branch.oid ")
+		case strings.HasPrefix(record, "# branch.head "):
+			parsed.branch = strings.TrimPrefix(record, "# branch.head ")
+		case strings.HasPrefix(record, "# branch.upstream "):
+			upstream := strings.TrimPrefix(record, "# branch.upstream ")
+			parsed.remote = strings.Split(upstream, "/")[0]
+		case strings.HasPrefix(record, "# branch.ab "):
+			fmt.Sscanf(strings.TrimPrefix(record, "# branch.ab "), "+%d -%d", &parsed.ahead, &parsed.behind)
+		case strings.HasPrefix(record, "## "):
+			branchLine = record
+		case strings.HasPrefix(record, "? "):
+			parsed.entries = append(parsed.entries, "?? "+strings.TrimPrefix(record, "? "))
+		default:
+			parsed.entries = append(parsed.entries, record)
 		}
-		entries = append(entries, record)
 	}
-	return parsedStatus{
-		branch:    extractBranch(branchLine),
-		remote:    extractRemote(branchLine),
-		ahead:     extractCount(branchLine, "ahead"),
-		behind:    extractCount(branchLine, "behind"),
-		conflicts: countConflicts(entries),
-		entries:   entries,
+	if branchLine != "## HEAD" || !strings.Contains(output, "# branch.") {
+		parsed.branch = extractBranch(branchLine)
+		parsed.remote = extractRemote(branchLine)
+		parsed.ahead = extractCount(branchLine, "ahead")
+		parsed.behind = extractCount(branchLine, "behind")
 	}
+	parsed.conflicts = countConflicts(parsed.entries)
+	return parsed
 }
 
 func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
@@ -240,7 +254,12 @@ func countConflicts(entries []string) int {
 	count := 0
 	for _, entry := range entries {
 		code := ""
-		if len(entry) >= 2 {
+		if strings.HasPrefix(entry, "u ") {
+			fields := strings.Fields(entry)
+			if len(fields) > 1 {
+				code = fields[1]
+			}
+		} else if len(entry) >= 2 {
 			code = entry[:2]
 		}
 		if slices.Contains([]string{"DD", "AU", "UD", "UA", "DU", "AA", "UU"}, code) {

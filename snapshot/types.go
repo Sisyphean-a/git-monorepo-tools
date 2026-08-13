@@ -92,19 +92,20 @@ type RepoSnapshotUpdate struct {
 }
 
 type Repo struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Branch    string `json:"branch"`
-	Path      string `json:"path"`
-	Remote    string `json:"remote"`
-	Category  string `json:"category"`
-	Modified  int    `json:"modified"`
-	Ahead     int    `json:"ahead"`
-	Behind    int    `json:"behind"`
-	Conflicts int    `json:"conflicts"`
-	Status    string `json:"status"`
-	ScanError string `json:"scanError,omitempty"`
-	LastScan  string `json:"lastScan"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Branch       string `json:"branch"`
+	HeadRevision string `json:"headRevision"`
+	Path         string `json:"path"`
+	Remote       string `json:"remote"`
+	Category     string `json:"category"`
+	Modified     int    `json:"modified"`
+	Ahead        int    `json:"ahead"`
+	Behind       int    `json:"behind"`
+	Conflicts    int    `json:"conflicts"`
+	Status       string `json:"status"`
+	ScanError    string `json:"scanError,omitempty"`
+	LastScan     string `json:"lastScan"`
 }
 
 type RepoDetail struct {

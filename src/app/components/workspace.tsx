@@ -296,7 +296,11 @@ export function Workspace({
               }}
             >
               <RepoHistoryTab
-                repo={repo}
+                key={`${repo.id}:${repo.historyRevision ?? 'initial'}`}
+                repoId={repo.id}
+                initialCommits={repo.history}
+                initialTotal={repo.historyTotal}
+                initialHasMore={repo.historyHasMore}
                 settings={settings}
                 active={mainTab === 'history'}
                 onOpenTerminal={handleOpenTerminal}

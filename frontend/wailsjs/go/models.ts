@@ -108,6 +108,7 @@ export namespace snapshot {
 	    id: string;
 	    name: string;
 	    branch: string;
+	    headRevision: string;
 	    path: string;
 	    remote: string;
 	    category: string;
@@ -135,6 +136,7 @@ export namespace snapshot {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.branch = source["branch"];
+	        this.headRevision = source["headRevision"];
 	        this.path = source["path"];
 	        this.remote = source["remote"];
 	        this.category = source["category"];
@@ -491,6 +493,7 @@ export namespace snapshot {
 	    id: string;
 	    name: string;
 	    branch: string;
+	    headRevision: string;
 	    path: string;
 	    remote: string;
 	    category: string;
@@ -511,6 +514,7 @@ export namespace snapshot {
 	        this.id = source["id"];
 	        this.name = source["name"];
 	        this.branch = source["branch"];
+	        this.headRevision = source["headRevision"];
 	        this.path = source["path"];
 	        this.remote = source["remote"];
 	        this.category = source["category"];

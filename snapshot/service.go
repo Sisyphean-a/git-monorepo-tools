@@ -258,19 +258,20 @@ func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, sca
 	modified := uniquePathCount(files)
 
 	repo := Repo{
-		ID:        createRepoID(repoName, repoPath),
-		Name:      repoName,
-		Branch:    parsed.branch,
-		Path:      repoPath,
-		Remote:    parsed.remote,
-		Category:  entry.category,
-		Modified:  modified,
-		Ahead:     parsed.ahead,
-		Behind:    parsed.behind,
-		Conflicts: parsed.conflicts,
-		Status:    repoStatus(scanError, parsed.conflicts, modified),
-		ScanError: scanError,
-		LastScan:  formatTime(scanTime),
+		ID:           createRepoID(repoName, repoPath),
+		Name:         repoName,
+		Branch:       parsed.branch,
+		HeadRevision: parsed.headRevision,
+		Path:         repoPath,
+		Remote:       parsed.remote,
+		Category:     entry.category,
+		Modified:     modified,
+		Ahead:        parsed.ahead,
+		Behind:       parsed.behind,
+		Conflicts:    parsed.conflicts,
+		Status:       repoStatus(scanError, parsed.conflicts, modified),
+		ScanError:    scanError,
+		LastScan:     formatTime(scanTime),
 	}
 
 	detail := RepoDetail{

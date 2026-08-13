@@ -235,6 +235,27 @@ func TestBuildRepoSnapshotPreservesNonASCIIFilenames(t *testing.T) {
 	}
 }
 
+func TestParseStatusV2CapturesHeadAndNormalizesEntries(t *testing.T) {
+	parsed := parseStatus(strings.Join([]string{
+		"# branch.oid abc123",
+		"# branch.head feature/test",
+		"# branch.upstream origin/feature/test",
+		"# branch.ab +2 -3",
+		"? new.txt",
+		"u UU N... 100644 100644 100644 100644 a b c conflict.txt",
+	}, "\x00"))
+
+	if parsed.headRevision != "abc123" || parsed.branch != "feature/test" || parsed.remote != "origin" {
+		t.Fatalf("unexpected branch metadata: %#v", parsed)
+	}
+	if parsed.ahead != 2 || parsed.behind != 3 || parsed.conflicts != 1 {
+		t.Fatalf("unexpected status counts: %#v", parsed)
+	}
+	if len(parsed.entries) != 2 || parsed.entries[0] != "?? new.txt" {
+		t.Fatalf("unexpected normalized entries: %#v", parsed.entries)
+	}
+}
+
 func TestExtractBranchPreservesDottedBranchNames(t *testing.T) {
 	cases := []struct {
 		line string

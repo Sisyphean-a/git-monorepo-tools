@@ -28,16 +28,12 @@ export function useRepoCommandPanel({
   backend,
 }: UseRepoCommandPanelArgs) {
   const [commitMessage, setCommitMessage] = useState('');
-  const [stagedIds, setStagedIds] = useState<Set<string>>(new Set());
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [commandConsole, setCommandConsole] = useState<CommandConsoleState | null>(null);
   const scopeRef = useRef(0);
   const files = repo.files;
-
-  useEffect(() => {
-    setStagedIds(new Set(files.filter(file => file.staged).map(file => file.id)));
-  }, [files, repo.id, repo.scannedAt]);
+  const stagedCount = files.reduce((count, file) => count + Number(file.staged), 0);
 
   useEffect(() => {
     scopeRef.current += 1;
@@ -53,7 +49,7 @@ export function useRepoCommandPanel({
     repoCategory: repo.category,
   });
   const hasChanges = files.length > 0;
-  const hasStaged = stagedIds.size > 0;
+  const hasStaged = stagedCount > 0;
   const hasCommitMsg = commitMessage.trim().length > 0;
   const hasPull = repo.behind > 0;
   const hasPush = repo.ahead > 0;
@@ -225,8 +221,8 @@ export function useRepoCommandPanel({
     {
       key: 'stage',
       actions: [
-        buildBuiltinAction('stage-all', '全部暂存', <PlusSquare size={12} />, 'stage-all', busyAction !== null || !hasChanges || stagedIds.size === files.length),
-        buildBuiltinAction('unstage-all', '全部取消暂存', <MinusSquare size={12} />, 'unstage-all', busyAction !== null || stagedIds.size === 0),
+        buildBuiltinAction('stage-all', '全部暂存', <PlusSquare size={12} />, 'stage-all', busyAction !== null || !hasChanges || stagedCount === files.length),
+        buildBuiltinAction('unstage-all', '全部取消暂存', <MinusSquare size={12} />, 'unstage-all', busyAction !== null || stagedCount === 0),
       ],
     },
     {
@@ -277,7 +273,7 @@ export function useRepoCommandPanel({
   ];
 
   return {
-    stagedIds,
+    stagedCount,
     commitMessage,
     aiError,
     topAction,
