@@ -17,7 +17,7 @@ func TestGetFileDiffSeparatesStagedAndUnstagedChanges(t *testing.T) {
 	writeTestFile(t, repoPath, "tracked.txt", "base\nstaged\nworktree\n")
 
 	service, repoID, request := buildFileDiffFixture(t, root)
-	staged, err := service.GetFileDiff(FileDiffRequest{RepoID: repoID, Snapshot: request, FilePath: "tracked.txt", Staged: true})
+	staged, err := service.GetFileDiff(FileDiffRequest{RepoID: repoID, Snapshot: request, FilePath: "tracked.txt", Status: "M", Staged: true})
 	if err != nil {
 		t.Fatalf("get staged diff: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestGetFileDiffSeparatesStagedAndUnstagedChanges(t *testing.T) {
 		t.Fatalf("unexpected staged diff: %q", staged.Content)
 	}
 
-	unstaged, err := service.GetFileDiff(FileDiffRequest{RepoID: repoID, Snapshot: request, FilePath: "tracked.txt"})
+	unstaged, err := service.GetFileDiff(FileDiffRequest{RepoID: repoID, Snapshot: request, FilePath: "tracked.txt", Status: "M"})
 	if err != nil {
 		t.Fatalf("get unstaged diff: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestGetFileDiffShowsUntrackedFileAsAddition(t *testing.T) {
 	writeTestFile(t, repoPath, "new.txt", "first\nsecond\n")
 
 	service, repoID, request := buildFileDiffFixture(t, root)
-	diff, err := service.GetFileDiff(FileDiffRequest{RepoID: repoID, Snapshot: request, FilePath: "new.txt"})
+	diff, err := service.GetFileDiff(FileDiffRequest{RepoID: repoID, Snapshot: request, FilePath: "new.txt", Status: "A", Untracked: true})
 	if err != nil {
 		t.Fatalf("get untracked diff: %v", err)
 	}

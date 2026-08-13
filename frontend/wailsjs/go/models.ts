@@ -86,6 +86,7 @@ export namespace snapshot {
 	    deletions: number;
 	    size: string;
 	    staged: boolean;
+	    untracked?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new FileChange(source);
@@ -100,6 +101,7 @@ export namespace snapshot {
 	        this.deletions = source["deletions"];
 	        this.size = source["size"];
 	        this.staged = source["staged"];
+	        this.untracked = source["untracked"];
 	    }
 	}
 	export class RepoDetail {
@@ -447,7 +449,9 @@ export namespace snapshot {
 	    repoId: string;
 	    snapshot: Request;
 	    filePath: string;
+	    status: string;
 	    staged: boolean;
+	    untracked: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new FileDiffRequest(source);
@@ -458,7 +462,9 @@ export namespace snapshot {
 	        this.repoId = source["repoId"];
 	        this.snapshot = this.convertValues(source["snapshot"], Request);
 	        this.filePath = source["filePath"];
+	        this.status = source["status"];
 	        this.staged = source["staged"];
+	        this.untracked = source["untracked"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

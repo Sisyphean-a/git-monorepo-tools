@@ -7,7 +7,6 @@ import { FileDiffPanel } from './file-diff';
 
 interface DiffListProps {
   files: FileChange[];
-  revision: string;
   diffLoader: FileDiffLoader;
 }
 
@@ -37,12 +36,11 @@ function summarizeSection(files: FileChange[]) {
 interface FileRowProps {
   file: FileChange;
   expanded: boolean;
-  revision: string;
   onToggle: (id: string) => void;
   diffLoader: FileDiffLoader;
 }
 
-const FileRow = memo(function FileRow({ file, expanded, revision, onToggle, diffLoader }: FileRowProps) {
+const FileRow = memo(function FileRow({ file, expanded, onToggle, diffLoader }: FileRowProps) {
   const [hovered, setHovered] = useState(false);
   const pathParts = file.path.split('/');
   const fileName = pathParts.pop() ?? '';
@@ -74,7 +72,7 @@ const FileRow = memo(function FileRow({ file, expanded, revision, onToggle, diff
           <span style={{ color: C.textWeak, fontSize: 10, minWidth: 44, textAlign: 'right' }}>{file.size}</span>
         </div>
       </button>
-      {expanded && <FileDiffPanel key={`${file.id}:${revision}`} file={file} loader={diffLoader} />}
+      {expanded && <FileDiffPanel file={file} loader={diffLoader} />}
     </div>
   );
 });
@@ -85,7 +83,7 @@ interface ChangeSectionProps extends DiffListProps {
   onToggle: (id: string) => void;
 }
 
-function ChangeSection({ title, files, revision, expandedId, onToggle, diffLoader }: ChangeSectionProps) {
+function ChangeSection({ title, files, expandedId, onToggle, diffLoader }: ChangeSectionProps) {
   const summary = useMemo(() => summarizeSection(files), [files]);
   if (files.length === 0) return null;
   return (
@@ -98,14 +96,14 @@ function ChangeSection({ title, files, revision, expandedId, onToggle, diffLoade
       </div>
       <div style={{ padding: '4px 0 8px' }}>
         {files.map(file => (
-          <FileRow key={file.id} file={file} expanded={expandedId === file.id} revision={revision} onToggle={onToggle} diffLoader={diffLoader} />
+          <FileRow key={file.id} file={file} expanded={expandedId === file.id} onToggle={onToggle} diffLoader={diffLoader} />
         ))}
       </div>
     </>
   );
 }
 
-export function DiffList({ files, revision, diffLoader }: DiffListProps) {
+export function DiffList({ files, diffLoader }: DiffListProps) {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const filtered = useMemo(
@@ -130,8 +128,8 @@ export function DiffList({ files, revision, diffLoader }: DiffListProps) {
         </div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-        <ChangeSection title="暂存的更改" files={stagedFiles} revision={revision} expandedId={expandedId} onToggle={handleToggle} diffLoader={diffLoader} />
-        <ChangeSection title="更改" files={unstagedFiles} revision={revision} expandedId={expandedId} onToggle={handleToggle} diffLoader={diffLoader} />
+        <ChangeSection title="暂存的更改" files={stagedFiles} expandedId={expandedId} onToggle={handleToggle} diffLoader={diffLoader} />
+        <ChangeSection title="更改" files={unstagedFiles} expandedId={expandedId} onToggle={handleToggle} diffLoader={diffLoader} />
         {filtered.length === 0 && <div style={{ padding: 30, textAlign: 'center', color: C.textWeak, fontSize: 12 }}>没有匹配的文件</div>}
       </div>
     </div>

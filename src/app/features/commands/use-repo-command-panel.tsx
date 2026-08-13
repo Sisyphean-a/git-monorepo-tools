@@ -4,7 +4,8 @@ import { formatComboSummary, getBuiltInCommandLabel, getRepoCommands } from './c
 import { createComboCommitMessageState } from './combo-commit-message-state';
 import { createCommandConsoleSession } from './repo-command-console';
 import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButton, RepoCommandResult, RepoDetail, RepoMutationAction } from '../../domain/types';
-import type { CommandConsoleState, PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
+import type { PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
+import type { CommandConsoleState } from './command-console-state';
 import type { AppBackend } from '../../application/ports';
 
 interface UseRepoCommandPanelArgs {
@@ -126,7 +127,6 @@ export function useRepoCommandPanel({
         setCommandConsole,
         combo.label,
         formatComboSummary(combo.actions),
-        isActive,
       );
       const comboMessage = createComboCommitMessageState(commitMessage, value => {
         if (isActive()) setCommitMessage(value);
@@ -154,7 +154,7 @@ export function useRepoCommandPanel({
   const runCustomCommand = (scope: 'global' | 'project', command: CustomCommandButton) => {
     triggerBusyAction(`${scope}-command:${command.id}`, async isActive => {
       const streamId = `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const session = createCommandConsoleSession(setCommandConsole, command.label, command.command, isActive);
+      const session = createCommandConsoleSession(setCommandConsole, command.label, command.command);
       const stopListening = backend.onEvent('repo-command-output', payload => {
         const event = readRuntimePayload(payload);
         if (event?.streamId !== streamId) return;

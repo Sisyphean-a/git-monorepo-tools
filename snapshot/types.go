@@ -22,10 +22,12 @@ type RepoActionRequest struct {
 }
 
 type FileDiffRequest struct {
-	RepoID   string  `json:"repoId"`
-	Snapshot Request `json:"snapshot"`
-	FilePath string  `json:"filePath"`
-	Staged   bool    `json:"staged"`
+	RepoID    string  `json:"repoId"`
+	Snapshot  Request `json:"snapshot"`
+	FilePath  string  `json:"filePath"`
+	Status    string  `json:"status"`
+	Staged    bool    `json:"staged"`
+	Untracked bool    `json:"untracked"`
 }
 
 type RepoCommandRequest struct {
@@ -124,6 +126,7 @@ type FileChange struct {
 	Deletions int    `json:"deletions"`
 	Size      string `json:"size"`
 	Staged    bool   `json:"staged"`
+	Untracked bool   `json:"untracked,omitempty"`
 }
 
 type PullResult struct {

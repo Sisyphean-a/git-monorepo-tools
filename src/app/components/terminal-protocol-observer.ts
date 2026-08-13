@@ -7,6 +7,7 @@ export interface TerminalProtocolSnapshot {
   readonly bracketedPasteRequested: boolean | null;
   readonly bracketedPasteEnabled: boolean | null;
   readonly keyboard: TerminalKeyboardProtocolState;
+  readonly piTitle: boolean;
   readonly alternateScreenRequested: boolean | null;
   readonly mouseTrackingRequested: TerminalMouseTrackingMode | null;
   readonly mouseTrackingEnabled: TerminalMouseTrackingMode | null;
@@ -25,8 +26,9 @@ const BRACKETED_PASTE_COMMAND = /\x1b\[\?2004([hl])/g;
 const KEYBOARD_PROTOCOL_COMMAND = /\x1b\[>([0-9;]*)u/g;
 const KEYBOARD_PROTOCOL_RESPONSE = /\x1b\[\?([0-9;]*)u/g;
 const DEC_PRIVATE_MODE_COMMAND = /\x1b\[\?([0-9;]+)([hl])/g;
+const TERMINAL_TITLE_COMMAND = /\x1b]0;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 const OBSERVED_DEC_PRIVATE_MODES = new Set(['9', '1000', '1002', '1003', '1004', '1006', '1049', '2004']);
-const PROTOCOL_TAIL_LENGTH = 32;
+const PROTOCOL_TAIL_LENGTH = 256;
 
 /**
  * Flow: observes copies of terminal protocol bytes and xterm parse completion.
@@ -39,6 +41,7 @@ export class TerminalProtocolObserver {
     bracketedPasteRequested: null,
     bracketedPasteEnabled: null,
     keyboard: 'unknown',
+    piTitle: false,
     alternateScreenRequested: null,
     mouseTrackingRequested: null,
     mouseTrackingEnabled: null,
@@ -56,6 +59,7 @@ export class TerminalProtocolObserver {
       bracketedPasteRequested: null,
       bracketedPasteEnabled: null,
       keyboard: 'unknown',
+      piTitle: false,
       alternateScreenRequested: null,
       mouseTrackingRequested: null,
       mouseTrackingEnabled: null,
@@ -71,6 +75,7 @@ export class TerminalProtocolObserver {
     const output = this.outputTail + chunk;
     let bracketedPasteRequested = this.state.bracketedPasteRequested;
     let keyboard = this.state.keyboard;
+    let piTitle = this.state.piTitle;
     let alternateScreenRequested = this.state.alternateScreenRequested;
     let mouseTrackingRequested = this.state.mouseTrackingRequested;
     let sgrMouseRequested = this.state.sgrMouseRequested;
@@ -80,6 +85,9 @@ export class TerminalProtocolObserver {
     }
     for (const match of output.matchAll(KEYBOARD_PROTOCOL_COMMAND)) {
       keyboard = protocolFlagsAreEnabled(match[1] ?? '') ? 'requested' : 'disabled';
+    }
+    for (const match of output.matchAll(TERMINAL_TITLE_COMMAND)) {
+      piTitle = isPiTerminalTitle(match[1] ?? '');
     }
     for (const match of output.matchAll(DEC_PRIVATE_MODE_COMMAND)) {
       for (const command of (match[1] ?? '').split(';')) {
@@ -103,6 +111,7 @@ export class TerminalProtocolObserver {
       delivery: 'pending-xterm',
       bracketedPasteRequested,
       keyboard,
+      piTitle,
       alternateScreenRequested,
       mouseTrackingRequested,
       sgrMouseRequested,
@@ -137,6 +146,7 @@ export class TerminalProtocolObserver {
       && this.state.bracketedPasteRequested === next.bracketedPasteRequested
       && this.state.bracketedPasteEnabled === next.bracketedPasteEnabled
       && this.state.keyboard === next.keyboard
+      && this.state.piTitle === next.piTitle
       && this.state.alternateScreenRequested === next.alternateScreenRequested
       && this.state.mouseTrackingRequested === next.mouseTrackingRequested
       && this.state.mouseTrackingEnabled === next.mouseTrackingEnabled
@@ -146,6 +156,15 @@ export class TerminalProtocolObserver {
     this.state = Object.freeze(next);
     return true;
   }
+}
+
+export function needsPiClipboardCompatibility(snapshot: TerminalProtocolSnapshot) {
+  // Pi remains identifiable while later output waits for xterm's asynchronous parser.
+  // Its previously confirmed bracketed-paste mode is still active in that interval.
+  return snapshot.piTitle
+    && snapshot.bracketedPasteRequested === true
+    && snapshot.bracketedPasteEnabled === true
+    && (snapshot.keyboard === 'requested' || snapshot.keyboard === 'negotiated');
 }
 
 export function needsPiFullscreenMouseCompatibility(snapshot: TerminalProtocolSnapshot) {
@@ -161,6 +180,10 @@ export function extractTerminalProtocolCommands(chunk: string) {
     .filter(match => (match[1] ?? '').split(';').some(command => OBSERVED_DEC_PRIVATE_MODES.has(command)))
     .map(match => match[0])
     .join(' ');
+}
+
+function isPiTerminalTitle(title: string) {
+  return title === 'π' || /^π - \S/.test(title);
 }
 
 function protocolFlagsAreEnabled(flags: string) {

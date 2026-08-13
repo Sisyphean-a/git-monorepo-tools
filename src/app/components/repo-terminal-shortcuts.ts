@@ -6,6 +6,9 @@ export type RepoTerminalShortcutAction =
 export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
 
 export const ctrlVInput = '\x16';
+// Pi's Windows clipboard action is Alt+V. This modifyOtherKeys form is recognized
+// whether Pi negotiated Kitty keyboard protocol or fell back to modifyOtherKeys.
+export const piClipboardInput = '\x1b[27;3;118~';
 export const ctrlJInput = '\x0a';
 export const ctrlWInput = '\x17';
 // Pi handles a raw line feed as its cross-terminal newline action.
@@ -138,6 +141,11 @@ export function handleWindowsTerminalShortcutEvent(
 
 interface TerminalClipboardPasteOptions {
   readonly source: TerminalClipboardPasteSource;
+  /**
+   * Rule: a confirmed Pi session owns clipboard reading so Windows ConPTY never
+   * consumes the bracketed-paste delimiters before Pi receives them.
+   */
+  readonly delegateToPiClipboard?: boolean;
   readonly getClipboardImagePath?: () => Promise<string | null>;
   readonly getClipboardText: () => Promise<string>;
   readonly transformPastedText: (text: string) => string;
@@ -145,6 +153,11 @@ interface TerminalClipboardPasteOptions {
 }
 
 export async function pasteTerminalClipboard(options: TerminalClipboardPasteOptions) {
+  if (options.delegateToPiClipboard) {
+    await options.writeInput(piClipboardInput);
+    return true;
+  }
+
   const fallbackInput = options.source === 'keyboard' ? ctrlVInput : undefined;
   const imagePath = await options.getClipboardImagePath?.();
   if (imagePath) {

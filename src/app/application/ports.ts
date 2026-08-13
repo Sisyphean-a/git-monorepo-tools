@@ -2,6 +2,7 @@ import type {
   AppSettings,
   AppSnapshot,
   CommitDetail,
+  FileChange,
   FileDiff,
   PullResult,
   RepoCommandResult,
@@ -67,7 +68,9 @@ export interface CommitDetailRequest {
 export interface FileDiffRequest {
   repoId: string;
   filePath: string;
+  status: FileChange['status'];
   staged: boolean;
+  untracked: boolean;
   settings?: AppSettings;
   target?: RepoRefreshTarget;
 }

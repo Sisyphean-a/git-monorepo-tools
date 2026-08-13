@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, Copy, Settings2 } from 'lucide-react';
 import { C } from '../theme';
+import type { CommandConsoleState } from '../features/commands/command-console-state';
 import { ToolbarBtn } from './workspace-parts';
 
 export interface PanelAction {
@@ -25,15 +26,6 @@ export interface PanelCommandSection {
   label: string;
   actions: PanelAction[];
   onManage?: () => void;
-}
-
-export interface CommandConsoleState {
-  title: string;
-  command: string;
-  status: 'running' | 'success' | 'failed';
-  output: string;
-  startedAt: number;
-  endedAt?: number;
 }
 
 interface AiCommitPanelProps {
@@ -159,7 +151,7 @@ function CommandConsole({
 
   useEffect(() => {
     if (commandConsole) setExpanded(true);
-  }, [commandConsole?.startedAt]);
+  }, [commandConsole?.sessionId]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -170,7 +162,7 @@ function CommandConsole({
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [expanded, commandConsole?.startedAt, commandConsole?.output]);
+  }, [expanded, commandConsole?.sessionId, commandConsole?.output]);
 
   const handleCopy = () => {
     if (!commandConsole) return;

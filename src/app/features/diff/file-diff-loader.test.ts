@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createFileDiffLoader } from './file-diff-loader.js';
+import { createFileDiffLoader, fileDiffKey } from './file-diff-loader.js';
 import type { FileChange, FileDiff } from '../../domain/types.js';
 
 const file: FileChange = {
@@ -44,6 +44,41 @@ test('file diff loader separates staged and unstaged requests', async () => {
   });
 
   await Promise.all([load.load(file), load.load({ ...file, staged: true })]);
+  assert.equal(calls, 2);
+});
+
+test('unchanged snapshot objects keep the same semantic diff revision', () => {
+  assert.equal(fileDiffKey({ ...file }), fileDiffKey(file));
+  assert.notEqual(fileDiffKey({ ...file, additions: file.additions + 1 }), fileDiffKey(file));
+});
+
+test('file diff loader keeps an open diff across unchanged snapshot objects', async () => {
+  let calls = 0;
+  const load = createFileDiffLoader(async () => {
+    calls += 1;
+    return diff;
+  });
+
+  await load.load(file);
+  const unchangedNextSnapshot = { ...file };
+
+  assert.equal(load.getCached(unchangedNextSnapshot), diff);
+  assert.equal(await load.load(unchangedNextSnapshot), diff);
+  assert.equal(calls, 1);
+});
+
+test('file diff loader invalidates cache when the observable file summary changes', async () => {
+  let calls = 0;
+  const load = createFileDiffLoader(async current => {
+    calls += 1;
+    return { ...diff, content: `+change-${current.additions}` };
+  });
+
+  await load.load(file);
+  const changedNextSnapshot = { ...file, additions: file.additions + 1 };
+
+  assert.equal(load.getCached(changedNextSnapshot), undefined);
+  assert.equal((await load.load(changedNextSnapshot)).content, '+change-2');
   assert.equal(calls, 2);
 });
 

@@ -7,6 +7,7 @@ import {
   getWindowsTerminalShortcutAction,
   handleWindowsTerminalShortcutEvent,
   pasteTerminalClipboard,
+  piClipboardInput,
   queueTerminalInput,
   shiftEnterInput,
 } from './repo-terminal-shortcuts.js';
@@ -215,6 +216,25 @@ test('application clipboard text paste checks for an image before preserving ter
   assert.equal(clipboardReads, 1);
   assert.deepEqual(transformed, ['first line\nsecond line']);
   assert.deepEqual(pasted, ['\x1b[200~first line\rsecond line\x1b[201~']);
+});
+
+test('confirmed Pi sessions delegate clipboard paste to Pi without reading or transforming it in the application', async () => {
+  const pasted: string[] = [];
+
+  const pastedClipboard = await pasteTerminalClipboard({
+    source: 'keyboard',
+    delegateToPiClipboard: true,
+    getClipboardImagePath: () => assert.fail('Pi must own image clipboard reads'),
+    getClipboardText: () => assert.fail('Pi must own text clipboard reads'),
+    transformPastedText: () => assert.fail('Pi must not receive ConPTY-stripped paste markers'),
+    writeInput: async text => {
+      pasted.push(text);
+    },
+  });
+
+  assert.equal(pastedClipboard, true);
+  assert.deepEqual(pasted, [piClipboardInput]);
+  assert.equal(piClipboardInput, '\x1b[27;3;118~');
 });
 
 test('application clipboard image paste writes its temporary path after text lookup finds nothing', async () => {

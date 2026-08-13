@@ -52,7 +52,9 @@ type WailsFileDiffRequest = {
   repoId: string;
   snapshot: SnapshotRequest;
   filePath: string;
+  status: FileDiffRequest['status'];
   staged: boolean;
+  untracked: boolean;
 };
 
 type WailsBindings = {
@@ -192,7 +194,7 @@ export async function fetchCommitDetail({ repoId, hash, settings }: CommitDetail
   return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
 }
 
-export async function fetchFileDiff({ repoId, filePath, staged, settings, target }: FileDiffRequest) {
+export async function fetchFileDiff({ repoId, filePath, status, staged, untracked, settings, target }: FileDiffRequest) {
   const binding = getWailsBindings().GetFileDiff;
   if (typeof binding !== 'function') {
     throw new Error('Wails 文件差异绑定不可用');
@@ -201,7 +203,9 @@ export async function fetchFileDiff({ repoId, filePath, staged, settings, target
     repoId,
     snapshot: buildSnapshotRequest(settings, undefined, target),
     filePath,
+    status,
     staged,
+    untracked,
   });
 }
 

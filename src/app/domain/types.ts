@@ -27,6 +27,7 @@ export interface FileChange {
   deletions: number;
   size: string;
   staged: boolean;
+  untracked?: boolean;
 }
 
 export interface FileDiff {

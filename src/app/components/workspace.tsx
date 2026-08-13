@@ -157,16 +157,18 @@ export function Workspace({
   const handleOpenTerminal = () => void onInvokeLocalRepoAction('open-terminal', repo.path).catch(error => onError(error, '打开终端失败'));
   const handleOpenConflicts = () => void onInvokeLocalRepoAction('open-conflicts', repo.path).catch(error => onError(error, '打开冲突工具失败'));
   const handleViewLog = () => void onViewLog(repo.id).catch(error => onError(error, '查看日志失败'));
-  // RepoDetail identity changes for every applied snapshot, even within the same second.
   const fileDiffLoader = useMemo(
     () => createFileDiffLoader(file => backend.fetchFileDiff({
       repoId: repo.id,
       filePath: file.path,
+      status: file.status,
       staged: file.staged,
+      untracked: Boolean(file.untracked),
       settings,
       target: { path: repo.path, category: repo.category },
     })),
-    [backend, repo, settings],
+    // Rule: periodic snapshots replace RepoDetail objects; only stable request inputs may invalidate an open diff.
+    [backend, repo.id, repo.path, repo.category, settings],
   );
   const handleSendToTerminal = async (command: string) => {
     await terminalWorkspace.sendToDefaultSession(
@@ -270,7 +272,7 @@ export function Workspace({
                 pointerEvents: mainTab === 'changes' ? 'auto' : 'none',
               }}
             >
-              <DiffList key={repo.id} files={repo.files} revision={repo.scannedAt} diffLoader={fileDiffLoader} />
+              <DiffList key={repo.id} files={repo.files} diffLoader={fileDiffLoader} />
               <div style={{ width: 420, flexShrink: 0, display: 'flex', borderLeft: `1px solid ${C.border}` }}>
                 <AiCommitPanel
                   topAction={topAction}

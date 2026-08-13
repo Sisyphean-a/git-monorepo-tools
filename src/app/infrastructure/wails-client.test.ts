@@ -954,7 +954,9 @@ test('history bindings use dedicated Wails bridge', async () => {
     const diff = await fetchFileDiff({
       repoId: 'repo-1',
       filePath: 'src/app/api.ts',
+      status: 'M',
       staged: false,
+      untracked: false,
       target: { path: '/repo/a', category: '测试' },
     });
     assert.equal(diff.content, '@@ -1 +1 @@\n-old\n+new');

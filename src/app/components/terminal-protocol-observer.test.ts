@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   TerminalProtocolObserver,
   extractTerminalProtocolCommands,
+  needsPiClipboardCompatibility,
   needsPiFullscreenMouseCompatibility,
   PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
   PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
@@ -19,6 +20,7 @@ test('observes split Pi startup controls without changing their delivery', () =>
     bracketedPasteRequested: true,
     bracketedPasteEnabled: null,
     keyboard: 'requested',
+    piTitle: false,
     alternateScreenRequested: null,
     mouseTrackingRequested: null,
     mouseTrackingEnabled: null,
@@ -31,12 +33,32 @@ test('observes split Pi startup controls without changing their delivery', () =>
     bracketedPasteRequested: true,
     bracketedPasteEnabled: true,
     keyboard: 'requested',
+    piTitle: false,
     alternateScreenRequested: null,
     mouseTrackingRequested: null,
     mouseTrackingEnabled: 'none',
     sgrMouseRequested: null,
   });
   assert.match(formatTerminalProtocolSnapshot(observer.getSnapshot()), /受控粘贴：已开启（xterm 已确认）/);
+});
+
+test('uses Pi native clipboard only after its title and complete input protocol fingerprint are observed', () => {
+  const observer = new TerminalProtocolObserver();
+
+  observer.observeOutput('\x1b]0;π - git-');
+  observer.observeOutput('monorepo-tools\x07\x1b[?2004h\x1b[>1u');
+  observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), true);
+
+  observer.observeOutput('Pi is rendering another frame');
+  assert.equal(observer.getSnapshot().delivery, 'pending-xterm');
+  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), true);
+
+  observer.observeOutput('\x1b]0;π - \x07');
+  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), false);
+
+  observer.observeOutput('\x1b]0;PowerShell\x07');
+  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), false);
 });
 
 test('marks a keyboard negotiation complete only after xterm sends its response', () => {
@@ -103,6 +125,7 @@ test('tracks explicit protocol shutdown and resets between terminal sessions', (
     bracketedPasteRequested: false,
     bracketedPasteEnabled: false,
     keyboard: 'disabled',
+    piTitle: false,
     alternateScreenRequested: null,
     mouseTrackingRequested: null,
     mouseTrackingEnabled: 'none',
@@ -114,6 +137,7 @@ test('tracks explicit protocol shutdown and resets between terminal sessions', (
     bracketedPasteRequested: null,
     bracketedPasteEnabled: null,
     keyboard: 'unknown',
+    piTitle: false,
     alternateScreenRequested: null,
     mouseTrackingRequested: null,
     mouseTrackingEnabled: null,

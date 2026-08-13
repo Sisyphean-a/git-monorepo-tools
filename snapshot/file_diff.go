@@ -21,9 +21,13 @@ func (s *Service) GetFileDiff(request FileDiffRequest) (FileDiff, error) {
 		return FileDiff{}, fmt.Errorf("仓库路径与标识不匹配：%s", repoPath)
 	}
 	executor := newGitExecutor(request.Snapshot)
-	file, untracked, err := executor.validateRequestedChange(repoPath, path, request.Staged)
-	if err != nil {
-		return FileDiff{}, err
+	file := FileChange{Path: path, Status: request.Status, Staged: request.Staged, Untracked: request.Untracked}
+	untracked := request.Untracked
+	if !isFileStatus(request.Status) {
+		file, untracked, err = executor.validateRequestedChange(repoPath, path, request.Staged)
+		if err != nil {
+			return FileDiff{}, err
+		}
 	}
 	content, err := executor.loadFileDiff(repoPath, file, untracked)
 	if err != nil {
@@ -33,6 +37,10 @@ func (s *Service) GetFileDiff(request FileDiffRequest) (FileDiff, error) {
 		return FileDiff{}, fmt.Errorf("未找到当前变更：%s", path)
 	}
 	return FileDiff{RepoID: request.RepoID, Path: path, Staged: request.Staged, Content: content}, nil
+}
+
+func isFileStatus(status string) bool {
+	return status == "A" || status == "M" || status == "D" || status == "R"
 }
 
 func (executor gitExecutor) validateRequestedChange(repoPath, path string, staged bool) (FileChange, bool, error) {

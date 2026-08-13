@@ -7,8 +7,16 @@ export interface FileDiffLoader {
   load(file: FileChange): Promise<FileDiff>;
 }
 
-function fileDiffKey(file: FileChange) {
-  return `${file.staged ? 'staged' : 'unstaged'}\0${file.path}`;
+export function fileDiffKey(file: FileChange) {
+  return [
+    file.staged ? 'staged' : 'unstaged',
+    file.untracked ? 'untracked' : 'tracked',
+    file.path,
+    file.status,
+    file.additions,
+    file.deletions,
+    file.size,
+  ].join('\0');
 }
 
 export function createFileDiffLoader(fetchDiff: FetchFileDiff): FileDiffLoader {

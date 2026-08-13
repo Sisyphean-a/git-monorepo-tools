@@ -195,7 +195,7 @@ func buildUntrackedChanges(repoPath string, entries []string, existing []FileCha
 		absolute := filepath.Join(repoPath, filepath.FromSlash(filePath))
 		changes = append(changes, FileChange{
 			ID: id, Status: "A", Path: filePath, Additions: countFileLines(absolute),
-			Deletions: 0, Size: formatSize(resolveSize(absolute)), Staged: false,
+			Deletions: 0, Size: formatSize(resolveSize(absolute)), Staged: false, Untracked: true,
 		})
 	}
 	return changes

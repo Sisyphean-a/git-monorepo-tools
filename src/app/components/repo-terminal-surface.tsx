@@ -16,6 +16,7 @@ import {
 import { TerminalInputInspectorModal } from './terminal-input-inspector-modal';
 import {
   extractTerminalProtocolCommands,
+  needsPiClipboardCompatibility,
   needsPiFullscreenMouseCompatibility,
   PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
   PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
@@ -285,8 +286,11 @@ export function RepoTerminalSurface({
       }
 
       const paste = inputQueueRef.current.then(async () => {
+        const delegateToPiClipboard = shortcutPlatform.toLowerCase().startsWith('win')
+          && needsPiClipboardCompatibility(protocolObserverRef.current.getSnapshot());
         const pasted = await pasteTerminalClipboard({
           source,
+          delegateToPiClipboard,
           getClipboardImagePath: terminalWorkspace.readClipboardImagePath,
           getClipboardText: terminalWorkspace.readClipboardText,
           transformPastedText: text => {
@@ -302,7 +306,13 @@ export function RepoTerminalSurface({
             }
             return pasteData;
           },
-          writeInput: data => writeTerminalInput(session.sessionId, data, `剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`),
+          writeInput: data => writeTerminalInput(
+            session.sessionId,
+            data,
+            delegateToPiClipboard
+              ? `Pi 原生剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`
+              : `剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`,
+          ),
         });
         if (pasted) {
           terminal.focus();

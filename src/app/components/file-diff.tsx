@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
 import { C } from '../theme';
 import type { FileChange } from '../domain/types';
-import type { FileDiffLoader } from '../features/diff/file-diff-loader';
+import { fileDiffKey, type FileDiffLoader } from '../features/diff/file-diff-loader';
 import {
   calculateDiffViewport,
   DIFF_LINE_HEIGHT,
@@ -96,6 +96,7 @@ function DiffContent({ content }: { content: string }) {
 }
 
 export function FileDiffPanel({ file, loader }: FileDiffPanelProps) {
+  const revision = fileDiffKey(file);
   const cached = loader.getCached(file);
   const [state, setState] = useState<DiffState>(() => cached
     ? { status: 'ready', source: loader, content: cached.content }
@@ -129,7 +130,7 @@ export function FileDiffPanel({ file, loader }: FileDiffPanelProps) {
     return () => {
       active = false;
     };
-  }, [file, loader]);
+  }, [revision, loader]);
 
   return (
     <div style={{ margin: '0 10px 8px', border: `1px solid ${C.border}`, borderRadius: 6, background: C.appBg, overflow: 'hidden' }}>
