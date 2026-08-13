@@ -48,6 +48,9 @@ test('uses Pi native clipboard only after its title and complete input protocol 
   observer.observeOutput('\x1b]0;π - git-');
   observer.observeOutput('monorepo-tools\x07\x1b[?2004h\x1b[>1u');
   observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+  assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), false);
+
+  observer.observeTerminalInput('\x1b[?1u');
   assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), true);
 
   observer.observeOutput('Pi is rendering another frame');
@@ -59,6 +62,18 @@ test('uses Pi native clipboard only after its title and complete input protocol 
 
   observer.observeOutput('\x1b]0;PowerShell\x07');
   assert.equal(needsPiClipboardCompatibility(observer.getSnapshot()), false);
+});
+
+test('does not reapply a completed keyboard request retained in a full protocol tail', () => {
+  const observer = new TerminalProtocolObserver();
+  const request = '\x1b[>1u';
+
+  observer.observeOutput(`${request}${'x'.repeat(256 - request.length)}`);
+  assert.equal(observer.getSnapshot().keyboard, 'requested');
+
+  observer.observeTerminalInput('\x1b[?1u');
+  observer.observeOutput('Pi is rendering another frame');
+  assert.equal(observer.getSnapshot().keyboard, 'negotiated');
 });
 
 test('marks a keyboard negotiation complete only after xterm sends its response', () => {

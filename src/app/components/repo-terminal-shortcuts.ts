@@ -6,8 +6,8 @@ export type RepoTerminalShortcutAction =
 export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
 
 export const ctrlVInput = '\x16';
-// Pi's Windows clipboard action is Alt+V. This modifyOtherKeys form is recognized
-// whether Pi negotiated Kitty keyboard protocol or fell back to modifyOtherKeys.
+// Pi's Windows clipboard action is Alt+V. It is sent only after xterm has
+// confirmed the keyboard protocol; otherwise preserve the standard paste path.
 export const piClipboardInput = '\x1b[27;3;118~';
 export const ctrlJInput = '\x0a';
 export const ctrlWInput = '\x17';

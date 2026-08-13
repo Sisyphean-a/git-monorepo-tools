@@ -72,6 +72,7 @@ export class TerminalProtocolObserver {
       return false;
     }
 
+    const tailLength = this.outputTail.length;
     const output = this.outputTail + chunk;
     let bracketedPasteRequested = this.state.bracketedPasteRequested;
     let keyboard = this.state.keyboard;
@@ -81,15 +82,24 @@ export class TerminalProtocolObserver {
     let sgrMouseRequested = this.state.sgrMouseRequested;
 
     for (const match of output.matchAll(BRACKETED_PASTE_COMMAND)) {
-      bracketedPasteRequested = match[1] === 'h';
+      if (isNewProtocolMatch(match, tailLength)) {
+        bracketedPasteRequested = match[1] === 'h';
+      }
     }
     for (const match of output.matchAll(KEYBOARD_PROTOCOL_COMMAND)) {
-      keyboard = protocolFlagsAreEnabled(match[1] ?? '') ? 'requested' : 'disabled';
+      if (isNewProtocolMatch(match, tailLength)) {
+        keyboard = protocolFlagsAreEnabled(match[1] ?? '') ? 'requested' : 'disabled';
+      }
     }
     for (const match of output.matchAll(TERMINAL_TITLE_COMMAND)) {
-      piTitle = isPiTerminalTitle(match[1] ?? '');
+      if (isNewProtocolMatch(match, tailLength)) {
+        piTitle = isPiTerminalTitle(match[1] ?? '');
+      }
     }
     for (const match of output.matchAll(DEC_PRIVATE_MODE_COMMAND)) {
+      if (!isNewProtocolMatch(match, tailLength)) {
+        continue;
+      }
       for (const command of (match[1] ?? '').split(';')) {
         if (command === '1049') {
           alternateScreenRequested = match[2] === 'h';
@@ -161,10 +171,11 @@ export class TerminalProtocolObserver {
 export function needsPiClipboardCompatibility(snapshot: TerminalProtocolSnapshot) {
   // Pi remains identifiable while later output waits for xterm's asynchronous parser.
   // Its previously confirmed bracketed-paste mode is still active in that interval.
+  // The explicit Alt+V sequence is safe only after xterm confirmed keyboard protocol support.
   return snapshot.piTitle
     && snapshot.bracketedPasteRequested === true
     && snapshot.bracketedPasteEnabled === true
-    && (snapshot.keyboard === 'requested' || snapshot.keyboard === 'negotiated');
+    && snapshot.keyboard === 'negotiated';
 }
 
 export function needsPiFullscreenMouseCompatibility(snapshot: TerminalProtocolSnapshot) {
@@ -180,6 +191,10 @@ export function extractTerminalProtocolCommands(chunk: string) {
     .filter(match => (match[1] ?? '').split(';').some(command => OBSERVED_DEC_PRIVATE_MODES.has(command)))
     .map(match => match[0])
     .join(' ');
+}
+
+function isNewProtocolMatch(match: RegExpMatchArray, tailLength: number) {
+  return (match.index ?? 0) + match[0].length > tailLength;
 }
 
 function isPiTerminalTitle(title: string) {
