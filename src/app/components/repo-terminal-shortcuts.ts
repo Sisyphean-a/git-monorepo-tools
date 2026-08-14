@@ -150,7 +150,11 @@ interface TerminalClipboardPasteOptions {
 }
 
 export async function pasteTerminalClipboard(options: TerminalClipboardPasteOptions) {
-  const fallbackInput = options.source === 'keyboard' ? ctrlVInput : undefined;
+  // A confirmed Pi session has no useful raw Ctrl+V fallback: Pi binds image paste to Alt+V.
+  // Returning false keeps an empty or unrecognized clipboard from being reported as pasted.
+  const fallbackInput = options.source === 'keyboard' && !options.usePiLineFeedPaste
+    ? ctrlVInput
+    : undefined;
   const imagePath = await options.getClipboardImagePath?.();
   if (imagePath) {
     await options.writeInput(imagePath);

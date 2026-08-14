@@ -252,6 +252,42 @@ test('application clipboard image paste writes its temporary path after text loo
   assert.deepEqual(pasted, ['C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png']);
 });
 
+test('application clipboard image read failure is not reported as a successful keyboard fallback', async () => {
+  const pasted: string[] = [];
+
+  await assert.rejects(() => pasteTerminalClipboard({
+    source: 'keyboard',
+    getClipboardImagePath: async () => {
+      throw new Error('detected clipboard image could not be read');
+    },
+    getClipboardText: async () => assert.fail('image read failures must not fall back to clipboard text'),
+    transformPastedText: () => assert.fail('image read failures must not transform clipboard text'),
+    writeInput: async text => {
+      pasted.push(text);
+    },
+  }), /detected clipboard image could not be read/);
+
+  assert.deepEqual(pasted, []);
+});
+
+test('confirmed Pi keyboard paste does not report an empty clipboard as a successful Ctrl+V fallback', async () => {
+  const pasted: string[] = [];
+
+  const pastedClipboard = await pasteTerminalClipboard({
+    source: 'keyboard',
+    usePiLineFeedPaste: true,
+    getClipboardImagePath: async () => null,
+    getClipboardText: async () => '',
+    transformPastedText: () => assert.fail('empty clipboard must not be transformed'),
+    writeInput: async text => {
+      pasted.push(text);
+    },
+  });
+
+  assert.equal(pastedClipboard, false);
+  assert.deepEqual(pasted, []);
+});
+
 test('keyboard paste forwards ctrl+v when the clipboard has no text', async () => {
   const pasted: string[] = [];
 
