@@ -6,7 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 import { useTerminalWorkspace } from '../features/terminal/terminal-workspace';
 import { TerminalOutputWriter } from '../features/terminal/terminal-output-writer';
 import { C } from '../theme';
-import type { RepoDetail, TerminalSessionInfo } from '../domain/types';
+import type { RepoDetail } from '../domain/types';
 import {
   handleWindowsTerminalShortcutEvent,
   pasteTerminalClipboard,
@@ -51,10 +51,6 @@ export function RepoTerminalSurface({
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const sessionRef = useRef<TerminalSessionInfo | null>(null);
-  const [surfaceSession] = useState(() => terminalWorkspace.createSurfaceSession(createIndependentSession));
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const sessionBindingRef = useRef<{ bindSession: (sessionId: string) => void; dispose: () => void } | null>(null);
   const outputWriterRef = useRef<TerminalOutputWriter | null>(null);
   const terminalPasteDataRef = useRef<((data: string) => void) | null>(null);
   const inputQueueRef = useRef(Promise.resolve());
@@ -121,6 +117,37 @@ export function RepoTerminalSurface({
     }
   }, [recordInputTrace, terminalWorkspace]);
 
+  const handleTerminalOutput = useCallback((chunk: string) => {
+    observeProtocolOutput(chunk);
+    const protocolCommands = extractTerminalProtocolCommands(chunk);
+    if (protocolCommands) {
+      recordInputTrace('xterm 输出', 'Pi 终端协议输出', protocolCommands);
+    }
+    outputWriterRef.current?.enqueue(chunk);
+  }, [observeProtocolOutput, recordInputTrace]);
+
+  const handleTerminalExit = useCallback((nextExitCode: number) => {
+    if (piMouseCompatibilityActiveRef.current) {
+      piMouseCompatibilityActiveRef.current = false;
+      terminalRef.current?.write(PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
+      recordInputTrace('xterm 输出', 'Windows ConPTY 兼容：终端进程已退出，已关闭本地鼠标协议', PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
+    }
+    setStatus(current => current === 'failed' ? 'failed' : 'exited');
+    setExitCode(nextExitCode);
+    outputWriterRef.current?.enqueue(`\r\n\x1b[90m[process exited ${nextExitCode}]\x1b[0m\r\n`);
+  }, [recordInputTrace]);
+
+  const handleTerminalDeliveryFailure = useCallback((message: string) => {
+    setStatus('failed');
+    setError(message);
+  }, []);
+
+  const [surfaceSession] = useState(() => terminalWorkspace.createSurfaceSession(createIndependentSession, {
+    onOutput: handleTerminalOutput,
+    onExit: handleTerminalExit,
+    onDeliveryFailure: handleTerminalDeliveryFailure,
+  }));
+
   const showToast = (text: string) => {
     toastIdRef.current += 1;
     const id = toastIdRef.current;
@@ -163,7 +190,7 @@ export function RepoTerminalSurface({
     resizeFrameRef.current = requestAnimationFrame(() => {
       resizeFrameRef.current = null;
       const fitAddon = fitAddonRef.current;
-      const session = sessionRef.current;
+      const session = surfaceSession.getSession();
       if (!fitAddon) return;
       fitAddon.fit();
       resetViewportScroll();
@@ -183,7 +210,7 @@ export function RepoTerminalSurface({
   };
 
   const enqueueTerminalInput = (data: string, source: string) => {
-    const session = sessionRef.current;
+    const session = surfaceSession.getSession();
     if (!session) {
       const error = new Error('终端会话尚未就绪');
       recordInputTrace('终端写入失败', `${source}；${error.message}`, data);
@@ -219,9 +246,13 @@ export function RepoTerminalSurface({
     if (!nextSize) return;
 
     try {
-      const existingSession = resetTerminal ? sessionRef.current : null;
-      const session = existingSession
-        ? await surfaceSession.restart(repo.id, nextSize.cols, nextSize.rows)
+      const session = resetTerminal
+        ? await surfaceSession.reopen({
+          repoId: repo.id,
+          repoPath: repo.path,
+          cols: nextSize.cols,
+          rows: nextSize.rows,
+        })
         : await surfaceSession.start({
           repoId: repo.id,
           repoPath: repo.path,
@@ -231,13 +262,10 @@ export function RepoTerminalSurface({
       if (!session) {
         return;
       }
-      sessionRef.current = session;
-      setSessionId(session.sessionId);
       setShellLabel(session.shell);
       setStatus('running');
       scheduleResize();
     } catch (sessionError) {
-      sessionRef.current = null;
       setStatus('failed');
       setError(sessionError instanceof Error ? sessionError.message : '终端启动失败');
     }
@@ -245,7 +273,7 @@ export function RepoTerminalSurface({
 
   const clearSession = async () => {
     const terminal = terminalRef.current;
-    const session = sessionRef.current;
+    const session = surfaceSession.getSession();
     if (!terminal || !session) return;
 
     const nextSize = measureTerminalSize();
@@ -258,20 +286,16 @@ export function RepoTerminalSurface({
     setStatus('connecting');
     setError(null);
     setExitCode(null);
-    sessionBindingRef.current?.bindSession('');
 
     try {
       const replacement = await surfaceSession.restart(repo.id, nextSize.cols, nextSize.rows);
       if (!replacement) {
         return;
       }
-      sessionRef.current = replacement;
-      setSessionId(replacement.sessionId);
       setShellLabel(replacement.shell);
       setStatus('running');
       scheduleResize();
     } catch (sessionError) {
-      sessionBindingRef.current?.bindSession(session.sessionId);
       setStatus('failed');
       setError(sessionError instanceof Error ? sessionError.message : '终端重启失败');
     }
@@ -294,7 +318,7 @@ export function RepoTerminalSurface({
     };
 
     const pasteClipboard = (terminal: Terminal, source: TerminalClipboardPasteSource) => {
-      const session = sessionRef.current;
+      const session = surfaceSession.getSession();
       if (!session) {
         return Promise.resolve(false);
       }
@@ -482,8 +506,6 @@ export function RepoTerminalSurface({
       xtermViewport?.removeEventListener('scroll', scrollGuard);
       inputDisposable.dispose();
       parsedDisposable.dispose();
-      sessionBindingRef.current?.dispose();
-      sessionBindingRef.current = null;
       outputWriterRef.current?.dispose();
       outputWriterRef.current = null;
       terminalPasteDataRef.current = null;
@@ -494,54 +516,12 @@ export function RepoTerminalSurface({
   }, []);
 
   useEffect(() => {
-    sessionBindingRef.current?.dispose();
-    sessionBindingRef.current = null;
-    if (!sessionId) {
-      return;
-    }
-
-    sessionBindingRef.current = terminalWorkspace.subscribeSession(
-      chunk => {
-        observeProtocolOutput(chunk);
-        const protocolCommands = extractTerminalProtocolCommands(chunk);
-        if (protocolCommands) {
-          recordInputTrace('xterm 输出', 'Pi 终端协议输出', protocolCommands);
-        }
-        outputWriterRef.current?.enqueue(chunk);
-      },
-      exitCode => {
-        if (piMouseCompatibilityActiveRef.current) {
-          piMouseCompatibilityActiveRef.current = false;
-          terminalRef.current?.write(PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
-          recordInputTrace('xterm 输出', 'Windows ConPTY 兼容：终端进程已退出，已关闭本地鼠标协议', PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
-        }
-        sessionRef.current = null;
-        setSessionId(null);
-        setStatus(current => current === 'failed' ? 'failed' : 'exited');
-        setExitCode(exitCode);
-        outputWriterRef.current?.enqueue(`\r\n\x1b[90m[process exited ${exitCode}]\x1b[0m\r\n`);
-      },
-      message => {
-        setStatus('failed');
-        setError(message);
-      },
-    );
-    sessionBindingRef.current.bindSession(sessionId);
-
-    return () => {
-      sessionBindingRef.current?.dispose();
-      sessionBindingRef.current = null;
-    };
-  }, [sessionId]);
-
-
-  useEffect(() => {
     if (!active) return;
-    if (!sessionRef.current && status === 'idle') {
+    if (!surfaceSession.getSession() && status === 'idle') {
       void startSession(false);
       return;
     }
-    if (sessionRef.current) {
+    if (surfaceSession.getSession()) {
       scheduleResize();
     }
   }, [active, status, repo.id, repo.path]);

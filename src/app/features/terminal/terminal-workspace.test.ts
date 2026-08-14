@@ -142,16 +142,89 @@ test('fails explicitly instead of growing an unbound output cache forever', asyn
   workspace.dispose();
 });
 
+test('binds a surface lifecycle to its current session and ignores replaced output', async () => {
+  const runtime = createRuntime();
+  const workspace = new TerminalWorkspace(runtime);
+  const output: string[] = [];
+  const exits: number[] = [];
+  const surface = workspace.createSurfaceSession(false, {
+    onOutput: chunk => output.push(chunk),
+    onExit: exitCode => exits.push(exitCode),
+    onDeliveryFailure: message => assert.fail(message),
+  });
+
+  const first = await surface.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
+  assert.ok(first);
+  runtime.emit('repo-terminal-output', { sessionId: first.sessionId, chunk: 'first' });
+
+  const replacement = await surface.reopen({ repoId: 'repo-a', repoPath: 'E:/repo-a', cols: 120, rows: 32 });
+  assert.ok(replacement);
+  runtime.emit('repo-terminal-output', { sessionId: first.sessionId, chunk: 'discarded' });
+  runtime.emit('repo-terminal-output', { sessionId: replacement.sessionId, chunk: 'replacement' });
+  runtime.emit('repo-terminal-exit', { sessionId: replacement.sessionId, exitCode: 0 });
+
+  assert.deepEqual(output, ['first', 'replacement']);
+  assert.deepEqual(exits, [0]);
+  assert.equal(surface.getSession(), null);
+  await surface.release();
+  workspace.dispose();
+});
+
+test('restores delivery but starts fresh after a reopen restart fails', async () => {
+  const runtime = createRuntime();
+  const workspace = new TerminalWorkspace(runtime);
+  const output: string[] = [];
+  const surface = workspace.createSurfaceSession(false, {
+    onOutput: chunk => output.push(chunk),
+    onExit: () => undefined,
+    onDeliveryFailure: message => assert.fail(message),
+  });
+  const session = await surface.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
+  assert.ok(session);
+  runtime.restartTerminalSession = async () => {
+    throw new Error('restart failed');
+  };
+
+  await assert.rejects(
+    surface.reopen({ repoId: 'repo-a', repoPath: 'E:/repo-a', cols: 120, rows: 32 }),
+    /restart failed/,
+  );
+  runtime.emit('repo-terminal-output', { sessionId: session.sessionId, chunk: 'still-delivered' });
+
+  assert.deepEqual(output, ['still-delivered']);
+  assert.equal(surface.getSession(), null);
+  await surface.release();
+  workspace.dispose();
+});
+
+test('does not retain a subscription when a released surface is started again', async () => {
+  const runtime = createRuntime();
+  const workspace = new TerminalWorkspace(runtime);
+  const delivered: string[] = [];
+  const surface = workspace.createSurfaceSession(false, {
+    onOutput: chunk => delivered.push(chunk),
+    onExit: () => undefined,
+    onDeliveryFailure: () => undefined,
+  });
+  await surface.release();
+
+  assert.equal(await surface.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' }), null);
+  runtime.emit('repo-terminal-output', { sessionId: 'term-1', chunk: 'must not deliver' });
+
+  assert.deepEqual(delivered, []);
+  workspace.dispose();
+});
+
 test('releases independent sessions, including a session that starts after disposal', async () => {
   const runtime = createRuntime();
   const workspace = new TerminalWorkspace(runtime);
-  const independent = workspace.createSurfaceSession(true);
+  const independent = workspace.createSurfaceSession(true, emptySurfaceHandlers());
   const independentSession = await independent.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
   assert.ok(independentSession);
   await independent.release();
   assert.deepEqual(runtime.closedSessionIDs, [independentSession.sessionId]);
 
-  const defaultSession = workspace.createSurfaceSession(false);
+  const defaultSession = workspace.createSurfaceSession(false, emptySurfaceHandlers());
   await defaultSession.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
   await defaultSession.release();
   assert.deepEqual(runtime.closedSessionIDs, [independentSession.sessionId]);
@@ -161,7 +234,7 @@ test('releases independent sessions, including a session that starts after dispo
     resolveStart = resolve;
   });
   runtime.createTerminalSession = async () => delayed;
-  const delayedSession = workspace.createSurfaceSession(true);
+  const delayedSession = workspace.createSurfaceSession(true, emptySurfaceHandlers());
   const starting = delayedSession.start({ repoId: 'repo-b', repoPath: 'E:/repo-b' });
   await delayedSession.release();
   resolveStart({
@@ -180,7 +253,7 @@ test('releases independent sessions, including a session that starts after dispo
     resolveDefaultStart = resolve;
   });
   runtime.ensureTerminalSession = async () => delayedDefaultStart;
-  const delayedDefault = workspace.createSurfaceSession(false);
+  const delayedDefault = workspace.createSurfaceSession(false, emptySurfaceHandlers());
   const startingDefault = delayedDefault.start({ repoId: 'repo-c', repoPath: 'E:/repo-c' });
   await delayedDefault.release();
   resolveDefaultStart({
@@ -245,6 +318,14 @@ test('keeps clipboard callbacks bound to the terminal runtime', async () => {
   assert.equal(await readText(), 'clipboard text');
   workspace.dispose();
 });
+
+function emptySurfaceHandlers() {
+  return {
+    onOutput: () => undefined,
+    onExit: () => undefined,
+    onDeliveryFailure: () => undefined,
+  };
+}
 
 test('restarts the named session without changing its repository ownership', async () => {
   const runtime = createRuntime();

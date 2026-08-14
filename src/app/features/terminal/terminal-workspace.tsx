@@ -53,6 +53,12 @@ export interface TerminalSessionSubscription {
   dispose(): void;
 }
 
+type TerminalSurfaceSessionHandlers = {
+  onOutput: TerminalOutputHandler;
+  onExit: TerminalExitHandler;
+  onDeliveryFailure: TerminalDeliveryFailureHandler;
+};
+
 const ACTIVE_WINDOW_MS = 1400;
 const TERMINAL_OUTPUT_EVENT = 'repo-terminal-output';
 const TERMINAL_EXIT_EVENT = 'repo-terminal-exit';
@@ -142,8 +148,11 @@ export class TerminalWorkspace {
 
   readClipboardText = () => this.runtime.readClipboardText();
 
-  createSurfaceSession(createIndependentSession: boolean) {
-    return new TerminalSurfaceSession(this, createIndependentSession);
+  createSurfaceSession(
+    createIndependentSession: boolean,
+    handlers: TerminalSurfaceSessionHandlers,
+  ) {
+    return new TerminalSurfaceSession(this, createIndependentSession, handlers);
   }
 
   discardSessionDelivery(sessionId: string) {
@@ -426,57 +435,104 @@ export class TerminalWorkspace {
 
 export class TerminalSurfaceSession {
   private session: TerminalSessionInfo | null = null;
+  private subscription: TerminalSessionSubscription | null = null;
   private released = false;
 
   constructor(
     private readonly workspace: TerminalWorkspace,
     private readonly independent: boolean,
+    private readonly handlers: TerminalSurfaceSessionHandlers,
   ) {}
 
+  getSession() {
+    return this.session;
+  }
+
   /**
-   * Flow: a released surface abandons delivery; a late independent start is also closed while default sessions remain reusable.
+   * Flow: reopening restarts a known session, but a failed restart leaves its delivery restored while the next user action starts fresh.
+   */
+  async reopen(request: TerminalSessionRequest) {
+    const current = this.session;
+    if (!current) {
+      return this.start(request);
+    }
+    if (request.cols === undefined || request.rows === undefined) {
+      throw new Error('重新打开终端需要尺寸');
+    }
+    try {
+      return await this.restart(request.repoId, request.cols, request.rows);
+    } catch (error) {
+      this.session = null;
+      throw error;
+    }
+  }
+
+  /**
+   * Flow: this session owns delivery binding, so output that arrives while starting still follows the workspace replay contract.
    */
   async start(request: TerminalSessionRequest) {
+    this.ensureSubscription();
     const session = await (this.independent
       ? this.workspace.createSession(request)
       : this.workspace.ensureSession(request));
-    if (this.released) {
-      this.workspace.discardSessionDelivery(session.sessionId);
-      if (this.independent) {
-        await this.workspace.closeSession(session.sessionId);
-      }
-      return null;
-    }
-    this.session = session;
-    return session;
+    return this.acceptSession(session);
   }
 
   async restart(repoId: string, cols: number, rows: number) {
-    if (!this.session) {
+    const current = this.session;
+    if (!current) {
       return null;
     }
-    const session = await this.workspace.restartSession(repoId, this.session.sessionId, cols, rows);
-    if (this.released) {
-      this.workspace.discardSessionDelivery(session.sessionId);
-      if (this.independent) {
-        await this.workspace.closeSession(session.sessionId);
-      }
-      return null;
+
+    this.ensureSubscription();
+    this.subscription?.bindSession('');
+    try {
+      const session = await this.workspace.restartSession(repoId, current.sessionId, cols, rows);
+      return this.acceptSession(session);
+    } catch (error) {
+      this.subscription?.bindSession(current.sessionId);
+      throw error;
     }
-    this.session = session;
-    return session;
   }
 
   async release() {
     this.released = true;
     const session = this.session;
     this.session = null;
-    if (session) {
+    this.subscription?.dispose();
+    this.subscription = null;
+    if (session && this.independent) {
+      await this.workspace.closeSession(session.sessionId);
+    }
+  }
+
+  private ensureSubscription() {
+    if (this.subscription) {
+      return;
+    }
+    this.subscription = this.workspace.subscribeSession(
+      chunk => this.handlers.onOutput(chunk),
+      exitCode => {
+        this.session = null;
+        this.handlers.onExit(exitCode);
+      },
+      message => this.handlers.onDeliveryFailure(message),
+    );
+  }
+
+  private async acceptSession(session: TerminalSessionInfo) {
+    if (this.released) {
+      this.subscription?.dispose();
+      this.subscription = null;
       this.workspace.discardSessionDelivery(session.sessionId);
       if (this.independent) {
         await this.workspace.closeSession(session.sessionId);
       }
+      return null;
     }
+    this.session = session;
+    this.subscription?.bindSession(session.sessionId);
+    return session;
   }
 }
 
