@@ -62,7 +62,6 @@ export function RepoTerminalSurface({
   const toastTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
   const inputTraceSequenceRef = useRef(0);
-  const traceBufferRef = useRef<readonly TerminalInputTraceEntry[]>([]);
   const inputInspectorOpenRef = useRef(false);
   const protocolObserverRef = useRef(new TerminalProtocolObserver());
   const piMouseCompatibilityActiveRef = useRef(false);
@@ -91,10 +90,11 @@ export function RepoTerminalSurface({
   }, [updateProtocolSnapshot]);
 
   /**
-   * Rule: the trace stays bounded while the observer is closed.
-   * Effect: entries always accumulate in a capped buffer; React state only mirrors it while the inspector is open.
+   * Rule: the input trace only records while the observer modal is open.
+   * Effect: closed-session events are dropped entirely; entries accumulate only during an observation session.
    */
   const recordInputTrace = useCallback((stage: TerminalInputTraceStage, detail: string, data?: string) => {
+    if (!inputInspectorOpenRef.current) return;
     inputTraceSequenceRef.current += 1;
     const entry: TerminalInputTraceEntry = {
       sequence: inputTraceSequenceRef.current,
@@ -103,14 +103,10 @@ export function RepoTerminalSurface({
       detail,
       data: clipTraceData(data),
     };
-    traceBufferRef.current = appendTraceEntry(traceBufferRef.current, entry);
-    if (inputInspectorOpenRef.current) {
-      setInputTrace(traceBufferRef.current);
-    }
+    setInputTrace(current => appendTraceEntry(current, entry));
   }, []);
 
   const clearInputTrace = useCallback(() => {
-    traceBufferRef.current = [];
     setInputTrace([]);
   }, []);
 
@@ -181,10 +177,9 @@ export function RepoTerminalSurface({
   };
 
   const openInputInspector = () => {
-    recordInputTrace('浏览器事件', '协议与输入观测已开始；接下来按键会由窗口捕获阶段记录');
     inputInspectorOpenRef.current = true;
-    setInputTrace(traceBufferRef.current);
     setInputInspectorOpen(true);
+    recordInputTrace('浏览器事件', '协议与输入观测已开始；接下来按键会由窗口捕获阶段记录');
   };
 
   const enqueueTerminalInput = (data: string, source: string) => {

@@ -18,7 +18,7 @@ export interface TerminalInputTraceEntry {
 }
 
 /**
- * Rule: terminal events stream in while the observer is closed; the trace must stay bounded.
+ * Rule: a long observation session must not grow the trace without bound.
  * Effect: entries beyond the cap drop the oldest ones, and oversized data is clipped.
  */
 export const MAX_TRACE_ENTRIES = 2000;
