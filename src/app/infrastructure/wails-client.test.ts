@@ -15,6 +15,7 @@ import {
   mutateRepo,
   refreshRepo,
   readClipboardImagePath,
+  readClipboardText,
   resizeTerminal,
   restartTerminalSession,
   runRepoCommand,
@@ -96,6 +97,7 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
     },
     PickFolder: async () => '',
     ReadClipboardImagePath: async () => 'C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png',
+    ReadClipboardText: async () => 'clipboard text',
   };
 
   Object.defineProperty(globalThis, 'window', {
@@ -108,6 +110,7 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
     await fetchSnapshot(undefined, { refreshRemotes: true });
     await fetchSnapshot({ ...DEFAULT_SETTINGS, ignoredRepoPaths: ['E:/repos/skip'] });
     assert.equal(await readClipboardImagePath(), 'C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png');
+    assert.equal(await readClipboardText(), 'clipboard text');
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,

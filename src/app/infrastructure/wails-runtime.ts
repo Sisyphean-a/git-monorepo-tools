@@ -1,10 +1,10 @@
-import { BrowserOpenURL, ClipboardGetText, EventsOn } from '../../../frontend/wailsjs/runtime/runtime.js';
+import { BrowserOpenURL, EventsOn } from '../../../frontend/wailsjs/runtime/runtime.js';
 import type { RuntimeBackend } from '../application/ports';
-import { readClipboardImagePath } from './wails-client';
+import { readClipboardImagePath, readClipboardText } from './wails-client';
 
 export const wailsRuntime: RuntimeBackend = {
   onEvent: (event, handler) => EventsOn(event, handler),
   readClipboardImagePath,
-  readClipboardText: () => ClipboardGetText(),
+  readClipboardText,
   openExternalURL: url => BrowserOpenURL(url),
 };

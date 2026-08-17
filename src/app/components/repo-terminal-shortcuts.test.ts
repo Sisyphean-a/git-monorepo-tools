@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ctrlJInput,
-  ctrlVInput,
   ctrlWInput,
   getWindowsTerminalShortcutAction,
   handleWindowsTerminalShortcutEvent,
@@ -185,7 +184,7 @@ test('windows application and compatibility shortcuts write their mapped input',
   assert.equal(shiftEnterInput, ctrlJInput);
 });
 
-test('application clipboard text paste checks for an image before preserving terminal-transformed text', async () => {
+test('application clipboard text paste probes for an image before reading text', async () => {
   let clipboardReads = 0;
   let imageReads = 0;
   const transformed: string[] = [];
@@ -235,13 +234,13 @@ test('confirmed Pi sessions write clipboard text with raw LF instead of brackete
   assert.deepEqual(pasted, ['first\nsecond\nthird\nfourth']);
 });
 
-test('application clipboard image paste writes its temporary path after text lookup finds nothing', async () => {
+test('application clipboard image paste writes its temporary path without reading text', async () => {
   const pasted: string[] = [];
 
   const pastedClipboard = await pasteTerminalClipboard({
     source: 'keyboard',
     getClipboardImagePath: async () => 'C:\\Users\\tester\\AppData\\Local\\Temp\\pi-clipboard-test.png',
-    getClipboardText: async () => '',
+    getClipboardText: async () => assert.fail('image paste must not read clipboard text'),
     transformPastedText: () => assert.fail('image paste must not transform clipboard text'),
     writeInput: async text => {
       pasted.push(text);
@@ -260,7 +259,7 @@ test('application clipboard image read failure is not reported as a successful k
     getClipboardImagePath: async () => {
       throw new Error('detected clipboard image could not be read');
     },
-    getClipboardText: async () => assert.fail('image read failures must not fall back to clipboard text'),
+    getClipboardText: async () => '',
     transformPastedText: () => assert.fail('image read failures must not transform clipboard text'),
     writeInput: async text => {
       pasted.push(text);
@@ -288,7 +287,7 @@ test('confirmed Pi keyboard paste does not report an empty clipboard as a succes
   assert.deepEqual(pasted, []);
 });
 
-test('keyboard paste forwards ctrl+v when the clipboard has no text', async () => {
+test('keyboard paste reports an empty clipboard without writing ctrl+v', async () => {
   const pasted: string[] = [];
 
   const pastedClipboard = await pasteTerminalClipboard({
@@ -300,14 +299,14 @@ test('keyboard paste forwards ctrl+v when the clipboard has no text', async () =
     },
   });
 
-  assert.equal(pastedClipboard, true);
-  assert.deepEqual(pasted, [ctrlVInput]);
+  assert.equal(pastedClipboard, false);
+  assert.deepEqual(pasted, []);
 });
 
-test('keyboard paste forwards ctrl+v when clipboard text cannot be read', async () => {
+test('keyboard paste preserves clipboard read failures without writing ctrl+v', async () => {
   const pasted: string[] = [];
 
-  const pastedClipboard = await pasteTerminalClipboard({
+  await assert.rejects(() => pasteTerminalClipboard({
     source: 'keyboard',
     getClipboardText: async () => {
       throw new Error('clipboard text unavailable');
@@ -316,10 +315,47 @@ test('keyboard paste forwards ctrl+v when clipboard text cannot be read', async 
     writeInput: async text => {
       pasted.push(text);
     },
+  }), /clipboard text unavailable/);
+
+  assert.deepEqual(pasted, []);
+});
+
+test('keyboard paste times out a hung clipboard without writing ctrl+v', async () => {
+  const pasted: string[] = [];
+
+  await assert.rejects(() => pasteTerminalClipboard({
+    source: 'keyboard',
+    clipboardReadTimeoutMs: 5,
+    getClipboardText: () => new Promise<string>(() => {}),
+    transformPastedText: () => assert.fail('hung clipboard must not be transformed'),
+    writeInput: async text => {
+      pasted.push(text);
+    },
+  }), /读取剪贴板超时/);
+
+  assert.deepEqual(pasted, []);
+});
+
+test('clipboard image paste probes for an image only after text is empty', async () => {
+  const pasted: string[] = [];
+  let imageReads = 0;
+
+  const pastedClipboard = await pasteTerminalClipboard({
+    source: 'context-menu',
+    getClipboardImagePath: async () => {
+      imageReads += 1;
+      return 'C:\\Temp\\clipboard.png';
+    },
+    getClipboardText: async () => '',
+    transformPastedText: () => assert.fail('empty clipboard must not be transformed'),
+    writeInput: async text => {
+      pasted.push(text);
+    },
   });
 
   assert.equal(pastedClipboard, true);
-  assert.deepEqual(pasted, [ctrlVInput]);
+  assert.equal(imageReads, 1);
+  assert.deepEqual(pasted, ['C:\\Temp\\clipboard.png']);
 });
 
 test('clipboard paste without a fallback ignores empty text', async () => {

@@ -28,6 +28,7 @@ import { createTerminalLinkProvider } from './terminal-link-provider';
 import { scheduleTerminalImeFocusReset } from './terminal-ime-focus';
 import {
   describeTerminalKeyboardEvent,
+  describeTerminalInputError,
   describeTerminalShortcutAction,
   appendTraceEntry,
   clipTraceData,
@@ -117,7 +118,7 @@ export function RepoTerminalSurface({
       await terminalWorkspace.writeInput(targetSessionId, data);
       recordInputTrace('后端写入完成', `${source}；Wails 写入调用已成功返回`, data);
     } catch (inputError) {
-      recordInputTrace('终端写入失败', `${source}；${inputError instanceof Error ? inputError.message : '未知错误'}`, data);
+      recordInputTrace('终端写入失败', `${source}；${describeTerminalInputError(inputError)}`, data);
       throw inputError;
     }
   }, [recordInputTrace, terminalWorkspace]);
@@ -328,6 +329,23 @@ export function RepoTerminalSurface({
       return true;
     };
 
+    const transformClipboardText = (terminal: Terminal, text: string, usePiLineFeedPaste: boolean) => {
+      if (usePiLineFeedPaste) {
+        return text.replace(/\r\n?|\n/g, '\n');
+      }
+      let pasteData = '';
+      terminalPasteDataRef.current = data => {
+        pasteData += data;
+        recordInputTrace('xterm 输出', 'xterm 对剪贴板文本的编码结果', data);
+      };
+      try {
+        terminal.paste(text);
+      } finally {
+        terminalPasteDataRef.current = null;
+      }
+      return pasteData;
+    };
+
     const pasteClipboard = (terminal: Terminal, source: TerminalClipboardPasteSource) => {
       const session = surfaceSession.getSession();
       if (!session) {
@@ -342,19 +360,7 @@ export function RepoTerminalSurface({
           usePiLineFeedPaste,
           getClipboardImagePath: terminalWorkspace.readClipboardImagePath,
           getClipboardText: terminalWorkspace.readClipboardText,
-          transformPastedText: text => {
-            let pasteData = '';
-            terminalPasteDataRef.current = data => {
-              pasteData += data;
-              recordInputTrace('xterm 输出', 'xterm 对剪贴板文本的编码结果', data);
-            };
-            try {
-              terminal.paste(text);
-            } finally {
-              terminalPasteDataRef.current = null;
-            }
-            return pasteData;
-          },
+          transformPastedText: text => transformClipboardText(terminal, text, usePiLineFeedPaste),
           writeInput: data => writeTerminalInput(
             session.sessionId,
             data,
@@ -371,6 +377,10 @@ export function RepoTerminalSurface({
       inputQueueRef.current = paste.then(
         () => undefined,
         pasteError => {
+          recordInputTrace(
+            '剪贴板读取失败',
+            `${source === 'keyboard' ? '快捷键' : '右键菜单'}；${describeTerminalInputError(pasteError)}`,
+          );
           console.error('终端粘贴失败', pasteError);
         },
       );
@@ -382,7 +392,10 @@ export function RepoTerminalSurface({
         .then(pasted => {
           if (pasted) {
             showToast('已粘贴');
+            return;
           }
+          recordInputTrace('剪贴板读取失败', '剪贴板中没有可粘贴的文本或图片');
+          showToast('剪贴板为空');
         })
         .catch(() => {
           showToast('粘贴失败');

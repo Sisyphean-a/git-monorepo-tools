@@ -4,6 +4,7 @@ import {
   appendTraceEntry,
   clipTraceData,
   describeTerminalKeyboardEvent,
+  describeTerminalInputError,
   describeTerminalShortcutAction,
   formatTerminalInputTrace,
   MAX_TRACE_DATA_CHARS,
@@ -39,6 +40,12 @@ test('input trace preserves the Shift+Enter event and its stable Pi newline inpu
 
 test('input trace identifies xterm pass-through handling', () => {
   assert.equal(describeTerminalShortcutAction({ type: 'pass-through' }), '交给 xterm 编码');
+});
+
+test('input trace preserves Wails string and object errors', () => {
+  assert.equal(describeTerminalInputError('clipboard unavailable'), 'clipboard unavailable');
+  assert.equal(describeTerminalInputError({ message: 'clipboard locked' }), 'clipboard locked');
+  assert.equal(describeTerminalInputError({ code: 5 }), '{"code":5}');
 });
 
 test('trace buffer drops the oldest entries once the cap is exceeded', () => {

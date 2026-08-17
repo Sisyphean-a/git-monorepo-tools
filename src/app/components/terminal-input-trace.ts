@@ -4,6 +4,7 @@ export type TerminalInputTraceStage =
   | '浏览器事件'
   | 'xterm 键盘事件'
   | '快捷键处理'
+  | '剪贴板读取失败'
   | 'xterm 输出'
   | '写入终端'
   | '后端写入完成'
@@ -55,10 +56,26 @@ export function describeTerminalKeyboardEvent(event: TerminalKeyboardEvent) {
 export function describeTerminalShortcutAction(action: RepoTerminalShortcutAction): string {
   switch (action.type) {
     case 'copy-selection': return '复制选区';
-    case 'paste-clipboard': return '读取剪贴板';
+    case 'paste-clipboard': return '触发粘贴流程';
     case 'send-input': return '规则转换并直接写入';
     case 'pass-through': return '交给 xterm 编码';
   }
+}
+
+export function describeTerminalInputError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { readonly message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  try {
+    const serialized = JSON.stringify(error);
+    if (serialized && serialized !== '{}') return serialized;
+  } catch {
+    // Fall through to the stable unknown-error label.
+  }
+  return '未知错误';
 }
 
 export function formatTerminalInputTrace(entry: TerminalInputTraceEntry) {

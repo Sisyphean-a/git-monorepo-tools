@@ -7,23 +7,34 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"syscall"
+	"time"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
 	clipboardImagePathEnvironment = "GIT_MONOREPO_TOOLS_CLIPBOARD_IMAGE_PATH"
-	clipboardFormatBitmap         = 2
-	clipboardFormatDIB            = 8
-	clipboardFormatDIBV5          = 17
+	clipboardNoImageExitCode      = 3
+	clipboardFormatText           = 1
+	clipboardFormatOEMText        = 7
+	clipboardFormatUnicodeText    = 13
+	windowsCodePageACP            = 0
+	windowsCodePageOEM            = 1
 )
 
 var (
 	isClipboardFormatAvailable = syscall.NewLazyDLL("user32.dll").NewProc("IsClipboardFormatAvailable")
-	registerClipboardFormat    = syscall.NewLazyDLL("user32.dll").NewProc("RegisterClipboardFormatW")
+	openClipboard              = syscall.NewLazyDLL("user32.dll").NewProc("OpenClipboard")
+	closeClipboard             = syscall.NewLazyDLL("user32.dll").NewProc("CloseClipboard")
+	getClipboardData           = syscall.NewLazyDLL("user32.dll").NewProc("GetClipboardData")
+	enumClipboardFormats       = syscall.NewLazyDLL("user32.dll").NewProc("EnumClipboardFormats")
+	globalLock                 = syscall.NewLazyDLL("kernel32.dll").NewProc("GlobalLock")
+	globalUnlock               = syscall.NewLazyDLL("kernel32.dll").NewProc("GlobalUnlock")
+	globalSize                 = syscall.NewLazyDLL("kernel32.dll").NewProc("GlobalSize")
 )
-
-var registeredClipboardImageFormatNames = [...]string{"PNG", "image/png"}
 
 const clipboardImageScript = `
 $ErrorActionPreference = 'Stop'
@@ -71,7 +82,7 @@ for ($attempt = 0; $attempt -lt 6; $attempt++) {
   }
   Start-Sleep -Milliseconds 75
 }
-if ($null -eq $image) { throw 'Clipboard image data was unavailable after retries.' }
+if ($null -eq $image) { exit 3 }
 try {
   $image.Save($env:GIT_MONOREPO_TOOLS_CLIPBOARD_IMAGE_PATH, [System.Drawing.Imaging.ImageFormat]::Png)
 } finally {
@@ -80,10 +91,6 @@ try {
 `
 
 func (Client) ReadClipboardImagePath() (string, error) {
-	if !clipboardHasImage() {
-		return "", nil
-	}
-
 	imageFile, err := os.CreateTemp("", "pi-clipboard-*.png")
 	if err != nil {
 		return "", fmt.Errorf("创建剪贴板图片临时文件失败: %w", err)
@@ -100,6 +107,10 @@ func (Client) ReadClipboardImagePath() (string, error) {
 	cmd := newClipboardImageCommand(imagePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		_ = os.Remove(imagePath)
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) && exitError.ExitCode() == clipboardNoImageExitCode {
+			return "", nil
+		}
 		return "", fmt.Errorf("读取剪贴板图片失败: %w: %s", err, output)
 	}
 
@@ -108,6 +119,110 @@ func (Client) ReadClipboardImagePath() (string, error) {
 		return "", err
 	}
 	return imagePath, nil
+}
+
+func (Client) ReadClipboardText() (string, error) {
+	// OpenClipboard ownership is thread-affine. Keep the complete open/read/close
+	// sequence on one OS thread so Go's scheduler cannot invalidate the handle.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	var openErr error
+	for attempt := 0; attempt < 20; attempt++ {
+		opened, _, err := openClipboard.Call(0)
+		if opened != 0 {
+			defer closeClipboard.Call()
+			return readOpenClipboardText()
+		}
+		openErr = err
+		time.Sleep(50 * time.Millisecond)
+	}
+	return "", fmt.Errorf("打开 Windows 剪贴板失败: %w", openErr)
+}
+
+func readOpenClipboardText() (string, error) {
+	for _, candidate := range []struct {
+		format   uint32
+		codePage uint32
+	}{
+		{format: clipboardFormatUnicodeText},
+		{format: clipboardFormatText, codePage: windowsCodePageACP},
+		{format: clipboardFormatOEMText, codePage: windowsCodePageOEM},
+	} {
+		available, _, _ := isClipboardFormatAvailable.Call(uintptr(candidate.format))
+		if available == 0 {
+			continue
+		}
+		return readOpenClipboardFormat(candidate.format, candidate.codePage)
+	}
+	return "", nil
+}
+
+func readOpenClipboardFormat(format uint32, codePage uint32) (string, error) {
+	handle, _, err := getClipboardData.Call(uintptr(format))
+	if handle == 0 {
+		return "", fmt.Errorf("读取 Windows 剪贴板格式 %d 句柄失败: %w", format, err)
+	}
+	size, _, err := globalSize.Call(handle)
+	if size == 0 {
+		return "", fmt.Errorf("读取 Windows 剪贴板格式 %d 长度失败: %w", format, err)
+	}
+	pointer, _, err := globalLock.Call(handle)
+	if pointer == 0 {
+		return "", fmt.Errorf("锁定 Windows 剪贴板格式 %d 失败: %w", format, err)
+	}
+	defer globalUnlock.Call(handle)
+
+	if format == clipboardFormatUnicodeText {
+		units := unsafe.Slice((*uint16)(unsafe.Pointer(pointer)), int(size)/2)
+		return decodeClipboardUTF16(units), nil
+	}
+	bytes := unsafe.Slice((*byte)(unsafe.Pointer(pointer)), int(size))
+	return decodeClipboardBytes(bytes, codePage)
+}
+
+func listOpenClipboardFormats() []uint32 {
+	formats := make([]uint32, 0, 8)
+	var current uintptr
+	for {
+		next, _, _ := enumClipboardFormats.Call(current)
+		if next == 0 {
+			return formats
+		}
+		formats = append(formats, uint32(next))
+		current = next
+	}
+}
+
+func decodeClipboardUTF16(units []uint16) string {
+	for index, unit := range units {
+		if unit == 0 {
+			units = units[:index]
+			break
+		}
+	}
+	return syscall.UTF16ToString(units)
+}
+
+func decodeClipboardBytes(value []byte, codePage uint32) (string, error) {
+	for index, current := range value {
+		if current == 0 {
+			value = value[:index]
+			break
+		}
+	}
+	if len(value) == 0 {
+		return "", nil
+	}
+	length, err := windows.MultiByteToWideChar(codePage, 0, &value[0], int32(len(value)), nil, 0)
+	if err != nil {
+		return "", fmt.Errorf("计算 Windows 剪贴板文本转换长度失败: %w", err)
+	}
+	converted := make([]uint16, length)
+	if _, err := windows.MultiByteToWideChar(codePage, 0, &value[0], int32(len(value)), &converted[0], length); err != nil {
+		return "", fmt.Errorf("转换 Windows 剪贴板文本失败: %w", err)
+	}
+	return syscall.UTF16ToString(converted), nil
 }
 
 func validateClipboardImageFile(imagePath string) error {
@@ -122,42 +237,6 @@ func validateClipboardImageFile(imagePath string) error {
 		return errors.New("剪贴板图片为空")
 	}
 	return nil
-}
-
-func clipboardHasImage() bool {
-	formats := clipboardImageFormats(registerClipboardImageFormat)
-	return hasClipboardImage(formats, func(format uint32) bool {
-		available, _, _ := isClipboardFormatAvailable.Call(uintptr(format))
-		return available != 0
-	})
-}
-
-func clipboardImageFormats(registerFormat func(string) uint32) []uint32 {
-	formats := []uint32{clipboardFormatBitmap, clipboardFormatDIB, clipboardFormatDIBV5}
-	for _, name := range registeredClipboardImageFormatNames {
-		if format := registerFormat(name); format != 0 {
-			formats = append(formats, format)
-		}
-	}
-	return formats
-}
-
-func registerClipboardImageFormat(name string) uint32 {
-	value, err := syscall.UTF16PtrFromString(name)
-	if err != nil {
-		return 0
-	}
-	format, _, _ := registerClipboardFormat.Call(uintptr(unsafe.Pointer(value)))
-	return uint32(format)
-}
-
-func hasClipboardImage(formats []uint32, isFormatAvailable func(uint32) bool) bool {
-	for _, format := range formats {
-		if isFormatAvailable(format) {
-			return true
-		}
-	}
-	return false
 }
 
 func newClipboardImageCommand(imagePath string) *exec.Cmd {

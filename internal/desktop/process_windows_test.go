@@ -31,48 +31,24 @@ func TestNewInteractiveCmdCommandRequestsNewConsole(t *testing.T) {
 	}
 }
 
-func TestClipboardImageFormatsAreRecognized(t *testing.T) {
+func TestDecodeClipboardUTF16StopsAtNullTerminator(t *testing.T) {
 	t.Parallel()
 
-	const (
-		clipboardFormatPNG      = 0xc001
-		clipboardFormatImagePNG = 0xc002
-	)
-	formats := clipboardImageFormats(func(name string) uint32 {
-		switch name {
-		case "PNG":
-			return clipboardFormatPNG
-		case "image/png":
-			return clipboardFormatImagePNG
-		default:
-			return 0
-		}
-	})
-	for _, format := range []uint32{
-		clipboardFormatBitmap,
-		clipboardFormatDIB,
-		clipboardFormatDIBV5,
-		clipboardFormatPNG,
-		clipboardFormatImagePNG,
-	} {
-		if !hasClipboardImage(formats, func(candidate uint32) bool {
-			return candidate == format
-		}) {
-			t.Fatalf("expected clipboard format %d to be recognized as an image", format)
-		}
-	}
-	if hasClipboardImage(formats, func(uint32) bool { return false }) {
-		t.Fatal("unexpected image detection when no image formats are available")
+	got := decodeClipboardUTF16([]uint16{'A', 0x4f60, 0x597d, 0, 'x'})
+	if got != "A你好" {
+		t.Fatalf("unexpected clipboard text: %q", got)
 	}
 }
 
-func TestRegisterClipboardImageFormatsUsesWindowsRegistry(t *testing.T) {
+func TestDecodeClipboardBytesStopsAtNullTerminator(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range registeredClipboardImageFormatNames {
-		if format := registerClipboardImageFormat(name); format < 0xc000 {
-			t.Fatalf("expected registered clipboard format %q, got %#x", name, format)
-		}
+	got, err := decodeClipboardBytes([]byte{'A', 'S', 'C', 'I', 'I', 0, 'x'}, windowsCodePageACP)
+	if err != nil {
+		t.Fatalf("decode clipboard bytes: %v", err)
+	}
+	if got != "ASCII" {
+		t.Fatalf("unexpected clipboard text: %q", got)
 	}
 }
 
@@ -90,6 +66,9 @@ func TestNewClipboardImageCommandUsesStaAndConfiguredOutputPath(t *testing.T) {
 	}
 	if !strings.Contains(cmd.Args[5], "Save-RegisteredClipboardImage") {
 		t.Fatalf("clipboard image command is missing registered PNG retrieval: %q", cmd.Args[5])
+	}
+	if !strings.Contains(cmd.Args[5], "if ($null -eq $image) { exit 3 }") {
+		t.Fatalf("clipboard image command must distinguish an empty image clipboard: %q", cmd.Args[5])
 	}
 	if !containsString(cmd.Env, clipboardImagePathEnvironment+"="+imagePath) {
 		t.Fatalf("clipboard image path was not passed to PowerShell: %#v", cmd.Env)

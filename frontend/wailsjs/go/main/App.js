@@ -70,6 +70,10 @@ export function ReadClipboardImagePath() {
   return window['go']['main']['App']['ReadClipboardImagePath']();
 }
 
+export function ReadClipboardText() {
+  return window['go']['main']['App']['ReadClipboardText']();
+}
+
 export function RefreshRepo(arg1, arg2) {
   return window['go']['main']['App']['RefreshRepo'](arg1, arg2);
 }

@@ -5,7 +5,6 @@ export type RepoTerminalShortcutAction =
   | { readonly type: 'pass-through' };
 export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
 
-export const ctrlVInput = '\x16';
 export const ctrlJInput = '\x0a';
 export const ctrlWInput = '\x17';
 // Pi handles a raw line feed as its cross-terminal newline action.
@@ -143,6 +142,10 @@ interface TerminalClipboardPasteOptions {
    * pasted line separators into Enter submissions after stripping paste markers.
    */
   readonly usePiLineFeedPaste?: boolean;
+  /** Maximum time to wait for a Wails text clipboard call. */
+  readonly clipboardReadTimeoutMs?: number;
+  /** Image export starts an STA helper and needs a separate cold-start budget. */
+  readonly clipboardImageReadTimeoutMs?: number;
   readonly getClipboardImagePath?: () => Promise<string | null>;
   readonly getClipboardText: () => Promise<string>;
   readonly transformPastedText: (text: string) => string;
@@ -150,34 +153,22 @@ interface TerminalClipboardPasteOptions {
 }
 
 export async function pasteTerminalClipboard(options: TerminalClipboardPasteOptions) {
-  // A confirmed Pi session has no useful raw Ctrl+V fallback: Pi binds image paste to Alt+V.
-  // Returning false keeps an empty or unrecognized clipboard from being reported as pasted.
-  const fallbackInput = options.source === 'keyboard' && !options.usePiLineFeedPaste
-    ? ctrlVInput
-    : undefined;
-  const imagePath = await options.getClipboardImagePath?.();
+  // Image paste is the primary application shortcut contract. Export it before
+  // checking text so a clipboard without text cannot terminate the image path.
+  const timeoutMs = options.clipboardReadTimeoutMs ?? 2000;
+  const imageTimeoutMs = options.clipboardImageReadTimeoutMs ?? 5000;
+  const imagePath = await readClipboardWithTimeout(options.getClipboardImagePath, imageTimeoutMs, null);
   if (imagePath) {
     await options.writeInput(imagePath);
     return true;
   }
-  let text: string;
-  try {
-    text = await options.getClipboardText();
-  } catch (error) {
-    if (!fallbackInput) {
-      throw error;
-    }
-    await options.writeInput(fallbackInput);
-    return true;
-  }
-  const input = text
-    ? options.usePiLineFeedPaste
-      ? normalizePiLineFeedPaste(text)
-      : options.transformPastedText(text)
-    : fallbackInput;
-  if (!input) {
+  const text = await readClipboardWithTimeout(options.getClipboardText, timeoutMs);
+  if (!text) {
     return false;
   }
+  const input = options.usePiLineFeedPaste
+    ? normalizePiLineFeedPaste(text)
+    : options.transformPastedText(text);
   await options.writeInput(input);
   return true;
 }
@@ -192,6 +183,36 @@ export function queueTerminalInput(
 
 function normalizePiLineFeedPaste(text: string) {
   return text.replace(/\r\n?|\n/g, '\n');
+}
+
+async function readClipboardWithTimeout<T>(
+  read: (() => Promise<T>) | undefined,
+  timeoutMs: number,
+  timeoutValue?: T,
+): Promise<T> {
+  if (!read) {
+    return timeoutValue as T;
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return read();
+  }
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      if (timeoutValue !== undefined) {
+        resolve(timeoutValue);
+      } else {
+        reject(new Error(`读取剪贴板超时（${timeoutMs} ms）`));
+      }
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([read(), timeout]);
+  } finally {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 function isWindowsPlatform(platform: string) {
