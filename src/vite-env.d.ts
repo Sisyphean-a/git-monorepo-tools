@@ -121,6 +121,7 @@ interface Window {
           aiCommit: import('./app/domain/types').AICommitSettings,
         ) => Promise<string>;
         OpenFolder: (path: string) => Promise<void>;
+        OpenLocalPath?: (path: string) => Promise<void>;
         OpenTerminal: (path: string) => Promise<void>;
         OpenConflicts: (path: string) => Promise<void>;
         PickFolder: () => Promise<string>;

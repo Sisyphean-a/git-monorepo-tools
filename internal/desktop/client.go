@@ -3,7 +3,10 @@ package desktop
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -28,6 +31,14 @@ func (Client) PickFolder(ctx context.Context) (string, error) {
 
 func (Client) OpenFolder(targetPath string) error {
 	path, err := ensureDesktopPath(targetPath)
+	if err != nil {
+		return err
+	}
+	return startDetached("explorer.exe", toWindowsPath(path))
+}
+
+func (Client) OpenLocalPath(targetPath string) error {
+	path, err := ensureOpenableDesktopPath(targetPath)
 	if err != nil {
 		return err
 	}
@@ -112,6 +123,21 @@ func ensureDesktopPath(targetPath string) (string, error) {
 		return "", errors.New("缺少目标路径")
 	}
 	return trimmed, nil
+}
+
+func ensureOpenableDesktopPath(targetPath string) (string, error) {
+	path, err := ensureDesktopPath(targetPath)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(path) {
+		return "", errors.New("本地链接必须是绝对路径")
+	}
+	path = filepath.Clean(path)
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("本地链接不可打开：%w", err)
+	}
+	return path, nil
 }
 
 func toWindowsPath(targetPath string) string {

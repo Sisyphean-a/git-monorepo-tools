@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { useTerminalWorkspace } from '../features/terminal/terminal-workspace';
+import { useAppBackend } from '../application/backend-context';
 import { TerminalOutputWriter } from '../features/terminal/terminal-output-writer';
 import { C } from '../theme';
 import type { RepoDetail } from '../domain/types';
@@ -23,6 +24,7 @@ import {
   TerminalProtocolObserver,
   type TerminalProtocolSnapshot,
 } from './terminal-protocol-observer';
+import { createTerminalLinkProvider } from './terminal-link-provider';
 import {
   describeTerminalKeyboardEvent,
   describeTerminalShortcutAction,
@@ -46,6 +48,7 @@ export function RepoTerminalSurface({
   active,
   createIndependentSession = false,
 }: RepoTerminalSurfaceProps) {
+  const backend = useAppBackend();
   const terminalWorkspace = useTerminalWorkspace();
   const frameRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -415,6 +418,10 @@ export function RepoTerminalSurface({
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     outputWriterRef.current = new TerminalOutputWriter(terminal);
+    const linkProviderDisposable = terminal.registerLinkProvider(createTerminalLinkProvider(terminal, {
+      openExternalURL: backend.openExternalURL,
+      openLocalPath: backend.openLocalPath,
+    }, showToast));
     terminal.attachCustomKeyEventHandler(event => {
       recordInputTrace('xterm 键盘事件', describeTerminalKeyboardEvent(event));
       return handleWindowsTerminalShortcutEvent(event, {
@@ -506,6 +513,7 @@ export function RepoTerminalSurface({
       xtermViewport?.removeEventListener('scroll', scrollGuard);
       inputDisposable.dispose();
       parsedDisposable.dispose();
+      linkProviderDisposable.dispose();
       outputWriterRef.current?.dispose();
       outputWriterRef.current = null;
       terminalPasteDataRef.current = null;

@@ -80,6 +80,7 @@ type WailsBindings = {
     aiCommit: AppSettings['aiCommit'],
   ) => Promise<string>;
   OpenFolder: (path: string) => Promise<void>;
+  OpenLocalPath?: (path: string) => Promise<void>;
   OpenTerminal: (path: string) => Promise<void>;
   OpenConflicts: (path: string) => Promise<void>;
   PickFolder: () => Promise<string>;
@@ -243,6 +244,14 @@ export async function resizeTerminal(sessionId: string, cols: number, rows: numb
   return getWailsBindings().ResizeTerminal(sessionId, cols, rows);
 }
 
+export async function openLocalPath(path: string) {
+  const binding = getWailsBindings().OpenLocalPath;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 本地路径打开绑定不可用');
+  }
+  return binding(path);
+}
+
 export async function invokeLocalRepoAction(action: LocalRepoAction, path: string) {
   const binding = getWailsBindings();
   if (action === 'open-folder') {
@@ -291,5 +300,6 @@ export const wailsClient: WorkspaceBackend & RepoInteractionBackend = {
   writeTerminalInput,
   resizeTerminal,
   invokeLocalRepoAction,
+  openLocalPath,
   pickFolder,
 };

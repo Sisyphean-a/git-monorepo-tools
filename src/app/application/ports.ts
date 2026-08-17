@@ -49,6 +49,7 @@ export interface WorkspaceBackend {
   fetchRepoLog(repoId: string, settings: AppSettings): Promise<RepoLog>;
   runRepoCommand(request: RepoCommandRequest): Promise<RepoCommandResult>;
   invokeLocalRepoAction(action: LocalRepoAction, path: string): Promise<void>;
+  openLocalPath(path: string): Promise<void>;
   pickFolder(): Promise<string | null>;
 }
 
@@ -108,6 +109,7 @@ export interface RuntimeBackend {
   onEvent(event: string, handler: RuntimeEventHandler): () => void;
   readClipboardImagePath(): Promise<string | null>;
   readClipboardText(): Promise<string>;
+  openExternalURL(url: string): void;
 }
 
 export type AppBackend = WorkspaceBackend & RepoInteractionBackend & RuntimeBackend;

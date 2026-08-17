@@ -1,12 +1,42 @@
 package desktop
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestEnsureDesktopPathRejectsEmptyValue(t *testing.T) {
 	t.Parallel()
 
 	if _, err := ensureDesktopPath("   "); err == nil {
 		t.Fatal("expected empty path to fail")
+	}
+}
+
+func TestEnsureOpenableDesktopPathRequiresExistingAbsolutePath(t *testing.T) {
+	t.Parallel()
+
+	filePath := filepath.Join(t.TempDir(), "report.txt")
+	if err := os.WriteFile(filePath, []byte("report"), 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	resolved, err := ensureOpenableDesktopPath(filePath)
+	if err != nil {
+		t.Fatalf("expected existing absolute file path to be accepted: %v", err)
+	}
+	if resolved != filepath.Clean(filePath) {
+		t.Fatalf("expected cleaned path %q, got %q", filepath.Clean(filePath), resolved)
+	}
+	if _, err := ensureOpenableDesktopPath(filepath.Dir(filePath)); err != nil {
+		t.Fatalf("expected existing directory to be accepted: %v", err)
+	}
+	if _, err := ensureOpenableDesktopPath("relative.txt"); err == nil {
+		t.Fatal("expected relative path to be rejected")
+	}
+	if _, err := ensureOpenableDesktopPath(filepath.Join(t.TempDir(), "missing.txt")); err == nil {
+		t.Fatal("expected missing path to be rejected")
 	}
 }
 

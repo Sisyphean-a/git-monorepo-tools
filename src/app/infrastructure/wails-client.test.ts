@@ -11,6 +11,7 @@ import {
   fetchWorkspaceBootstrap,
   generateCommitMessage,
   invokeLocalRepoAction,
+  openLocalPath,
   mutateRepo,
   refreshRepo,
   readClipboardImagePath,
@@ -254,6 +255,9 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
     OpenFolder: async (path: string) => {
       calls.push(`OpenFolder:${path}`);
     },
+    OpenLocalPath: async (path: string) => {
+      calls.push(`OpenLocalPath:${path}`);
+    },
     OpenTerminal: async (path: string) => {
       calls.push(`OpenTerminal:${path}`);
     },
@@ -270,6 +274,7 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
 
   try {
     await invokeLocalRepoAction('open-folder', '/repo/a');
+    await openLocalPath('C:/repo/report.txt');
     await invokeLocalRepoAction('open-terminal', '/repo/b');
     await invokeLocalRepoAction('open-conflicts', '/repo/c');
   } finally {
@@ -281,6 +286,7 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
 
   assert.deepEqual(calls, [
     'OpenFolder:/repo/a',
+    'OpenLocalPath:C:/repo/report.txt',
     'OpenTerminal:/repo/b',
     'OpenConflicts:/repo/c',
   ]);

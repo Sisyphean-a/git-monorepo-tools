@@ -54,6 +54,10 @@ export function OpenFolder(arg1) {
   return window['go']['main']['App']['OpenFolder'](arg1);
 }
 
+export function OpenLocalPath(arg1) {
+  return window['go']['main']['App']['OpenLocalPath'](arg1);
+}
+
 export function OpenTerminal(arg1) {
   return window['go']['main']['App']['OpenTerminal'](arg1);
 }

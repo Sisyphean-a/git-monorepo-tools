@@ -29,6 +29,8 @@ export function OpenConflicts(arg1:string):Promise<void>;
 
 export function OpenFolder(arg1:string):Promise<void>;
 
+export function OpenLocalPath(arg1:string):Promise<void>;
+
 export function OpenTerminal(arg1:string):Promise<void>;
 
 export function PickFolder():Promise<string>;
