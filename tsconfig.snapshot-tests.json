@@ -51,6 +51,8 @@
     "src/app/components/repo-terminal-shortcuts.test.ts",
     "src/app/components/terminal-input-trace.ts",
     "src/app/components/terminal-input-trace.test.ts",
+    "src/app/components/terminal-ime-focus.ts",
+    "src/app/components/terminal-ime-focus.test.ts",
     "src/app/components/terminal-protocol-observer.ts",
     "src/app/components/terminal-protocol-observer.test.ts",
     "src/app/components/terminal-link-provider.ts",

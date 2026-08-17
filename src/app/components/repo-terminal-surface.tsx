@@ -25,6 +25,7 @@ import {
   type TerminalProtocolSnapshot,
 } from './terminal-protocol-observer';
 import { createTerminalLinkProvider } from './terminal-link-provider';
+import { scheduleTerminalImeFocusReset } from './terminal-ime-focus';
 import {
   describeTerminalKeyboardEvent,
   describeTerminalShortcutAction,
@@ -58,6 +59,7 @@ export function RepoTerminalSurface({
   const terminalPasteDataRef = useRef<((data: string) => void) | null>(null);
   const inputQueueRef = useRef(Promise.resolve());
   const resizeFrameRef = useRef<number | null>(null);
+  const imeFocusFrameRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const toastIdRef = useRef(0);
   const inputTraceSequenceRef = useRef(0);
@@ -202,7 +204,13 @@ export function RepoTerminalSurface({
         void terminalWorkspace.resize(session.sessionId, nextSize.cols, nextSize.rows)
           .catch(resizeError => setError(resizeError instanceof Error ? resizeError.message : '终端尺寸同步失败'));
       }
-      terminalRef.current?.focus();
+      const terminal = terminalRef.current;
+      if (terminal) {
+        imeFocusFrameRef.current = scheduleTerminalImeFocusReset(terminal, {
+          request: callback => requestAnimationFrame(callback),
+          cancel: handle => cancelAnimationFrame(handle),
+        }, imeFocusFrameRef.current);
+      }
     });
   };
 
@@ -508,6 +516,14 @@ export function RepoTerminalSurface({
       if (toastTimerRef.current !== null) {
         window.clearTimeout(toastTimerRef.current);
         toastTimerRef.current = null;
+      }
+      if (resizeFrameRef.current !== null) {
+        cancelAnimationFrame(resizeFrameRef.current);
+        resizeFrameRef.current = null;
+      }
+      if (imeFocusFrameRef.current !== null) {
+        cancelAnimationFrame(imeFocusFrameRef.current);
+        imeFocusFrameRef.current = null;
       }
       viewportRef.current?.removeEventListener('contextmenu', contextMenuHandler);
       xtermViewport?.removeEventListener('scroll', scrollGuard);
