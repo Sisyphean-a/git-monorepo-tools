@@ -7,7 +7,7 @@ import { ToolbarBtn } from './workspace-parts';
 export interface PanelAction {
   key: string;
   label: string;
-  icon: ReactNode;
+  icon?: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   primary?: boolean;

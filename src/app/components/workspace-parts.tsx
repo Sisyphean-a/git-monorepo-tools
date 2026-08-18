@@ -117,7 +117,7 @@ export function ToolbarBtn({
   style,
 }: {
   label: string;
-  icon: ReactNode;
+  icon?: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   primary?: boolean;
@@ -136,7 +136,7 @@ export function ToolbarBtn({
       disabled={disabled}
       style={{ background: bg, border: `1px solid ${borderColor}`, color: textColor, borderRadius: 6, padding: '5px 10px', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, opacity: disabled ? 0.72 : dimmed ? 0.6 : 1, fontWeight: primary ? 500 : 400, ...style }}
     >
-      {icon} {label}
+      {icon && icon}{label}
     </button>
   );
 }

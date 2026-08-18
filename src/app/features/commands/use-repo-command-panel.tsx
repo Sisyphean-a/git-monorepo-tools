@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Download, GitCommit, Layers3, MinusSquare, PlusSquare, RefreshCw, RotateCcw, Sparkles, TerminalSquare, Upload } from 'lucide-react';
+import { Download, GitCommit, MinusSquare, PlusSquare, RefreshCw, RotateCcw, Sparkles, Upload } from 'lucide-react';
 import { formatComboSummary, getBuiltInCommandLabel, getRepoCommands } from './command-catalog';
 import { createComboCommitMessageState } from './combo-commit-message-state';
 import { createCommandConsoleSession } from './repo-command-console';
@@ -249,7 +249,6 @@ export function useRepoCommandPanel({
       actions: settings.commandCenter.combos.map(combo => ({
         key: combo.id,
         label: busyAction === `combo:${combo.id}` ? `${combo.label}…` : combo.label,
-        icon: <Layers3 size={12} />,
         onClick: () => runCombo(combo),
         disabled: busyAction !== null,
         accent: true,
@@ -263,7 +262,6 @@ export function useRepoCommandPanel({
         ...getRepoCommands(settings.commandCenter, repo.id).map(({ scope, command }) => ({
           key: `${scope}:${command.id}`,
           label: busyAction === `${scope}-command:${command.id}` ? `${command.label || '命令'}…` : command.label || '命令',
-          icon: <TerminalSquare size={12} />,
           onClick: () => runCustomCommand(scope, command),
           disabled: busyAction !== null,
         })),
