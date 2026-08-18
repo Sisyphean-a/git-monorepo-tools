@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { C } from '../theme';
 import type { RepoDetail } from '../domain/types';
 import { RepoTerminalSurface } from './repo-terminal-surface';
+import { retainExistingRepoIds, retainExistingRepoIdSet } from '../features/terminal/terminal-repo-state';
 
 interface RepoTerminalTabProps {
   repoDetails: Record<string, RepoDetail>;
@@ -31,9 +32,9 @@ export function RepoTerminalTab({ repoDetails, activeRepoId, visible }: RepoTerm
   }, [contentfulRepoIds]);
 
   useEffect(() => {
-    setOpenedRepoIds(current => current.filter(repoId => Boolean(repoDetails[repoId])));
-    setContentfulRepoIds(current => new Set([...current].filter(repoId => Boolean(repoDetails[repoId]))));
-    setAutoClosingRepoIds(current => new Set([...current].filter(repoId => Boolean(repoDetails[repoId]))));
+    setOpenedRepoIds(current => retainExistingRepoIds(current, repoDetails));
+    setContentfulRepoIds(current => retainExistingRepoIdSet(current, repoDetails));
+    setAutoClosingRepoIds(current => retainExistingRepoIdSet(current, repoDetails));
   }, [repoDetails]);
 
   useEffect(() => {
