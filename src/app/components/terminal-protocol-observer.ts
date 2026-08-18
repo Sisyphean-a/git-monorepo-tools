@@ -19,8 +19,19 @@ export interface TerminalModeSnapshot {
   readonly mouseTrackingMode: TerminalMouseTrackingMode;
 }
 
-export const PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE = '\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1004h\x1b[?1006h';
-export const PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE = '\x1b[?1006l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l';
+export interface TerminalProtocolEffect {
+  readonly type: 'write-xterm';
+  readonly data: string;
+  readonly trace: string;
+}
+
+export interface TerminalProtocolTransition {
+  readonly snapshotChanged: boolean;
+  readonly effects: readonly TerminalProtocolEffect[];
+}
+
+const PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE = '\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1004h\x1b[?1006h';
+const PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE = '\x1b[?1006l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l';
 
 const BRACKETED_PASTE_COMMAND = /\x1b\[\?2004([hl])/g;
 const KEYBOARD_PROTOCOL_COMMAND = /\x1b\[>([0-9;]*)u/g;
@@ -32,11 +43,13 @@ const OBSERVED_DEC_PRIVATE_MODES = new Set(['9', '1000', '1002', '1003', '1004',
 const PROTOCOL_TAIL_LENGTH = 4096;
 
 /**
- * Flow: observes copies of terminal protocol bytes and xterm parse completion.
- * Guarantee: it never transforms, suppresses, or routes terminal output.
+ * Flow: owns Pi protocol observation and the local compatibility effects caused by state transitions.
+ * Guarantee: it never transforms, suppresses, routes, or directly writes terminal output.
  */
-export class TerminalProtocolObserver {
+export class TerminalProtocolStateMachine {
   private outputTail = '';
+  private sessionEnded = false;
+  private piFullscreenMouseCompatibilityActive = false;
   private state: TerminalProtocolSnapshot = {
     delivery: 'waiting',
     bracketedPasteRequested: null,
@@ -53,9 +66,11 @@ export class TerminalProtocolObserver {
     return this.state;
   }
 
-  reset() {
+  reset(): TerminalProtocolTransition {
     this.outputTail = '';
-    return this.replace({
+    this.sessionEnded = false;
+    this.piFullscreenMouseCompatibilityActive = false;
+    return this.transition(this.replace({
       delivery: 'waiting',
       bracketedPasteRequested: null,
       bracketedPasteEnabled: null,
@@ -65,12 +80,12 @@ export class TerminalProtocolObserver {
       mouseTrackingRequested: null,
       mouseTrackingEnabled: null,
       sgrMouseRequested: null,
-    });
+    }));
   }
 
-  observeOutput(chunk: string) {
+  observeOutput(chunk: string): TerminalProtocolTransition {
     if (!chunk) {
-      return false;
+      return this.transition(false);
     }
 
     const tailLength = this.outputTail.length;
@@ -131,7 +146,7 @@ export class TerminalProtocolObserver {
     }
 
     this.outputTail = output.slice(-PROTOCOL_TAIL_LENGTH);
-    return this.replace({
+    return this.transition(this.replace({
       ...this.state,
       delivery: 'pending-xterm',
       bracketedPasteRequested,
@@ -140,30 +155,86 @@ export class TerminalProtocolObserver {
       alternateScreenRequested,
       mouseTrackingRequested,
       sgrMouseRequested,
-    });
+    }));
   }
 
-  observeXtermParsed(modes: TerminalModeSnapshot) {
+  observeXtermParsed(modes: TerminalModeSnapshot): TerminalProtocolTransition {
     if (this.state.delivery === 'waiting') {
-      return false;
+      return this.transition(false);
     }
-    return this.replace({
+    const snapshotChanged = this.replace({
       ...this.state,
       delivery: 'delivered',
       bracketedPasteEnabled: modes.bracketedPasteMode,
       mouseTrackingEnabled: modes.mouseTrackingMode,
     });
+    return this.transition(snapshotChanged, this.reconcilePiFullscreenMouse());
   }
 
-  observeTerminalInput(data: string) {
+  observeTerminalInput(data: string): TerminalProtocolTransition {
     if (!KEYBOARD_PROTOCOL_RESPONSE.test(data)) {
-      return false;
+      return this.transition(false);
     }
     KEYBOARD_PROTOCOL_RESPONSE.lastIndex = 0;
-    return this.replace({
+    return this.transition(this.replace({
       ...this.state,
       keyboard: 'negotiated',
-    });
+    }));
+  }
+
+  usesPiLineFeedPaste() {
+    // Pi remains identifiable while later output waits for xterm's asynchronous parser.
+    // ConPTY strips bracketed-paste delimiters and modified-key CSI, but raw LF survives.
+    return this.state.piTitle
+      && this.state.bracketedPasteRequested === true
+      && this.state.bracketedPasteEnabled === true
+      && (this.state.keyboard === 'requested' || this.state.keyboard === 'negotiated');
+  }
+
+  endSession(): TerminalProtocolTransition {
+    this.sessionEnded = true;
+    if (!this.piFullscreenMouseCompatibilityActive) {
+      return this.transition(false);
+    }
+    this.piFullscreenMouseCompatibilityActive = false;
+    return this.transition(false, [{
+      type: 'write-xterm',
+      data: PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
+      trace: 'Windows ConPTY 兼容：终端进程已退出，已关闭本地鼠标协议',
+    }]);
+  }
+
+  private reconcilePiFullscreenMouse(): readonly TerminalProtocolEffect[] {
+    if (this.sessionEnded) {
+      return [];
+    }
+    if (this.piFullscreenMouseCompatibilityActive) {
+      if (this.state.alternateScreenRequested !== false) {
+        return [];
+      }
+      this.piFullscreenMouseCompatibilityActive = false;
+      return [{
+        type: 'write-xterm',
+        data: PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
+        trace: 'Windows ConPTY 兼容：Pi 已退出全屏，已关闭本地鼠标协议',
+      }];
+    }
+    if (!needsPiFullscreenMouseCompatibility(this.state)) {
+      return [];
+    }
+    this.piFullscreenMouseCompatibilityActive = true;
+    return [{
+      type: 'write-xterm',
+      data: PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
+      trace: 'Windows ConPTY 兼容：已补回 Pi 被丢弃的鼠标协议',
+    }];
+  }
+
+  private transition(
+    snapshotChanged: boolean,
+    effects: readonly TerminalProtocolEffect[] = [],
+  ): TerminalProtocolTransition {
+    return { snapshotChanged, effects };
   }
 
   private replace(next: TerminalProtocolSnapshot) {
@@ -183,17 +254,7 @@ export class TerminalProtocolObserver {
   }
 }
 
-export function needsPiLineFeedPasteCompatibility(snapshot: TerminalProtocolSnapshot) {
-  // Pi remains identifiable while later output waits for xterm's asynchronous parser.
-  // ConPTY strips bracketed-paste delimiters and modified-key CSI, but raw LF survives
-  // and Pi treats it as a newline rather than an Enter submission.
-  return snapshot.piTitle
-    && snapshot.bracketedPasteRequested === true
-    && snapshot.bracketedPasteEnabled === true
-    && (snapshot.keyboard === 'requested' || snapshot.keyboard === 'negotiated');
-}
-
-export function needsPiFullscreenMouseCompatibility(snapshot: TerminalProtocolSnapshot) {
+function needsPiFullscreenMouseCompatibility(snapshot: TerminalProtocolSnapshot) {
   return snapshot.delivery === 'delivered'
     && snapshot.alternateScreenRequested === true
     && snapshot.bracketedPasteRequested === true

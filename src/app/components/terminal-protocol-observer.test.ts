@@ -1,21 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  TerminalProtocolObserver,
+  TerminalProtocolStateMachine,
   extractTerminalProtocolCommands,
-  needsPiLineFeedPasteCompatibility,
-  needsPiFullscreenMouseCompatibility,
-  PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
-  PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
   formatTerminalProtocolSnapshot,
 } from './terminal-protocol-observer.js';
 
-test('observes split Pi startup controls without changing their delivery', () => {
-  const observer = new TerminalProtocolObserver();
+const PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE = '\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1004h\x1b[?1006h';
+const PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE = '\x1b[?1006l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l';
 
-  assert.equal(observer.observeOutput('\x1b[?20'), true);
-  assert.equal(observer.observeOutput('04h\x1b[>1;2u'), true);
-  assert.deepEqual(observer.getSnapshot(), {
+test('observes split Pi startup controls without changing their delivery', () => {
+  const machine = new TerminalProtocolStateMachine();
+
+  assert.equal(machine.observeOutput('\x1b[?20').snapshotChanged, true);
+  assert.equal(machine.observeOutput('04h\x1b[>1;2u').snapshotChanged, true);
+  assert.deepEqual(machine.getSnapshot(), {
     delivery: 'pending-xterm',
     bracketedPasteRequested: true,
     bracketedPasteEnabled: null,
@@ -27,8 +26,8 @@ test('observes split Pi startup controls without changing their delivery', () =>
     sgrMouseRequested: null,
   });
 
-  assert.equal(observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' }), true);
-  assert.deepEqual(observer.getSnapshot(), {
+  assert.equal(machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' }).snapshotChanged, true);
+  assert.deepEqual(machine.getSnapshot(), {
     delivery: 'delivered',
     bracketedPasteRequested: true,
     bracketedPasteEnabled: true,
@@ -39,105 +38,143 @@ test('observes split Pi startup controls without changing their delivery', () =>
     mouseTrackingEnabled: 'none',
     sgrMouseRequested: null,
   });
-  assert.match(formatTerminalProtocolSnapshot(observer.getSnapshot()), /受控粘贴：已开启（xterm 已确认）/);
+  assert.match(formatTerminalProtocolSnapshot(machine.getSnapshot()), /受控粘贴：已开启（xterm 已确认）/);
 });
 
 test('uses Pi line-feed paste after its title and complete input protocol fingerprint are observed', () => {
-  const observer = new TerminalProtocolObserver();
+  const machine = new TerminalProtocolStateMachine();
 
-  observer.observeOutput('\x1b]0;π - git-');
-  observer.observeOutput('monorepo-tools\x07\x1b[?2004h\x1b[>1u');
-  observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
-  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
+  machine.observeOutput('\x1b]0;π - git-');
+  machine.observeOutput('monorepo-tools\x07\x1b[?2004h\x1b[>1u');
+  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+  assert.equal(machine.usesPiLineFeedPaste(), true);
 
-  observer.observeTerminalInput('\x1b[?1u');
-  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
+  machine.observeTerminalInput('\x1b[?1u');
+  assert.equal(machine.usesPiLineFeedPaste(), true);
 
-  observer.observeOutput('Pi is rendering another frame');
-  assert.equal(observer.getSnapshot().delivery, 'pending-xterm');
-  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
+  machine.observeOutput('Pi is rendering another frame');
+  assert.equal(machine.getSnapshot().delivery, 'pending-xterm');
+  assert.equal(machine.usesPiLineFeedPaste(), true);
 
-  observer.observeOutput('\x1b]0;π - \x07\x1b]0;PowerShell\x07');
-  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), false);
+  machine.observeOutput('\x1b]0;π - \x07\x1b]0;PowerShell\x07');
+  assert.equal(machine.usesPiLineFeedPaste(), false);
 
-  observer.observeOutput('\x1b]0;π - git-monorepo-tools\x07');
-  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
+  machine.observeOutput('\x1b]0;π - git-monorepo-tools\x07');
+  assert.equal(machine.usesPiLineFeedPaste(), true);
 
   // Pi's update checker launches cmd/npm children that replace OSC 0 briefly.
-  observer.observeOutput('\x1b]0;管理员: C:\\Windows\\system32\\cmd.exe \x07');
-  observer.observeOutput('\x1b]0;npm view pi-mcp-adapter version\x07');
-  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
+  machine.observeOutput('\x1b]0;管理员: C:\\Windows\\system32\\cmd.exe \x07');
+  machine.observeOutput('\x1b]0;npm view pi-mcp-adapter version\x07');
+  assert.equal(machine.usesPiLineFeedPaste(), true);
 
   // Pi protocol shutdown, not a child title, ends the confirmed Pi session.
-  observer.observeOutput('\x1b]0;PowerShell\x07\x1b[?2004l\x1b[>0u');
-  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), false);
+  machine.observeOutput('\x1b]0;PowerShell\x07\x1b[?2004l\x1b[>0u');
+  assert.equal(machine.usesPiLineFeedPaste(), false);
 });
 
 test('recognizes a Pi title split beyond the former protocol-tail limit', () => {
-  const observer = new TerminalProtocolObserver();
+  const machine = new TerminalProtocolStateMachine();
   const title = `π - ${'x'.repeat(512)}`;
 
-  observer.observeOutput(`\x1b]0;${title}`);
-  observer.observeOutput('\x07\x1b[?2004h\x1b[>1u');
-  observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+  machine.observeOutput(`\x1b]0;${title}`);
+  machine.observeOutput('\x07\x1b[?2004h\x1b[>1u');
+  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
 
-  assert.equal(needsPiLineFeedPasteCompatibility(observer.getSnapshot()), true);
+  assert.equal(machine.usesPiLineFeedPaste(), true);
 });
 
 test('does not reapply a completed keyboard request retained in a full protocol tail', () => {
-  const observer = new TerminalProtocolObserver();
+  const machine = new TerminalProtocolStateMachine();
   const request = '\x1b[>1u';
 
-  observer.observeOutput(`${request}${'x'.repeat(4096 - request.length)}`);
-  assert.equal(observer.getSnapshot().keyboard, 'requested');
+  machine.observeOutput(`${request}${'x'.repeat(4096 - request.length)}`);
+  assert.equal(machine.getSnapshot().keyboard, 'requested');
 
-  observer.observeTerminalInput('\x1b[?1u');
-  observer.observeOutput('Pi is rendering another frame');
-  assert.equal(observer.getSnapshot().keyboard, 'negotiated');
+  machine.observeTerminalInput('\x1b[?1u');
+  machine.observeOutput('Pi is rendering another frame');
+  assert.equal(machine.getSnapshot().keyboard, 'negotiated');
 });
 
 test('marks a keyboard negotiation complete only after xterm sends its response', () => {
-  const observer = new TerminalProtocolObserver();
+  const machine = new TerminalProtocolStateMachine();
 
-  observer.observeOutput('\x1b[>1u');
-  observer.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'none' });
-  assert.equal(observer.observeTerminalInput('plain input'), false);
-  assert.equal(observer.observeTerminalInput('\x1b[?1u'), true);
-  assert.equal(observer.getSnapshot().keyboard, 'negotiated');
+  machine.observeOutput('\x1b[>1u');
+  machine.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'none' });
+  assert.equal(machine.observeTerminalInput('plain input').snapshotChanged, false);
+  assert.equal(machine.observeTerminalInput('\x1b[?1u').snapshotChanged, true);
+  assert.equal(machine.getSnapshot().keyboard, 'negotiated');
 });
 
 test('tracks Pi fullscreen alternate-screen and mouse controls', () => {
-  const observer = new TerminalProtocolObserver();
+  const machine = new TerminalProtocolStateMachine();
 
-  observer.observeOutput('\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h');
-  assert.equal(observer.getSnapshot().alternateScreenRequested, true);
-  assert.equal(observer.getSnapshot().mouseTrackingRequested, 'any');
-  assert.equal(observer.getSnapshot().sgrMouseRequested, true);
+  machine.observeOutput('\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h');
+  assert.equal(machine.getSnapshot().alternateScreenRequested, true);
+  assert.equal(machine.getSnapshot().mouseTrackingRequested, 'any');
+  assert.equal(machine.getSnapshot().sgrMouseRequested, true);
 
-  observer.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'any' });
-  assert.equal(observer.getSnapshot().mouseTrackingEnabled, 'any');
-  assert.match(formatTerminalProtocolSnapshot(observer.getSnapshot()), /备用屏幕：Pi 已请求进入/);
-  assert.match(formatTerminalProtocolSnapshot(observer.getSnapshot()), /鼠标跟踪：Pi 请求全量跟踪；xterm 实际为全量跟踪/);
+  machine.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'any' });
+  assert.equal(machine.getSnapshot().mouseTrackingEnabled, 'any');
+  assert.match(formatTerminalProtocolSnapshot(machine.getSnapshot()), /备用屏幕：Pi 已请求进入/);
+  assert.match(formatTerminalProtocolSnapshot(machine.getSnapshot()), /鼠标跟踪：Pi 请求全量跟踪；xterm 实际为全量跟踪/);
 
-  observer.observeOutput('\x1b[?1006l\x1b[?1003l\x1b[?1049l');
-  observer.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'none' });
-  assert.equal(observer.getSnapshot().alternateScreenRequested, false);
-  assert.equal(observer.getSnapshot().mouseTrackingRequested, 'none');
-  assert.equal(observer.getSnapshot().mouseTrackingEnabled, 'none');
-  assert.equal(observer.getSnapshot().sgrMouseRequested, false);
+  machine.observeOutput('\x1b[?1006l\x1b[?1003l\x1b[?1049l');
+  machine.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'none' });
+  assert.equal(machine.getSnapshot().alternateScreenRequested, false);
+  assert.equal(machine.getSnapshot().mouseTrackingRequested, 'none');
+  assert.equal(machine.getSnapshot().mouseTrackingEnabled, 'none');
+  assert.equal(machine.getSnapshot().sgrMouseRequested, false);
 });
 
-test('recognizes the Pi fullscreen fingerprint only when ConPTY omitted mouse controls', () => {
-  const observer = new TerminalProtocolObserver();
+test('enables Pi fullscreen mouse compatibility only when ConPTY omitted mouse controls', () => {
+  const machine = new TerminalProtocolStateMachine();
 
-  observer.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
-  observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
-  assert.equal(needsPiFullscreenMouseCompatibility(observer.getSnapshot()), true);
-  assert.equal(PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE, '\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1004h\x1b[?1006h');
-  assert.equal(PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE, '\x1b[?1006l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l');
+  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
+  const activation = machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+  assert.deepEqual(activation.effects, [{
+    type: 'write-xterm',
+    data: PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
+    trace: 'Windows ConPTY 兼容：已补回 Pi 被丢弃的鼠标协议',
+  }]);
 
-  observer.observeOutput('\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h');
-  assert.equal(needsPiFullscreenMouseCompatibility(observer.getSnapshot()), false);
+  machine.reset();
+  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h');
+  const nativeMouse = machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'any' });
+  assert.deepEqual(nativeMouse.effects, []);
+});
+
+test('disables local mouse compatibility after Pi exits fullscreen', () => {
+  const machine = new TerminalProtocolStateMachine();
+
+  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
+  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+  machine.observeOutput('\x1b[?1049l');
+  const deactivation = machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'any' });
+
+  assert.deepEqual(deactivation.effects, [{
+    type: 'write-xterm',
+    data: PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
+    trace: 'Windows ConPTY 兼容：Pi 已退出全屏，已关闭本地鼠标协议',
+  }]);
+  assert.deepEqual(machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' }).effects, []);
+});
+
+test('disables local mouse compatibility when the terminal session ends', () => {
+  const machine = new TerminalProtocolStateMachine();
+
+  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
+  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+
+  assert.deepEqual(machine.endSession().effects, [{
+    type: 'write-xterm',
+    data: PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
+    trace: 'Windows ConPTY 兼容：终端进程已退出，已关闭本地鼠标协议',
+  }]);
+  assert.deepEqual(
+    machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' }).effects,
+    [],
+  );
+  assert.deepEqual(machine.endSession().effects, []);
 });
 
 test('extracts combined fullscreen protocol commands for the input trace', () => {
@@ -148,14 +185,14 @@ test('extracts combined fullscreen protocol commands for the input trace', () =>
 });
 
 test('tracks explicit protocol shutdown and resets between terminal sessions', () => {
-  const observer = new TerminalProtocolObserver();
+  const machine = new TerminalProtocolStateMachine();
 
-  observer.observeOutput('\x1b[?2004h\x1b[>4u');
-  observer.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
-  observer.observeOutput('\x1b[?2004l\x1b[>0u');
-  observer.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'none' });
+  machine.observeOutput('\x1b[?2004h\x1b[>4u');
+  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+  machine.observeOutput('\x1b[?2004l\x1b[>0u');
+  machine.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'none' });
 
-  assert.deepEqual(observer.getSnapshot(), {
+  assert.deepEqual(machine.getSnapshot(), {
     delivery: 'delivered',
     bracketedPasteRequested: false,
     bracketedPasteEnabled: false,
@@ -166,8 +203,8 @@ test('tracks explicit protocol shutdown and resets between terminal sessions', (
     mouseTrackingEnabled: 'none',
     sgrMouseRequested: null,
   });
-  assert.equal(observer.reset(), true);
-  assert.deepEqual(observer.getSnapshot(), {
+  assert.equal(machine.reset().snapshotChanged, true);
+  assert.deepEqual(machine.getSnapshot(), {
     delivery: 'waiting',
     bracketedPasteRequested: null,
     bracketedPasteEnabled: null,
@@ -178,4 +215,13 @@ test('tracks explicit protocol shutdown and resets between terminal sessions', (
     mouseTrackingEnabled: null,
     sgrMouseRequested: null,
   });
+});
+
+test('reset clears active compatibility without writing to an already reset xterm', () => {
+  const machine = new TerminalProtocolStateMachine();
+
+  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
+  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
+  assert.deepEqual(machine.reset().effects, []);
+  assert.deepEqual(machine.endSession().effects, []);
 });

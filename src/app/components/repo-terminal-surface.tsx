@@ -17,12 +17,9 @@ import {
 import { TerminalInputInspectorModal } from './terminal-input-inspector-modal';
 import {
   extractTerminalProtocolCommands,
-  needsPiLineFeedPasteCompatibility,
-  needsPiFullscreenMouseCompatibility,
-  PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
-  PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
-  TerminalProtocolObserver,
+  TerminalProtocolStateMachine,
   type TerminalProtocolSnapshot,
+  type TerminalProtocolTransition,
 } from './terminal-protocol-observer';
 import { createTerminalLinkProvider } from './terminal-link-provider';
 import { scheduleTerminalImeFocusReset } from './terminal-ime-focus';
@@ -65,8 +62,7 @@ export function RepoTerminalSurface({
   const toastIdRef = useRef(0);
   const inputTraceSequenceRef = useRef(0);
   const inputInspectorOpenRef = useRef(false);
-  const protocolObserverRef = useRef(new TerminalProtocolObserver());
-  const piMouseCompatibilityActiveRef = useRef(false);
+  const protocolStateMachineRef = useRef(new TerminalProtocolStateMachine());
 
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [shellLabel, setShellLabel] = useState('终端');
@@ -75,21 +71,7 @@ export function RepoTerminalSurface({
   const [toast, setToast] = useState<TerminalToast>(null);
   const [inputTrace, setInputTrace] = useState<readonly TerminalInputTraceEntry[]>([]);
   const [inputInspectorOpen, setInputInspectorOpen] = useState(false);
-  const [protocolSnapshot, setProtocolSnapshot] = useState<TerminalProtocolSnapshot>(() => protocolObserverRef.current.getSnapshot());
-
-  const updateProtocolSnapshot = useCallback((changed: boolean) => {
-    if (changed) {
-      setProtocolSnapshot(protocolObserverRef.current.getSnapshot());
-    }
-  }, []);
-
-  const resetProtocolObserver = useCallback(() => {
-    updateProtocolSnapshot(protocolObserverRef.current.reset());
-  }, [updateProtocolSnapshot]);
-
-  const observeProtocolOutput = useCallback((chunk: string) => {
-    updateProtocolSnapshot(protocolObserverRef.current.observeOutput(chunk));
-  }, [updateProtocolSnapshot]);
+  const [protocolSnapshot, setProtocolSnapshot] = useState<TerminalProtocolSnapshot>(() => protocolStateMachineRef.current.getSnapshot());
 
   /**
    * Rule: the input trace only records while the observer modal is open.
@@ -107,6 +89,24 @@ export function RepoTerminalSurface({
     };
     setInputTrace(current => appendTraceEntry(current, entry));
   }, []);
+
+  const applyProtocolTransition = useCallback((transition: TerminalProtocolTransition) => {
+    if (transition.snapshotChanged) {
+      setProtocolSnapshot(protocolStateMachineRef.current.getSnapshot());
+    }
+    for (const effect of transition.effects) {
+      terminalRef.current?.write(effect.data);
+      recordInputTrace('xterm 输出', effect.trace, effect.data);
+    }
+  }, [recordInputTrace]);
+
+  const resetProtocolStateMachine = useCallback(() => {
+    applyProtocolTransition(protocolStateMachineRef.current.reset());
+  }, [applyProtocolTransition]);
+
+  const observeProtocolOutput = useCallback((chunk: string) => {
+    applyProtocolTransition(protocolStateMachineRef.current.observeOutput(chunk));
+  }, [applyProtocolTransition]);
 
   const clearInputTrace = useCallback(() => {
     setInputTrace([]);
@@ -133,15 +133,11 @@ export function RepoTerminalSurface({
   }, [observeProtocolOutput, recordInputTrace]);
 
   const handleTerminalExit = useCallback((nextExitCode: number) => {
-    if (piMouseCompatibilityActiveRef.current) {
-      piMouseCompatibilityActiveRef.current = false;
-      terminalRef.current?.write(PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
-      recordInputTrace('xterm 输出', 'Windows ConPTY 兼容：终端进程已退出，已关闭本地鼠标协议', PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
-    }
+    applyProtocolTransition(protocolStateMachineRef.current.endSession());
     setStatus(current => current === 'failed' ? 'failed' : 'exited');
     setExitCode(nextExitCode);
     outputWriterRef.current?.enqueue(`\r\n\x1b[90m[process exited ${nextExitCode}]\x1b[0m\r\n`);
-  }, [recordInputTrace]);
+  }, [applyProtocolTransition]);
 
   const handleTerminalDeliveryFailure = useCallback((message: string) => {
     setStatus('failed');
@@ -247,8 +243,7 @@ export function RepoTerminalSurface({
     if (resetTerminal) {
       outputWriterRef.current?.reset();
       terminal.reset();
-      piMouseCompatibilityActiveRef.current = false;
-      resetProtocolObserver();
+      resetProtocolStateMachine();
     }
 
     setStatus('connecting');
@@ -293,8 +288,7 @@ export function RepoTerminalSurface({
 
     outputWriterRef.current?.reset();
     terminal.reset();
-    piMouseCompatibilityActiveRef.current = false;
-    resetProtocolObserver();
+    resetProtocolStateMachine();
     setStatus('connecting');
     setError(null);
     setExitCode(null);
@@ -354,7 +348,7 @@ export function RepoTerminalSurface({
 
       const paste = inputQueueRef.current.then(async () => {
         const usePiLineFeedPaste = shortcutPlatform.toLowerCase().startsWith('win')
-          && needsPiLineFeedPasteCompatibility(protocolObserverRef.current.getSnapshot());
+          && protocolStateMachineRef.current.usesPiLineFeedPaste();
         const pasted = await pasteTerminalClipboard({
           source,
           usePiLineFeedPaste,
@@ -488,7 +482,7 @@ export function RepoTerminalSurface({
     xtermViewport?.addEventListener('scroll', scrollGuard, { passive: true });
 
     const inputDisposable = terminal.onData(data => {
-      updateProtocolSnapshot(protocolObserverRef.current.observeTerminalInput(data));
+      applyProtocolTransition(protocolStateMachineRef.current.observeTerminalInput(data));
       const capturePasteData = terminalPasteDataRef.current;
       if (capturePasteData) {
         capturePasteData(data);
@@ -497,31 +491,8 @@ export function RepoTerminalSurface({
       recordInputTrace('xterm 输出', 'xterm 编码后的输入字符', data);
       void enqueueTerminalInput(data, 'xterm 输出').catch(() => undefined);
     });
-    /**
-     * Rule: Windows ConPTY drops Pi 0.84.1's DEC mouse-mode controls while preserving
-     * Pi's fullscreen, bracketed-paste, and keyboard controls.
-     * Effect: only for that complete Pi fingerprint, restore the controls in xterm so
-     * xterm natively encodes wheel events; no browser wheel event is synthesized.
-     */
-    const synchronizePiFullscreenMouse = () => {
-      const snapshot = protocolObserverRef.current.getSnapshot();
-      if (piMouseCompatibilityActiveRef.current) {
-        if (snapshot.alternateScreenRequested === false) {
-          piMouseCompatibilityActiveRef.current = false;
-          terminal.write(PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
-          recordInputTrace('xterm 输出', 'Windows ConPTY 兼容：Pi 已退出全屏，已关闭本地鼠标协议', PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE);
-        }
-        return;
-      }
-      if (needsPiFullscreenMouseCompatibility(snapshot)) {
-        piMouseCompatibilityActiveRef.current = true;
-        terminal.write(PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE);
-        recordInputTrace('xterm 输出', 'Windows ConPTY 兼容：已补回 Pi 被丢弃的鼠标协议', PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE);
-      }
-    };
     const parsedDisposable = terminal.onWriteParsed(() => {
-      updateProtocolSnapshot(protocolObserverRef.current.observeXtermParsed(terminal.modes));
-      synchronizePiFullscreenMouse();
+      applyProtocolTransition(protocolStateMachineRef.current.observeXtermParsed(terminal.modes));
     });
 
     return () => {
