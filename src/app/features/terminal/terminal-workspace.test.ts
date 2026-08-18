@@ -274,6 +274,18 @@ test('releases independent sessions, including a session that starts after dispo
   workspace.dispose();
 });
 
+test('can close a default session when its surface is released for automatic cleanup', async () => {
+  const runtime = createRuntime();
+  const workspace = new TerminalWorkspace(runtime);
+  const surface = workspace.createSurfaceSession(false, emptySurfaceHandlers());
+  const session = await surface.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
+
+  assert.ok(session);
+  await surface.release(true);
+  assert.deepEqual(runtime.closedSessionIDs, [session.sessionId]);
+  workspace.dispose();
+});
+
 test('marks a repository failed when starting fails and preserves input errors', async () => {
   const runtime = createRuntime();
   runtime.ensureTerminalSession = async () => {

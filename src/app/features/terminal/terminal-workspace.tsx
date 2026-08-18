@@ -437,6 +437,7 @@ export class TerminalSurfaceSession {
   private session: TerminalSessionInfo | null = null;
   private subscription: TerminalSessionSubscription | null = null;
   private released = false;
+  private closeSessionAfterRelease = false;
 
   constructor(
     private readonly workspace: TerminalWorkspace,
@@ -495,13 +496,14 @@ export class TerminalSurfaceSession {
     }
   }
 
-  async release() {
+  async release(closeSession = false) {
     this.released = true;
+    this.closeSessionAfterRelease ||= closeSession;
     const session = this.session;
     this.session = null;
     this.subscription?.dispose();
     this.subscription = null;
-    if (session && this.independent) {
+    if (session && (this.independent || closeSession)) {
       await this.workspace.closeSession(session.sessionId);
     }
   }
@@ -525,7 +527,7 @@ export class TerminalSurfaceSession {
       this.subscription?.dispose();
       this.subscription = null;
       this.workspace.discardSessionDelivery(session.sessionId);
-      if (this.independent) {
+      if (this.independent || this.closeSessionAfterRelease) {
         await this.workspace.closeSession(session.sessionId);
       }
       return null;

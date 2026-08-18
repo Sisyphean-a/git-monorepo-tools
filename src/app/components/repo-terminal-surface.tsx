@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 import { useTerminalWorkspace } from '../features/terminal/terminal-workspace';
 import { useAppBackend } from '../application/backend-context';
 import { TerminalOutputWriter } from '../features/terminal/terminal-output-writer';
+import { TerminalCommandTracker } from '../features/terminal/terminal-command-tracker';
 import { C } from '../theme';
 import type { RepoDetail } from '../domain/types';
 import {
@@ -40,12 +41,18 @@ interface RepoTerminalSurfaceProps {
   repo: RepoDetail;
   active: boolean;
   createIndependentSession?: boolean;
+  closeRequested?: boolean;
+  onContentChange?: (hasContent: boolean) => void;
+  onClosed?: () => void;
 }
 
 export function RepoTerminalSurface({
   repo,
   active,
   createIndependentSession = false,
+  closeRequested = false,
+  onContentChange,
+  onClosed,
 }: RepoTerminalSurfaceProps) {
   const backend = useAppBackend();
   const terminalWorkspace = useTerminalWorkspace();
@@ -63,6 +70,9 @@ export function RepoTerminalSurface({
   const inputTraceSequenceRef = useRef(0);
   const inputInspectorOpenRef = useRef(false);
   const protocolStateMachineRef = useRef(new TerminalProtocolStateMachine());
+  const commandTrackerRef = useRef(new TerminalCommandTracker());
+  const hasContentRef = useRef(false);
+  const closeRequestedRef = useRef(false);
 
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [shellLabel, setShellLabel] = useState('终端');
@@ -116,12 +126,16 @@ export function RepoTerminalSurface({
     recordInputTrace('写入终端', source, data);
     try {
       await terminalWorkspace.writeInput(targetSessionId, data);
+      if (!hasContentRef.current && commandTrackerRef.current.recordWrittenInput(data)) {
+        hasContentRef.current = true;
+        onContentChange?.(true);
+      }
       recordInputTrace('后端写入完成', `${source}；Wails 写入调用已成功返回`, data);
     } catch (inputError) {
       recordInputTrace('终端写入失败', `${source}；${describeTerminalInputError(inputError)}`, data);
       throw inputError;
     }
-  }, [recordInputTrace, terminalWorkspace]);
+  }, [onContentChange, recordInputTrace, terminalWorkspace]);
 
   const handleTerminalOutput = useCallback((chunk: string) => {
     observeProtocolOutput(chunk);
@@ -149,6 +163,14 @@ export function RepoTerminalSurface({
     onExit: handleTerminalExit,
     onDeliveryFailure: handleTerminalDeliveryFailure,
   }));
+
+  useEffect(() => {
+    if (!closeRequested || closeRequestedRef.current) {
+      return;
+    }
+    closeRequestedRef.current = true;
+    void surfaceSession.release(true).finally(() => onClosed?.());
+  }, [closeRequested, onClosed, surfaceSession]);
 
   const showToast = (text: string) => {
     toastIdRef.current += 1;
@@ -298,6 +320,9 @@ export function RepoTerminalSurface({
       if (!replacement) {
         return;
       }
+      commandTrackerRef.current.reset();
+      hasContentRef.current = false;
+      onContentChange?.(false);
       setShellLabel(replacement.shell);
       setStatus('running');
       scheduleResize();
