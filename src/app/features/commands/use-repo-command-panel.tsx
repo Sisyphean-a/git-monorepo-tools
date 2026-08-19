@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Download, GitCommit, MinusSquare, PlusSquare, RefreshCw, RotateCcw, Sparkles, Upload } from 'lucide-react';
 import { formatComboSummary, getBuiltInCommandLabel, getRepoCommands } from './command-catalog';
 import { createComboCommitMessageState } from './combo-commit-message-state';
-import { createCommandConsoleSession } from './repo-command-console';
+import { createCommandConsoleSession, type CommandConsoleUpdater } from './repo-command-console';
 import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButton, RepoCommandResult, RepoDetail, RepoMutationAction } from '../../domain/types';
 import type { PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
 import type { CommandConsoleState } from './command-console-state';
@@ -30,10 +30,16 @@ export function useRepoCommandPanel({
   const [commitMessage, setCommitMessage] = useState('');
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [commandConsole, setCommandConsole] = useState<CommandConsoleState | null>(null);
+  // Rule: 命令输出按仓库隔离存储，每个项目有独立的输出区域；切换项目时各自保留，互不覆盖。
+  const [commandConsoles, setCommandConsoles] = useState<Record<string, CommandConsoleState | null>>({});
   const scopeRef = useRef(0);
   const files = repo.files;
   const stagedCount = files.reduce((count, file) => count + Number(file.staged), 0);
+
+  // 定向更新某个仓库的输出槽位；同一仓库内由会话自身的 sessionId 守卫，跨仓库互不影响。
+  const updateRepoConsole = (repoId: string) => (updater: CommandConsoleUpdater) => {
+    setCommandConsoles(current => ({ ...current, [repoId]: updater(current[repoId] ?? null) }));
+  };
 
   useEffect(() => {
     scopeRef.current += 1;
@@ -120,7 +126,8 @@ export function useRepoCommandPanel({
   const runCombo = (combo: CommandCombo) => {
     triggerBusyAction(`combo:${combo.id}`, async isActive => {
       const session = createCommandConsoleSession(
-        setCommandConsole,
+        repo.id,
+        updateRepoConsole(repo.id),
         combo.label,
         formatComboSummary(combo.actions),
       );
@@ -150,7 +157,7 @@ export function useRepoCommandPanel({
   const runCustomCommand = (scope: 'global' | 'project', command: CustomCommandButton) => {
     triggerBusyAction(`${scope}-command:${command.id}`, async isActive => {
       const streamId = `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const session = createCommandConsoleSession(setCommandConsole, command.label, command.command);
+      const session = createCommandConsoleSession(repo.id, updateRepoConsole(repo.id), command.label, command.command);
       const stopListening = backend.onEvent('repo-command-output', payload => {
         const event = readRuntimePayload(payload);
         if (event?.streamId !== streamId) return;
@@ -277,9 +284,9 @@ export function useRepoCommandPanel({
     topAction,
     actionGroups,
     commandSections,
-    commandConsole,
+    commandConsole: commandConsoles[repo.id] ?? null,
     setCommitMessage,
-    clearCommandConsole: () => setCommandConsole(null),
+    clearCommandConsole: () => updateRepoConsole(repo.id)(() => null),
   };
 }
 

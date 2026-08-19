@@ -1,5 +1,6 @@
-import type { Dispatch, SetStateAction } from 'react';
 import type { CommandConsoleState } from './command-console-state.js';
+
+export type CommandConsoleUpdater = (current: CommandConsoleState | null) => CommandConsoleState | null;
 
 let nextSessionId = 0;
 
@@ -21,7 +22,8 @@ export function appendCommandOutput(current: string, text: string) {
 }
 
 export function createCommandConsoleSession(
-  setCommandConsole: Dispatch<SetStateAction<CommandConsoleState | null>>,
+  repoId: string,
+  updateConsole: (updater: CommandConsoleUpdater) => void,
   title: string,
   command: string,
 ) {
@@ -41,7 +43,9 @@ export function createCommandConsoleSession(
     endedAt,
   });
   const sync = (status: CommandConsoleState['status'], endedAt?: number) => {
-    setCommandConsole(current => current?.sessionId === sessionId ? createState(status, endedAt) : current);
+    // Guard: only the current session may write to its own repo slot. An older
+    // session (superseded or cleared) must not overwrite a newer one.
+    updateConsole(current => current?.sessionId === sessionId ? createState(status, endedAt) : current);
   };
 
   const write = (chunk: string) => {
@@ -51,7 +55,8 @@ export function createCommandConsoleSession(
     sync('running');
   };
 
-  setCommandConsole(createState('running'));
+  // Rule: a fresh command for this repo replaces the repo's current console.
+  updateConsole(() => createState('running'));
 
   return {
     write,

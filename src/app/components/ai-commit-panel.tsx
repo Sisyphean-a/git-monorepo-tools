@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, Copy, Settings2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Copy, Settings2 } from 'lucide-react';
 import { C } from '../theme';
 import type { CommandConsoleState } from '../features/commands/command-console-state';
 import { ToolbarBtn } from './workspace-parts';
@@ -147,11 +147,23 @@ function CommandConsole({
   onClear: () => void;
 }) {
   const [expanded, setExpanded] = useState(Boolean(commandConsole));
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
   const outputRef = useRef<HTMLPreElement | null>(null);
 
   useEffect(() => {
-    if (commandConsole) setExpanded(true);
+    // 切换项目或清空输出后，跟随当前仓库的输出状态：有会话则展开，无会话则收起。
+    setExpanded(Boolean(commandConsole));
   }, [commandConsole?.sessionId]);
+
+  useEffect(() => {
+    // 切换项目后复位复制反馈，避免新项目的按钮短暂显示对勾。
+    setCopied(false);
+  }, [commandConsole?.sessionId]);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!expanded) return;
@@ -168,7 +180,13 @@ function CommandConsole({
     if (!commandConsole) return;
     const text = [`$ ${commandConsole.command}`, commandConsole.output].filter(Boolean).join('\n')
       + (commandConsole.truncated ? '\n\n[输出过长，仅显示末尾内容]' : '');
-    navigator.clipboard.writeText(text).catch(error => console.error('复制提交信息失败', error));
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        setCopied(true);
+        if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(error => console.error('复制提交信息失败', error));
   };
 
   const statusColor = commandConsole?.status === 'failed'
@@ -194,8 +212,12 @@ function CommandConsole({
         )}
         {commandConsole && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-            <button onClick={handleCopy} style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}>
-              <Copy size={12} />
+            <button
+              onClick={handleCopy}
+              title={copied ? '已复制' : '复制输出'}
+              style={{ background: 'none', border: 'none', color: copied ? C.added : C.textWeak, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+            >
+              {copied ? <Check size={12} strokeWidth={2.5} /> : <Copy size={12} />}
             </button>
             <button onClick={onClear} style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', fontSize: 10 }}>
               清空
