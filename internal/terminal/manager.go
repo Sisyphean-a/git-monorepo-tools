@@ -32,6 +32,8 @@ type terminalSession struct {
 	repoID    string
 	repoPath  string
 	repoInfo  os.FileInfo
+	// isDefault marks the per-repository session eligible for EnsureSession reuse.
+	isDefault bool
 	shell     string
 	startedAt int64
 	host      terminalHost
@@ -71,7 +73,7 @@ func (m *Manager) EnsureSession(request TerminalSessionRequest) (TerminalSession
 		return existing.info(), nil
 	}
 
-	session, err := m.newSessionLocked(repoID, repoPath, repoInfo, cols, rows)
+	session, err := m.newSessionLocked(repoID, repoPath, repoInfo, cols, rows, true)
 	if err != nil {
 		m.mu.Unlock()
 		return TerminalSessionInfo{}, err
@@ -94,7 +96,7 @@ func (m *Manager) CreateSession(request TerminalSessionRequest) (TerminalSession
 	cols, rows := normalizeTerminalSize(request.Cols, request.Rows)
 
 	m.mu.Lock()
-	session, err := m.newSessionLocked(strings.TrimSpace(request.RepoID), repoPath, repoInfo, cols, rows)
+	session, err := m.newSessionLocked(strings.TrimSpace(request.RepoID), repoPath, repoInfo, cols, rows, false)
 	if err != nil {
 		m.mu.Unlock()
 		return TerminalSessionInfo{}, err
@@ -121,7 +123,7 @@ func (m *Manager) RestartSession(sessionID string, cols, rows int) (TerminalSess
 		return TerminalSessionInfo{}, errors.New("终端会话不存在")
 	}
 
-	replacement, err := m.newSessionLocked(existing.repoID, existing.repoPath, existing.repoInfo, cols, rows)
+	replacement, err := m.newSessionLocked(existing.repoID, existing.repoPath, existing.repoInfo, cols, rows, existing.isDefault)
 	if err != nil {
 		m.mu.Unlock()
 		return TerminalSessionInfo{}, err
@@ -208,7 +210,7 @@ func (m *Manager) handleExit(session *terminalSession) {
 
 func (m *Manager) sessionForRepoLocked(repoPath string, repoInfo os.FileInfo) *terminalSession {
 	for _, session := range m.sessionsByID {
-		if sameTerminalRepo(session.repoPath, session.repoInfo, repoPath, repoInfo) {
+		if session.isDefault && sameTerminalRepo(session.repoPath, session.repoInfo, repoPath, repoInfo) {
 			return session
 		}
 	}
@@ -221,6 +223,7 @@ func (m *Manager) newSessionLocked(
 	repoInfo os.FileInfo,
 	cols int,
 	rows int,
+	isDefault bool,
 ) (*terminalSession, error) {
 	host, shell, err := newTerminalHost(repoPath, cols, rows)
 	if err != nil {
@@ -232,6 +235,7 @@ func (m *Manager) newSessionLocked(
 		repoID:    repoID,
 		repoPath:  repoPath,
 		repoInfo:  repoInfo,
+		isDefault: isDefault,
 		shell:     shell,
 		startedAt: time.Now().UnixMilli(),
 		host:      host,

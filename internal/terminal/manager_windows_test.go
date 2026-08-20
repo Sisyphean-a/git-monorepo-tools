@@ -56,6 +56,31 @@ func TestTerminalManagerCreatesIndependentSessionsForSameRepo(t *testing.T) {
 	manager.CloseAll()
 }
 
+func TestDefaultSessionDoesNotReuseLiveIndependentSession(t *testing.T) {
+	manager := NewManager(func(string, any) {})
+	defer manager.CloseAll()
+
+	repo := t.TempDir()
+	independent, err := manager.CreateSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: repo})
+	if err != nil {
+		t.Fatalf("create independent session: %v", err)
+	}
+	defaultSession, err := manager.EnsureSession(TerminalSessionRequest{RepoID: "repo-a", RepoPath: repo})
+	if err != nil {
+		t.Fatalf("ensure default session: %v", err)
+	}
+
+	if defaultSession.SessionID == independent.SessionID {
+		t.Fatalf("default session reused independent session: %s", independent.SessionID)
+	}
+	if err := manager.CloseSession(independent.SessionID); err != nil {
+		t.Fatalf("close independent session: %v", err)
+	}
+	if err := manager.WriteInput(defaultSession.SessionID, "\r"); err != nil {
+		t.Fatalf("closing independent session affected default session: %v", err)
+	}
+}
+
 func TestTerminalManagerClosesNamedSession(t *testing.T) {
 	exits := make(chan string, 1)
 	manager := NewManager(func(name string, payload any) {

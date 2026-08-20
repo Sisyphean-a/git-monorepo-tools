@@ -68,28 +68,36 @@ function createRuntime(): FakeRuntime {
 test('keeps default and independent sessions in one lifecycle', async () => {
   const runtime = createRuntime();
   const workspace = new TerminalWorkspace(runtime);
-  const output: string[] = [];
-  const exits: number[] = [];
-  const subscription = workspace.subscribeSession(chunk => output.push(chunk), code => exits.push(code));
+  const defaultOutput: string[] = [];
+  const independentOutput: string[] = [];
+  const defaultExits: number[] = [];
+  const independentExits: number[] = [];
+  const defaultSubscription = workspace.subscribeSession(chunk => defaultOutput.push(chunk), code => defaultExits.push(code));
+  const independentSubscription = workspace.subscribeSession(chunk => independentOutput.push(chunk), code => independentExits.push(code));
 
   const defaultSession = await workspace.ensureSession({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
   const independentSession = await workspace.createSession({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
-  subscription.bindSession(independentSession.sessionId);
+  defaultSubscription.bindSession(defaultSession.sessionId);
+  independentSubscription.bindSession(independentSession.sessionId);
 
   assert.equal(runtime.sessionRequests.length, 2);
   assert.equal(workspace.getSnapshot()['repo-a'], 'running');
 
-  runtime.emit('repo-terminal-output', { sessionId: independentSession.sessionId, chunk: 'hello' });
-  assert.deepEqual(output, ['hello']);
+  runtime.emit('repo-terminal-output', { sessionId: defaultSession.sessionId, chunk: 'default' });
+  runtime.emit('repo-terminal-output', { sessionId: independentSession.sessionId, chunk: 'independent' });
+  assert.deepEqual(defaultOutput, ['default']);
+  assert.deepEqual(independentOutput, ['independent']);
   assert.equal(workspace.getSnapshot()['repo-a'], 'active');
 
   runtime.emit('repo-terminal-exit', { sessionId: independentSession.sessionId, exitCode: 7 });
-  assert.deepEqual(exits, [7]);
-  assert.equal(workspace.getSnapshot()['repo-a'], 'running');
+  assert.deepEqual(defaultExits, []);
+  assert.deepEqual(independentExits, [7]);
+  assert.equal(workspace.getSnapshot()['repo-a'], 'active');
 
   await workspace.closeSession(defaultSession.sessionId);
   assert.deepEqual(runtime.closedSessionIDs, [defaultSession.sessionId]);
-  subscription.dispose();
+  defaultSubscription.dispose();
+  independentSubscription.dispose();
   workspace.dispose();
 });
 

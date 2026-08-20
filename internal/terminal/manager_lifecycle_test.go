@@ -3,6 +3,7 @@ package terminal
 import (
 	"bytes"
 	"io"
+	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -53,6 +54,36 @@ func (h *scriptedTerminalHost) Wait() (int, error) {
 	h.waitStarted <- struct{}{}
 	result := <-h.waitResult
 	return result.exitCode, result.err
+}
+
+func TestSessionForRepoSkipsIndependentSessions(t *testing.T) {
+	repoPath := t.TempDir()
+	repoInfo, err := os.Stat(repoPath)
+	if err != nil {
+		t.Fatalf("stat repository: %v", err)
+	}
+
+	manager := NewManager(func(string, any) {})
+	manager.sessionsByID["independent"] = &terminalSession{
+		id:       "independent",
+		repoPath: repoPath,
+		repoInfo: repoInfo,
+	}
+
+	if session := manager.sessionForRepoLocked(repoPath, repoInfo); session != nil {
+		t.Fatalf("independent session must not be selected for default reuse: %s", session.id)
+	}
+
+	defaultSession := &terminalSession{
+		id:        "default",
+		repoPath:  repoPath,
+		repoInfo:  repoInfo,
+		isDefault: true,
+	}
+	manager.sessionsByID[defaultSession.id] = defaultSession
+	if session := manager.sessionForRepoLocked(repoPath, repoInfo); session != defaultSession {
+		t.Fatalf("default session should be selected for reuse: %#v", session)
+	}
 }
 
 func TestTerminalSessionFlushesStartupOutputBeforeExitAndCleansManager(t *testing.T) {
