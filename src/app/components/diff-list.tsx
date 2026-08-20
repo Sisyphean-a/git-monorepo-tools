@@ -25,12 +25,44 @@ function StatusTag({ status }: { status: FileStatus }) {
   );
 }
 
+function parseFormattedSize(value?: string) {
+  const match = /^(\d+(?:\.\d+)?)\s*(B|KB|MB)$/i.exec(value?.trim() ?? '');
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return 0;
+  const unit = match[2]!.toUpperCase();
+  if (unit === 'MB') return amount * 1024 * 1024;
+  if (unit === 'KB') return amount * 1024;
+  return amount;
+}
+
+function resolveSizeBytes(value: number | undefined, formatted?: string) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : parseFormattedSize(formatted);
+}
+
 function summarizeSection(files: FileChange[]) {
   return files.reduce((summary, file) => ({
     count: summary.count + 1,
     additions: summary.additions + file.additions,
     deletions: summary.deletions + file.deletions,
-  }), { count: 0, additions: 0, deletions: 0 });
+    sizeDelta: summary.sizeDelta
+      + resolveSizeBytes(file.sizeBytes, file.size)
+      - resolveSizeBytes(file.previousSizeBytes, file.previousSize),
+  }), { count: 0, additions: 0, deletions: 0, sizeDelta: 0 });
+}
+
+function formatSizeDelta(bytes: number) {
+  if (Math.abs(bytes) < 1024) return '';
+  const absolute = Math.abs(bytes);
+  const inMegabytes = absolute >= 1024 * 1024;
+  const value = inMegabytes ? absolute / (1024 * 1024) : absolute / 1024;
+  const unit = inMegabytes ? 'MB' : 'KB';
+  return `${bytes > 0 ? '+' : '-'}${value.toFixed(1)} ${unit}`;
+}
+
+function formatFileSize(file: FileChange) {
+  if (file.status === 'D') return file.previousSize ?? file.size;
+  return file.size;
 }
 
 interface FileRowProps {
@@ -45,6 +77,10 @@ const FileRow = memo(function FileRow({ file, expanded, onToggle, diffLoader }: 
   const pathParts = file.path.split('/');
   const fileName = pathParts.pop() ?? '';
   const dirPath = pathParts.join('/');
+  const sizeLabel = formatFileSize(file);
+  const sizeTitle = file.status === 'D' && file.previousSize
+    ? `删除前：${file.previousSize}`
+    : `当前大小：${file.size}`;
   const rowBackground = expanded ? C.panel2 : hovered ? C.hoverBg : 'transparent';
 
   return (
@@ -69,7 +105,12 @@ const FileRow = memo(function FileRow({ file, expanded, onToggle, diffLoader }: 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
           {file.additions > 0 && <span style={{ color: C.added, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>+{file.additions}</span>}
           {file.deletions > 0 && <span style={{ color: C.deleted, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>-{file.deletions}</span>}
-          <span style={{ color: C.textWeak, fontSize: 10, minWidth: 44, textAlign: 'right' }}>{file.size}</span>
+          <span
+            title={sizeTitle}
+            style={{ color: C.textWeak, fontSize: 10, minWidth: 44, textAlign: 'right' }}
+          >
+            {sizeLabel}
+          </span>
         </div>
       </button>
       {expanded && <FileDiffPanel file={file} loader={diffLoader} />}
@@ -85,6 +126,7 @@ interface ChangeSectionProps extends DiffListProps {
 
 function ChangeSection({ title, files, expandedId, onToggle, diffLoader }: ChangeSectionProps) {
   const summary = useMemo(() => summarizeSection(files), [files]);
+  const sizeDeltaLabel = formatSizeDelta(summary.sizeDelta);
   if (files.length === 0) return null;
   return (
     <>
@@ -93,6 +135,14 @@ function ChangeSection({ title, files, expandedId, onToggle, diffLoader }: Chang
         <span style={{ color: C.textWeak, fontSize: 11 }}>{summary.count}</span>
         <span style={{ color: C.added, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>+{summary.additions}</span>
         <span style={{ color: C.deleted, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>-{summary.deletions}</span>
+        {sizeDeltaLabel && (
+          <span
+            title="文件总大小变化"
+            style={{ marginLeft: 8, color: summary.sizeDelta > 0 ? C.added : C.deleted, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            {sizeDeltaLabel}
+          </span>
+        )}
       </div>
       <div style={{ padding: '4px 0 8px' }}>
         {files.map(file => (

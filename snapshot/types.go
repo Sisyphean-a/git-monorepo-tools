@@ -120,14 +120,17 @@ type RepoDetail struct {
 }
 
 type FileChange struct {
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	Path      string `json:"path"`
-	Additions int    `json:"additions"`
-	Deletions int    `json:"deletions"`
-	Size      string `json:"size"`
-	Staged    bool   `json:"staged"`
-	Untracked bool   `json:"untracked,omitempty"`
+	ID                string `json:"id"`
+	Status            string `json:"status"`
+	Path              string `json:"path"`
+	Additions         int    `json:"additions"`
+	Deletions         int    `json:"deletions"`
+	Size              string `json:"size"`
+	SizeBytes         int64  `json:"sizeBytes,omitempty"`
+	PreviousSize      string `json:"previousSize,omitempty"`
+	PreviousSizeBytes int64  `json:"previousSizeBytes,omitempty"`
+	Staged            bool   `json:"staged"`
+	Untracked         bool   `json:"untracked,omitempty"`
 }
 
 type PullResult struct {

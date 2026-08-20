@@ -76,5 +76,8 @@ function sameFileChange(left: FileChange, right: FileChange) {
     && Boolean(left.untracked) === Boolean(right.untracked)
     && left.additions === right.additions
     && left.deletions === right.deletions
-    && left.size === right.size;
+    && left.size === right.size
+    && left.sizeBytes === right.sizeBytes
+    && left.previousSize === right.previousSize
+    && left.previousSizeBytes === right.previousSizeBytes;
 }

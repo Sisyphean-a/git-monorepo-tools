@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -111,17 +112,123 @@ func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) 
 	stagedStatusOutput, stagedStatusErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--name-status", "-z", "--no-renames"})
 	unstagedStatsOutput, unstagedStatsErr := executor.runGitRaw(repoPath, []string{"diff", "--numstat", "-z", "--no-renames"})
 	unstagedStatusOutput, unstagedStatusErr := executor.runGitRaw(repoPath, []string{"diff", "--name-status", "-z", "--no-renames"})
+	// The raw diff keeps the old blob ID even when the worktree path has already been deleted.
+	stagedBaseOutput, stagedBaseErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev"})
+	unstagedBaseOutput, unstagedBaseErr := executor.runGitRaw(repoPath, []string{"diff", "--raw", "-z", "--no-renames", "--no-abbrev"})
 
 	stagedStats, stagedParseErr := parseNumstat(stagedStatsOutput, parseNameStatus(stagedStatusOutput))
 	unstagedStats, unstagedParseErr := parseNumstat(unstagedStatsOutput, parseNameStatus(unstagedStatusOutput))
-	changes := buildTrackedChanges(repoPath, stagedStats, true)
-	changes = append(changes, buildTrackedChanges(repoPath, unstagedStats, false)...)
+	stagedBaseObjects := parseDiffBaseObjects(stagedBaseOutput)
+	unstagedBaseObjects := parseDiffBaseObjects(unstagedBaseOutput)
+	objectSizes, objectSizeErr := executor.readObjectSizes(repoPath, collectObjectIDs(stagedBaseObjects, unstagedBaseObjects))
+	stagedPreviousSizes, stagedPreviousSizeBytes := resolvePreviousSizes(stagedBaseObjects, objectSizes)
+	unstagedPreviousSizes, unstagedPreviousSizeBytes := resolvePreviousSizes(unstagedBaseObjects, objectSizes)
+
+	changes := buildTrackedChanges(repoPath, stagedStats, stagedPreviousSizes, stagedPreviousSizeBytes, true)
+	changes = append(changes, buildTrackedChanges(repoPath, unstagedStats, unstagedPreviousSizes, unstagedPreviousSizeBytes, false)...)
 	changes = append(changes, buildUntrackedChanges(repoPath, entries, changes)...)
 	slices.SortFunc(changes, compareFileChanges)
 	return changes, firstGitError(
 		stagedStatsErr, stagedStatusErr, unstagedStatsErr, unstagedStatusErr,
-		stagedParseErr, unstagedParseErr,
+		stagedParseErr, unstagedParseErr, stagedBaseErr, unstagedBaseErr, objectSizeErr,
 	)
+}
+
+func parseDiffBaseObjects(output string) map[string]string {
+	objects := map[string]string{}
+	records := strings.Split(output, "\x00")
+	for index := 0; index+1 < len(records); {
+		metadata := records[index]
+		if metadata == "" {
+			index++
+			continue
+		}
+		parts := strings.Fields(metadata)
+		if len(parts) < 5 || !strings.HasPrefix(parts[0], ":") {
+			index++
+			continue
+		}
+		filePath := normalizePath(records[index+1])
+		if filePath != "" && !isZeroObjectID(parts[2]) {
+			objects[filePath] = parts[2]
+		}
+		index += 2
+	}
+	return objects
+}
+
+func collectObjectIDs(groups ...map[string]string) map[string]string {
+	merged := map[string]string{}
+	for _, group := range groups {
+		for _, objectID := range group {
+			if !isZeroObjectID(objectID) {
+				merged[objectID] = objectID
+			}
+		}
+	}
+	return merged
+}
+
+func isZeroObjectID(value string) bool {
+	return value == "" || strings.Trim(value, "0") == ""
+}
+
+func (executor gitExecutor) readObjectSizes(repoPath string, objectIDs map[string]string) (map[string]int64, error) {
+	uniqueIDs := map[string]bool{}
+	for _, objectID := range objectIDs {
+		if !isZeroObjectID(objectID) {
+			uniqueIDs[objectID] = true
+		}
+	}
+	if len(uniqueIDs) == 0 {
+		return map[string]int64{}, nil
+	}
+
+	ids := make([]string, 0, len(uniqueIDs))
+	for objectID := range uniqueIDs {
+		ids = append(ids, objectID)
+	}
+	slices.Sort(ids)
+	output, err := executor.runGitRawWithInput(
+		repoPath,
+		[]string{"cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"},
+		strings.Join(ids, "\n")+"\n",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	sizes := make(map[string]int64, len(ids))
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		parts := strings.Fields(line)
+		if len(parts) == 2 && parts[1] == "missing" {
+			return nil, fmt.Errorf("missing Git object %q", parts[0])
+		}
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("invalid Git object size response: %q", line)
+		}
+		size, parseErr := strconv.ParseInt(parts[2], 10, 64)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid Git object size %q: %w", parts[2], parseErr)
+		}
+		sizes[parts[0]] = size
+	}
+	if len(sizes) != len(ids) {
+		return nil, fmt.Errorf("Git object size response count mismatch: got %d, want %d", len(sizes), len(ids))
+	}
+	return sizes, nil
+}
+
+func resolvePreviousSizes(objectIDs map[string]string, objectSizes map[string]int64) (map[string]string, map[string]int64) {
+	previousSizes := map[string]string{}
+	previousSizeBytes := map[string]int64{}
+	for filePath, objectID := range objectIDs {
+		if size, ok := objectSizes[objectID]; ok {
+			previousSizes[filePath] = formatSize(size)
+			previousSizeBytes[filePath] = size
+		}
+	}
+	return previousSizes, previousSizeBytes
 }
 
 func parseNumstat(output string, statuses map[string]string) (map[string]FileChange, error) {
@@ -179,11 +286,15 @@ func fileStatus(status string) string {
 	}
 }
 
-func buildTrackedChanges(repoPath string, stats map[string]FileChange, staged bool) []FileChange {
+func buildTrackedChanges(repoPath string, stats map[string]FileChange, previousSizes map[string]string, previousSizeBytes map[string]int64, staged bool) []FileChange {
 	changes := make([]FileChange, 0, len(stats))
 	for _, stat := range stats {
 		stat.ID = stat.Path + "::" + stagedLabel(staged)
-		stat.Size = formatSize(resolveSize(filepath.Join(repoPath, stat.Path)))
+		sizeBytes := resolveSize(filepath.Join(repoPath, stat.Path))
+		stat.Size = formatSize(sizeBytes)
+		stat.SizeBytes = sizeBytes
+		stat.PreviousSize = previousSizes[stat.Path]
+		stat.PreviousSizeBytes = previousSizeBytes[stat.Path]
 		stat.Staged = staged
 		changes = append(changes, stat)
 	}
@@ -207,9 +318,10 @@ func buildUntrackedChanges(repoPath string, entries []string, existing []FileCha
 		}
 		seen[id] = true
 		absolute := filepath.Join(repoPath, filepath.FromSlash(filePath))
+		sizeBytes := resolveSize(absolute)
 		changes = append(changes, FileChange{
 			ID: id, Status: "A", Path: filePath, Additions: countFileLines(absolute),
-			Deletions: 0, Size: formatSize(resolveSize(absolute)), Staged: false, Untracked: true,
+			Deletions: 0, Size: formatSize(sizeBytes), SizeBytes: sizeBytes, Staged: false, Untracked: true,
 		})
 	}
 	return changes

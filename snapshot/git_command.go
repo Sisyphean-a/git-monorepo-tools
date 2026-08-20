@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 )
@@ -13,6 +14,7 @@ type gitCommandSpec struct {
 	repoPath         string
 	args             []string
 	allowedExitCodes map[int]bool
+	stdin            io.Reader
 }
 
 func runGit(repoPath string, args []string) (string, error) {
@@ -25,6 +27,12 @@ func (executor gitExecutor) runGit(repoPath string, args []string) (string, erro
 
 func (executor gitExecutor) runGitRaw(repoPath string, args []string) (string, error) {
 	return executor.runGitCommandRaw("git", repoPath, args)
+}
+
+func (executor gitExecutor) runGitRawWithInput(repoPath string, args []string, input string) (string, error) {
+	return executor.runCommandRaw(gitCommandSpec{
+		executable: "git", repoPath: repoPath, args: args, stdin: strings.NewReader(input),
+	})
 }
 
 func (executor gitExecutor) runGitCommand(executable, repoPath string, args []string) (string, error) {
@@ -51,6 +59,7 @@ func (executor gitExecutor) runCommandRaw(spec gitCommandSpec) (string, error) {
 	cmd := exec.Command(spec.executable, append([]string{"-C", spec.repoPath}, spec.args...)...)
 	applyBackgroundProcessAttrs(cmd)
 	cmd.Env = buildGitProcessEnv(executor.proxy)
+	cmd.Stdin = spec.stdin
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout

@@ -27,6 +27,9 @@ export interface FileChange {
   additions: number;
   deletions: number;
   size: string;
+  sizeBytes?: number;
+  previousSize?: string;
+  previousSizeBytes?: number;
   staged: boolean;
   untracked?: boolean;
 }

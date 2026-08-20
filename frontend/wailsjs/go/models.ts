@@ -85,6 +85,9 @@ export namespace snapshot {
 	    additions: number;
 	    deletions: number;
 	    size: string;
+	    sizeBytes?: number;
+	    previousSize?: string;
+	    previousSizeBytes?: number;
 	    staged: boolean;
 	    untracked?: boolean;
 	
@@ -100,6 +103,9 @@ export namespace snapshot {
 	        this.additions = source["additions"];
 	        this.deletions = source["deletions"];
 	        this.size = source["size"];
+	        this.sizeBytes = source["sizeBytes"];
+	        this.previousSize = source["previousSize"];
+	        this.previousSizeBytes = source["previousSizeBytes"];
 	        this.staged = source["staged"];
 	        this.untracked = source["untracked"];
 	    }

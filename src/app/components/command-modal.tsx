@@ -183,7 +183,19 @@ function TabButton({ active, children, onClick }: { active: boolean; children: R
 function CommandSection({ title, children, onAdd }: { title: string; children: React.ReactNode; onAdd: () => void }) {
   return (
     <section>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          margin: '-20px 0 10px',
+          paddingTop: 20,
+          background: C.panel1,
+        }}
+      >
         <span style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>{title}</span>
         <button onClick={onAdd} style={secondaryButtonStyle()}>
           <Plus size={11} /> 添加

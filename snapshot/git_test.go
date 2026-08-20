@@ -198,6 +198,71 @@ func TestBuildRepoSnapshotClassifiesDeletionOnlyEditsAsModified(t *testing.T) {
 	}
 }
 
+func TestBuildRepoSnapshotRecordsPreviousTrackedFileSize(t *testing.T) {
+	repoPath := t.TempDir()
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "old-image.png", "before image", "seed image")
+	if err := os.Remove(filepath.Join(repoPath, "old-image.png")); err != nil {
+		t.Fatalf("delete image: %v", err)
+	}
+
+	snapshot, err := defaultGitExecutor().buildRepoSnapshot(
+		repoEntry{repoPath: repoPath, category: "测试"},
+		time.Unix(0, 0),
+	)
+	if err != nil {
+		t.Fatalf("build repo snapshot: %v", err)
+	}
+
+	if len(snapshot.detail.Files) != 1 {
+		t.Fatalf("expected one changed file, got %#v", snapshot.detail.Files)
+	}
+	change := snapshot.detail.Files[0]
+	if change.Status != "D" || change.Path != "old-image.png" {
+		t.Fatalf("expected deleted image change, got %#v", change)
+	}
+	if change.PreviousSize != "12 B" || change.PreviousSizeBytes != 12 {
+		t.Fatalf("expected previous image size 12 B (12 bytes), got %#v", change)
+	}
+	if change.Size != "—" || change.SizeBytes != 0 {
+		t.Fatalf("expected deleted image current size to be unavailable, got %#v", change)
+	}
+}
+
+func TestBuildRepoSnapshotRecordsPreviousSizeForEachDiffBase(t *testing.T) {
+	repoPath := t.TempDir()
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "layered-image.png", "old", "seed image")
+	if err := os.WriteFile(filepath.Join(repoPath, "layered-image.png"), []byte("index-content"), 0o644); err != nil {
+		t.Fatalf("write staged image: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"add", "--", "layered-image.png"}); err != nil {
+		t.Fatalf("stage image: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "layered-image.png"), []byte("worktree-content"), 0o644); err != nil {
+		t.Fatalf("write unstaged image: %v", err)
+	}
+
+	snapshot, err := defaultGitExecutor().buildRepoSnapshot(
+		repoEntry{repoPath: repoPath, category: "测试"},
+		time.Unix(0, 0),
+	)
+	if err != nil {
+		t.Fatalf("build repo snapshot: %v", err)
+	}
+
+	changes := map[string]FileChange{}
+	for _, change := range snapshot.detail.Files {
+		changes[change.ID] = change
+	}
+	if changes["layered-image.png::staged"].PreviousSize != "3 B" || changes["layered-image.png::staged"].PreviousSizeBytes != 3 {
+		t.Fatalf("expected staged diff base size 3 B (3 bytes), got %#v", changes["layered-image.png::staged"])
+	}
+	if changes["layered-image.png::unstaged"].PreviousSize != "13 B" || changes["layered-image.png::unstaged"].PreviousSizeBytes != 13 {
+		t.Fatalf("expected unstaged diff base size 13 B, got %#v", changes["layered-image.png::unstaged"])
+	}
+}
+
 func TestBuildRepoSnapshotPreservesNonASCIIFilenames(t *testing.T) {
 	repoPath := t.TempDir()
 	initTestRepo(t, repoPath)

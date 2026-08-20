@@ -147,6 +147,23 @@ test('mergeRepoSnapshotUpdate replaces changed file summaries',  () => {
   assert.equal(next.repoDetails['repo-a']?.files[0]?.additions, 2);
 });
 
+test('mergeRepoSnapshotUpdate replaces a changed previous file size', () => {
+  const current = repo('repo-a', 1);
+  current.files = [{ id: 'a', status: 'M', path: 'a.png', additions: 1, deletions: 0, size: '2 KB', previousSize: '1 KB', staged: false }];
+  const snapshot: AppSnapshot = {
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [], commitCandidates: { 'repo-a': [] },
+  };
+
+  const next = mergeRepoSnapshotUpdate(snapshot, {
+    repo: { ...repo('repo-a', 1), files: [{ ...current.files[0]!, previousSize: '3 KB' }] },
+    commitCandidates: [],
+    scannedAt: 'new',
+  }, 'background');
+
+  assert.notEqual(next.repoDetails['repo-a']?.files, current.files);
+  assert.equal(next.repoDetails['repo-a']?.files[0]?.previousSize, '3 KB');
+});
+
 test('mergeRepoSnapshotUpdate preserves file objects while applying a changed order', () => {
   const current = repo('repo-a', 2);
   current.files = [
