@@ -10,6 +10,13 @@ let nextSessionId = 0;
  */
 export const MAX_COMMAND_OUTPUT_CHARS = 256 * 1024;
 
+export function formatCommandTime(timestamp: number) {
+  const date = new Date(timestamp);
+  return [date.getHours(), date.getMinutes(), date.getSeconds()]
+    .map(value => value.toString().padStart(2, '0'))
+    .join(':');
+}
+
 export function appendCommandOutput(current: string, text: string) {
   if (!text) {
     return { output: current, truncated: false };

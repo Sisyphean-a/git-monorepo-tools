@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronUp, Copy, Settings2 } from 'lucide-react';
 import { C } from '../theme';
 import type { CommandConsoleState } from '../features/commands/command-console-state';
+import { formatCommandTime } from '../features/commands/repo-command-console';
 import { ToolbarBtn } from './workspace-parts';
 
 export interface PanelAction {
@@ -207,6 +208,9 @@ function CommandConsole({
             <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor, display: 'inline-block' }} />
             <span style={{ color: C.textWeak, fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
               {commandConsole.title}
+            </span>
+            <span style={{ color: C.textWeak, fontSize: 10, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+              {formatCommandTime(commandConsole.startedAt)}
             </span>
           </>
         )}

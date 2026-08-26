@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendCommandOutput, createCommandConsoleSession, MAX_COMMAND_OUTPUT_CHARS } from './repo-command-console.js';
+import { appendCommandOutput, createCommandConsoleSession, formatCommandTime, MAX_COMMAND_OUTPUT_CHARS } from './repo-command-console.js';
 import type { CommandConsoleState } from './command-console-state.js';
 import type { CommandConsoleUpdater } from './repo-command-console.js';
 
@@ -103,4 +103,9 @@ test('appendCommandOutput leaves short output untouched', () => {
   const appended = appendCommandOutput('abc', 'def');
   assert.equal(appended.output, 'abcdef');
   assert.equal(appended.truncated, false);
+});
+
+test('formatCommandTime displays the command start time as HH:MM:SS', () => {
+  const timestamp = new Date(2025, 0, 2, 3, 4, 5).getTime();
+  assert.equal(formatCommandTime(timestamp), '03:04:05');
 });

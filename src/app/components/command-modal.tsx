@@ -68,7 +68,7 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
           transform: 'translate(-50%, -50%)',
           width: 640,
           maxWidth: '95vw',
-          maxHeight: '85vh',
+          height: 'min(85vh, 620px)',
           background: C.panel1,
           border: `1px solid ${C.border}`,
           borderRadius: 14,
@@ -77,6 +77,7 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
           flexDirection: 'column',
           boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
           overflow: 'hidden',
+          boxSizing: 'border-box',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
@@ -91,7 +92,7 @@ export function CommandModal({ repo, settings, open, onClose, onSave }: CommandM
           <TabButton active={tab === 'global'} onClick={() => setTab('global')}>全局命令</TabButton>
         </div>
 
-        <div style={{ overflowY: 'auto', padding: 20 }}>
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', padding: '0 20px 20px', boxSizing: 'border-box' }}>
           {tab === 'global' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               <CommandSection title={`组合按钮（${catalog.combos.length}）`} onAdd={addCombo}>
@@ -191,8 +192,8 @@ function CommandSection({ title, children, onAdd }: { title: string; children: R
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          margin: '-20px 0 10px',
-          paddingTop: 20,
+          marginBottom: 10,
+          padding: '20px 0 10px',
           background: C.panel1,
         }}
       >
