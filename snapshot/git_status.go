@@ -1,7 +1,9 @@
 package snapshot
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -68,14 +70,17 @@ func (executor gitExecutor) refreshRemoteWithRetry(repoPath, remote string) erro
 }
 
 func parseStatus(output string) parsedStatus {
+	containsNUL := strings.Contains(output, "\x00")
 	records := strings.Split(output, "\x00")
-	if !strings.Contains(output, "\x00") {
+	if !containsNUL {
 		records = strings.Split(output, "\n")
 	}
 	parsed := parsedStatus{branch: "HEAD", remote: "—", entries: []string{}}
 	branchLine := "## HEAD"
 	for _, record := range records {
-		record = strings.TrimSpace(record)
+		if !containsNUL {
+			record = strings.TrimSuffix(record, "\r")
+		}
 		if record == "" {
 			continue
 		}
@@ -107,30 +112,55 @@ func parseStatus(output string) parsedStatus {
 	return parsed
 }
 
-func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
-	stagedStatsOutput, stagedStatsErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--numstat", "-z", "--no-renames"})
-	stagedStatusOutput, stagedStatusErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--name-status", "-z", "--no-renames"})
-	unstagedStatsOutput, unstagedStatsErr := executor.runGitRaw(repoPath, []string{"diff", "--numstat", "-z", "--no-renames"})
-	unstagedStatusOutput, unstagedStatusErr := executor.runGitRaw(repoPath, []string{"diff", "--name-status", "-z", "--no-renames"})
+type fileChangeGroup struct {
+	stats       map[string]FileChange
+	baseObjects map[string]string
+	statsErr    error
+	statusErr   error
+	parseErr    error
+	baseErr     error
+}
+
+func (executor gitExecutor) loadFileChangeGroup(repoPath string, staged bool) fileChangeGroup {
+	stagedArgs := func(format string) []string {
+		args := []string{"diff"}
+		if staged {
+			args = append(args, "--cached")
+		}
+		args = append(args, format, "-z", "--no-renames")
+		if format == "--raw" {
+			args = append(args, "--no-abbrev")
+		}
+		return args
+	}
+
+	statsOutput, statsErr := executor.runGitRaw(repoPath, stagedArgs("--numstat"))
+	statusOutput, statusErr := executor.runGitRaw(repoPath, stagedArgs("--name-status"))
+	stats, parseErr := parseNumstat(statsOutput, parseNameStatus(statusOutput))
 	// The raw diff keeps the old blob ID even when the worktree path has already been deleted.
-	stagedBaseOutput, stagedBaseErr := executor.runGitRaw(repoPath, []string{"diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev"})
-	unstagedBaseOutput, unstagedBaseErr := executor.runGitRaw(repoPath, []string{"diff", "--raw", "-z", "--no-renames", "--no-abbrev"})
+	baseOutput, baseErr := executor.runGitRaw(repoPath, stagedArgs("--raw"))
 
-	stagedStats, stagedParseErr := parseNumstat(stagedStatsOutput, parseNameStatus(stagedStatusOutput))
-	unstagedStats, unstagedParseErr := parseNumstat(unstagedStatsOutput, parseNameStatus(unstagedStatusOutput))
-	stagedBaseObjects := parseDiffBaseObjects(stagedBaseOutput)
-	unstagedBaseObjects := parseDiffBaseObjects(unstagedBaseOutput)
-	objectSizes, objectSizeErr := executor.readObjectSizes(repoPath, collectObjectIDs(stagedBaseObjects, unstagedBaseObjects))
-	stagedPreviousSizes, stagedPreviousSizeBytes := resolvePreviousSizes(stagedBaseObjects, objectSizes)
-	unstagedPreviousSizes, unstagedPreviousSizeBytes := resolvePreviousSizes(unstagedBaseObjects, objectSizes)
+	return fileChangeGroup{
+		stats: stats, baseObjects: parseDiffBaseObjects(baseOutput),
+		statsErr: statsErr, statusErr: statusErr, parseErr: parseErr, baseErr: baseErr,
+	}
+}
 
-	changes := buildTrackedChanges(repoPath, stagedStats, stagedPreviousSizes, stagedPreviousSizeBytes, true)
-	changes = append(changes, buildTrackedChanges(repoPath, unstagedStats, unstagedPreviousSizes, unstagedPreviousSizeBytes, false)...)
+func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) ([]FileChange, error) {
+	// Parse each stage before reading the next one so Git's raw output does not remain live together.
+	staged := executor.loadFileChangeGroup(repoPath, true)
+	unstaged := executor.loadFileChangeGroup(repoPath, false)
+	objectSizes, objectSizeErr := executor.readObjectSizes(repoPath, collectObjectIDs(staged.baseObjects, unstaged.baseObjects))
+	stagedPreviousSizes, stagedPreviousSizeBytes := resolvePreviousSizes(staged.baseObjects, objectSizes)
+	unstagedPreviousSizes, unstagedPreviousSizeBytes := resolvePreviousSizes(unstaged.baseObjects, objectSizes)
+
+	changes := buildTrackedChanges(repoPath, staged.stats, stagedPreviousSizes, stagedPreviousSizeBytes, true)
+	changes = append(changes, buildTrackedChanges(repoPath, unstaged.stats, unstagedPreviousSizes, unstagedPreviousSizeBytes, false)...)
 	changes = append(changes, buildUntrackedChanges(repoPath, entries, changes)...)
 	slices.SortFunc(changes, compareFileChanges)
 	return changes, firstGitError(
-		stagedStatsErr, stagedStatusErr, unstagedStatsErr, unstagedStatusErr,
-		stagedParseErr, unstagedParseErr, stagedBaseErr, unstagedBaseErr, objectSizeErr,
+		staged.statsErr, staged.statusErr, unstaged.statsErr, unstaged.statusErr,
+		staged.parseErr, unstaged.parseErr, staged.baseErr, unstaged.baseErr, objectSizeErr,
 	)
 }
 
@@ -400,11 +430,32 @@ func resolveSize(filePath string) int64 {
 }
 
 func countFileLines(filePath string) int {
-	content, err := os.ReadFile(filePath)
-	if err != nil || len(content) == 0 {
+	file, err := os.Open(filePath)
+	if err != nil {
 		return 0
 	}
-	return len(strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n"))
+	defer file.Close()
+
+	buffer := make([]byte, 32*1024)
+	lineBreaks := 0
+	hasContent := false
+	for {
+		readBytes, readErr := file.Read(buffer)
+		if readBytes > 0 {
+			hasContent = true
+			lineBreaks += bytes.Count(buffer[:readBytes], []byte{'\n'})
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return 0
+		}
+	}
+	if !hasContent {
+		return 0
+	}
+	return lineBreaks + 1
 }
 
 func repoStatus(scanError string, conflicts, modified int) string {

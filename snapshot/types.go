@@ -78,7 +78,7 @@ type WorkspaceBootstrap struct {
 type AppSnapshot struct {
 	ScannedAt        string                       `json:"scannedAt"`
 	Categories       []string                     `json:"categories"`
-	Repos            []RepoDetail                 `json:"repos"`
+	Repos            []Repo                       `json:"repos"`
 	RepoDetails      map[string]RepoDetail        `json:"repoDetails"`
 	SelectedRepoID   string                       `json:"selectedRepoId"`
 	PullResults      []PullResult                 `json:"pullResults"`

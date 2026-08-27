@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 func TestRunRepoCommandReturnsCombinedOutput(t *testing.T) {
@@ -124,6 +125,31 @@ func TestStreamRepoCommandStripsANSISequences(t *testing.T) {
 	}
 	if strings.TrimRight(output.String(), "\r\n") != "Build Options" {
 		t.Fatalf("expected cleaned streamed output, got %q", output.String())
+	}
+}
+
+func TestOutputTruncationKeepsUTF8Boundaries(t *testing.T) {
+	value := "甲乙"
+	for limit := 1; limit < len(value); limit++ {
+		prefix := truncateUTF8Prefix(value, limit)
+		suffix := truncateUTF8Suffix(value, limit)
+		if len(prefix) > limit || !utf8.ValidString(prefix) {
+			t.Fatalf("expected UTF-8-safe prefix at %d bytes, got %q", limit, prefix)
+		}
+		if len(suffix) > limit || !utf8.ValidString(suffix) {
+			t.Fatalf("expected UTF-8-safe suffix at %d bytes, got %q", limit, suffix)
+		}
+	}
+}
+
+func TestCapturedCommandOutputIsBoundedAndMarked(t *testing.T) {
+	builder := &cappedStringBuilder{maxBytes: 64}
+	builder.WriteString(strings.Repeat("a", 64))
+	builder.WriteString("ghi")
+
+	got := builder.stringWithTruncationMarker()
+	if len(got) > 64 || !strings.HasSuffix(got, "ghi\n...[命令输出已截断]") {
+		t.Fatalf("expected bounded tail with marker, got %q", got)
 	}
 }
 

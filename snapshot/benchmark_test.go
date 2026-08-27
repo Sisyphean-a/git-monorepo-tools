@@ -21,8 +21,7 @@ func BenchmarkBuildAppSnapshotConcurrency(b *testing.B) {
 }
 
 func BenchmarkResolveRepo(b *testing.B) {
-	service := benchmarkService(b)
-	request := Request{}
+	service, request := benchmarkService(b)
 	snapshot, err := service.BuildAppSnapshot(request)
 	if err != nil {
 		b.Fatal(err)
@@ -47,8 +46,7 @@ func BenchmarkResolveRepo(b *testing.B) {
 }
 
 func BenchmarkResolveRepoForCommitWithPathHint(b *testing.B) {
-	service := benchmarkService(b)
-	request := Request{}
+	service, request := benchmarkService(b)
 	snapshot, err := service.BuildAppSnapshot(request)
 	if err != nil {
 		b.Fatal(err)
@@ -73,8 +71,8 @@ func BenchmarkResolveRepoForCommitWithPathHint(b *testing.B) {
 }
 
 func benchmarkBuildAppSnapshot(b *testing.B, concurrency int) {
-	service := benchmarkService(b)
-	request := Request{Concurrency: concurrency}
+	service, request := benchmarkService(b)
+	request.Concurrency = concurrency
 	repoCount := 0
 
 	b.ReportAllocs()
@@ -93,11 +91,13 @@ func benchmarkBuildAppSnapshot(b *testing.B, concurrency int) {
 	b.ReportMetric(float64(repoCount), "repos")
 }
 
-func benchmarkService(b *testing.B) *Service {
+func benchmarkService(b *testing.B) (*Service, Request) {
 	b.Helper()
-	cwd, err := os.Getwd()
-	if err != nil {
-		b.Fatal(err)
+	root := b.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(b, repoPath)
+	if err := os.WriteFile(filepath.Join(repoPath, "benchmark.txt"), []byte("benchmark\n"), 0o644); err != nil {
+		b.Fatalf("write benchmark file: %v", err)
 	}
-	return NewService(filepath.Dir(cwd))
+	return NewService(root), Request{ScanRoots: []ScanRoot{{Path: root, Category: "benchmark"}}}
 }

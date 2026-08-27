@@ -99,6 +99,39 @@ func TestRefreshRemoteWithRetryReturnsLastFailure(t *testing.T) {
 	}
 }
 
+func TestParseStatusPreservesWhitespaceInPaths(t *testing.T) {
+	parsed := parseStatus("# branch.oid abc\x00# branch.head main\x00?  leading and trailing  \x00")
+
+	if len(parsed.entries) != 1 || parsed.entries[0] != "??  leading and trailing  " {
+		t.Fatalf("expected path whitespace to be preserved, got %#v", parsed.entries)
+	}
+}
+
+func TestCountFileLinesPreservesNewlineSemantics(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    int
+	}{
+		{name: "empty", content: "", want: 0},
+		{name: "single line", content: "one", want: 1},
+		{name: "trailing newline", content: "one\n", want: 2},
+		{name: "CRLF", content: "one\r\ntwo\r\n", want: 3},
+		{name: "bare carriage return", content: "one\r", want: 1},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			filePath := filepath.Join(t.TempDir(), "file.txt")
+			if err := os.WriteFile(filePath, []byte(testCase.content), 0o644); err != nil {
+				t.Fatalf("write test file: %v", err)
+			}
+			if got := countFileLines(filePath); got != testCase.want {
+				t.Fatalf("expected %d lines, got %d", testCase.want, got)
+			}
+		})
+	}
+}
+
 func TestBuildRepoSnapshotListsEveryChangedFile(t *testing.T) {
 	repoPath := t.TempDir()
 	initTestRepo(t, repoPath)

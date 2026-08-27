@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const maxCapturedCommandOutputBytes = 256 * 1024
+
 type ansiStripperState uint8
 
 const (
@@ -166,9 +168,9 @@ func (executor gitExecutor) runShellCommand(command shellCommand) (string, int, 
 		return "", -1, err
 	}
 
-	var builder *strings.Builder
+	var builder *cappedStringBuilder
 	if command.captureOutput {
-		builder = &strings.Builder{}
+		builder = &cappedStringBuilder{maxBytes: maxCapturedCommandOutputBytes}
 	}
 	var lock sync.Mutex
 	var streamGroup sync.WaitGroup
@@ -180,7 +182,7 @@ func (executor gitExecutor) runShellCommand(command shellCommand) (string, int, 
 
 	output := ""
 	if builder != nil {
-		output = builder.String()
+		output = builder.stringWithTruncationMarker()
 	}
 	if timedOut {
 		if waitErr != nil {
@@ -198,7 +200,85 @@ func (executor gitExecutor) runShellCommand(command shellCommand) (string, int, 
 	return output, -1, waitErr
 }
 
-func streamCommand(reader io.Reader, onChunk func(string), builder *strings.Builder, lock *sync.Mutex, streamGroup *sync.WaitGroup) {
+type cappedStringBuilder struct {
+	chunks      []string
+	first       int
+	firstOffset int
+	length      int
+	maxBytes    int
+	truncated   bool
+}
+
+func (b *cappedStringBuilder) WriteString(value string) {
+	if value == "" {
+		return
+	}
+	if len(value) >= b.maxBytes {
+		value = truncateUTF8Suffix(value, b.maxBytes)
+		b.chunks = []string{value}
+		b.first = 0
+		b.firstOffset = 0
+		b.length = len(value)
+		b.truncated = true
+		return
+	}
+
+	b.chunks = append(b.chunks, value)
+	b.length += len(value)
+	if b.length > b.maxBytes {
+		excess := b.length - b.maxBytes
+		for excess > 0 && b.first < len(b.chunks) {
+			chunk := b.chunks[b.first]
+			available := len(chunk) - b.firstOffset
+			if excess >= available {
+				excess -= available
+				b.length -= available
+				b.first++
+				b.firstOffset = 0
+				continue
+			}
+			b.firstOffset += excess
+			b.length -= excess
+			excess = 0
+		}
+		b.truncated = true
+	}
+	if b.first > 64 && b.first*2 >= len(b.chunks) {
+		b.chunks = append([]string(nil), b.chunks[b.first:]...)
+		b.first = 0
+	}
+}
+
+func (b *cappedStringBuilder) String() string {
+	if b.first >= len(b.chunks) {
+		return ""
+	}
+	var output strings.Builder
+	output.Grow(b.length)
+	output.WriteString(b.chunks[b.first][b.firstOffset:])
+	for _, chunk := range b.chunks[b.first+1:] {
+		output.WriteString(chunk)
+	}
+	return truncateUTF8Suffix(output.String(), b.maxBytes)
+}
+
+func (b *cappedStringBuilder) stringWithTruncationMarker() string {
+	value := b.String()
+	if !b.truncated {
+		return value
+	}
+	const marker = "...[命令输出已截断]"
+	if value == "" {
+		return truncateUTF8Suffix(marker, b.maxBytes)
+	}
+	available := b.maxBytes - len(marker) - 1
+	if available <= 0 {
+		return truncateUTF8Suffix(marker, b.maxBytes)
+	}
+	return truncateUTF8Suffix(value, available) + "\n" + marker
+}
+
+func streamCommand(reader io.Reader, onChunk func(string), builder *cappedStringBuilder, lock *sync.Mutex, streamGroup *sync.WaitGroup) {
 	defer streamGroup.Done()
 	buffer := make([]byte, 4096)
 	stripper := ansiStripper{}

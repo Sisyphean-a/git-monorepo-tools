@@ -112,6 +112,7 @@ export function Workspace({
   const backend = useAppBackend();
   const terminalWorkspace = useTerminalWorkspace();
   const terminalTabs = useTerminalWorkspaceTabs(repoDetails, selectedRepoId);
+  const repoIds = useMemo(() => Object.keys(repoDetails), [repoDetails]);
   const repo = repoDetails[terminalTabs.activeRepoId];
 
   if (!repo) {
@@ -145,6 +146,7 @@ export function Workspace({
     clearCommandConsole,
   } = useRepoCommandPanel({
     repo,
+    repoIds,
     settings,
     onRefresh: () => onRefresh(repo.id),
     onMutateRepo,

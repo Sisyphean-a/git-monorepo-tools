@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 
 const (
 	aiRequestTimeout            = 30 * time.Second
+	maxAIResponseBytes          = 64 * 1024
 	defaultAICommitSystemPrompt = `
 You generate a single Git commit message from repository changes.
 
@@ -80,9 +82,12 @@ func newAIRequest(settings AICommitSettings, body []byte) (*http.Request, error)
 }
 
 func parseAIResponse(response *http.Response) (string, error) {
-	rawBody, err := io.ReadAll(response.Body)
+	rawBody, err := io.ReadAll(io.LimitReader(response.Body, maxAIResponseBytes+1))
 	if err != nil {
 		return "", err
+	}
+	if len(rawBody) > maxAIResponseBytes {
+		return "", fmt.Errorf("AI 响应超过 %d 字节限制", maxAIResponseBytes)
 	}
 	var payload map[string]any
 	_ = json.Unmarshal(rawBody, &payload)

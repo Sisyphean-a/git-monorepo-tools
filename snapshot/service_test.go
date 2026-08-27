@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -8,6 +9,36 @@ import (
 	"testing"
 	"time"
 )
+
+func TestBuildAppSnapshotKeepsRepoListLightweight(t *testing.T) {
+	root := t.TempDir()
+	initTestRepo(t, filepath.Join(root, "repo"))
+	snapshot, err := NewService(root).BuildAppSnapshot(Request{ScanRoots: []ScanRoot{{Path: root, Category: "测试"}}})
+	if err != nil {
+		t.Fatalf("build snapshot: %v", err)
+	}
+
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	var decoded struct {
+		Repos       []map[string]json.RawMessage          `json:"repos"`
+		RepoDetails map[string]map[string]json.RawMessage `json:"repoDetails"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
+	}
+	if len(decoded.Repos) != 1 {
+		t.Fatalf("expected one repo summary, got %d", len(decoded.Repos))
+	}
+	if _, exists := decoded.Repos[0]["files"]; exists {
+		t.Fatal("expected repo list to omit full file details")
+	}
+	if _, exists := decoded.RepoDetails[snapshot.Repos[0].ID]["files"]; !exists {
+		t.Fatal("expected repo details to retain file details")
+	}
+}
 
 func TestSortSnapshotsUsesPathAsTieBreaker(t *testing.T) {
 	service := NewService("E:/workspace/repo-a")
@@ -248,7 +279,7 @@ func TestBuildRepoSnapshotUsesRequestHintWithoutScanRoots(t *testing.T) {
 	}
 }
 
-func initTestRepo(t *testing.T, repoPath string) {
+func initTestRepo(t testing.TB, repoPath string) {
 	t.Helper()
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {
 		t.Fatalf("create repo dir: %v", err)

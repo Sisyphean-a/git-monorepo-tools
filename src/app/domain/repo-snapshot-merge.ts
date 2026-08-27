@@ -14,7 +14,7 @@ export function mergeRepoSnapshotUpdate(
     ...snapshot.repoDetails,
     [nextRepo.id]: nextRepo,
   };
-  const repos = replaceRepoInList(snapshot.repos, nextRepo);
+  const repos = replaceRepoInList(snapshot.repos, toRepoSummary(nextRepo));
 
   return {
     ...snapshot,
@@ -31,6 +31,25 @@ export function mergeRepoSnapshotUpdate(
 
 export function replaceRepoInList<T extends Repo>(repos: T[], nextRepo: T) {
   return repos.map(repo => (repo.id === nextRepo.id ? nextRepo : repo));
+}
+
+export function toRepoSummary(repo: Repo): Repo {
+  return {
+    id: repo.id,
+    name: repo.name,
+    branch: repo.branch,
+    headRevision: repo.headRevision,
+    path: repo.path,
+    remote: repo.remote,
+    category: repo.category,
+    modified: repo.modified,
+    ahead: repo.ahead,
+    behind: repo.behind,
+    conflicts: repo.conflicts,
+    status: repo.status,
+    scanError: repo.scanError,
+    lastScan: repo.lastScan,
+  };
 }
 
 function mergeRepoDetail(current: RepoDetail | undefined, incoming: RepoDetail, mode: RepoUpdateMode, revision: string): RepoDetail {

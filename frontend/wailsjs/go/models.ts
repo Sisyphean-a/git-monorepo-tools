@@ -180,10 +180,48 @@ export namespace snapshot {
 		    return a;
 		}
 	}
+	export class Repo {
+	    id: string;
+	    name: string;
+	    branch: string;
+	    headRevision: string;
+	    path: string;
+	    remote: string;
+	    category: string;
+	    modified: number;
+	    ahead: number;
+	    behind: number;
+	    conflicts: number;
+	    status: string;
+	    scanError?: string;
+	    lastScan: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Repo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.branch = source["branch"];
+	        this.headRevision = source["headRevision"];
+	        this.path = source["path"];
+	        this.remote = source["remote"];
+	        this.category = source["category"];
+	        this.modified = source["modified"];
+	        this.ahead = source["ahead"];
+	        this.behind = source["behind"];
+	        this.conflicts = source["conflicts"];
+	        this.status = source["status"];
+	        this.scanError = source["scanError"];
+	        this.lastScan = source["lastScan"];
+	    }
+	}
 	export class AppSnapshot {
 	    scannedAt: string;
 	    categories: string[];
-	    repos: RepoDetail[];
+	    repos: Repo[];
 	    repoDetails: Record<string, RepoDetail>;
 	    selectedRepoId: string;
 	    pullResults: PullResult[];
@@ -197,7 +235,7 @@ export namespace snapshot {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scannedAt = source["scannedAt"];
 	        this.categories = source["categories"];
-	        this.repos = this.convertValues(source["repos"], RepoDetail);
+	        this.repos = this.convertValues(source["repos"], Repo);
 	        this.repoDetails = this.convertValues(source["repoDetails"], RepoDetail, true);
 	        this.selectedRepoId = source["selectedRepoId"];
 	        this.pullResults = this.convertValues(source["pullResults"], PullResult);
@@ -495,44 +533,7 @@ export namespace snapshot {
 	}
 	
 	
-	export class Repo {
-	    id: string;
-	    name: string;
-	    branch: string;
-	    headRevision: string;
-	    path: string;
-	    remote: string;
-	    category: string;
-	    modified: number;
-	    ahead: number;
-	    behind: number;
-	    conflicts: number;
-	    status: string;
-	    scanError?: string;
-	    lastScan: string;
 	
-	    static createFrom(source: any = {}) {
-	        return new Repo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.branch = source["branch"];
-	        this.headRevision = source["headRevision"];
-	        this.path = source["path"];
-	        this.remote = source["remote"];
-	        this.category = source["category"];
-	        this.modified = source["modified"];
-	        this.ahead = source["ahead"];
-	        this.behind = source["behind"];
-	        this.conflicts = source["conflicts"];
-	        this.status = source["status"];
-	        this.scanError = source["scanError"];
-	        this.lastScan = source["lastScan"];
-	    }
-	}
 	export class RepoActionRequest {
 	    fileId: string;
 	    filePath: string;

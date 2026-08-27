@@ -4,6 +4,7 @@ import { Clock3, Copy, GitBranch, GitCommit, GitMerge, TerminalSquare } from 'lu
 import { useAppBackend } from '../application/backend-context';
 import { buildCommitGraph, CommitGraphRow } from './commit-graph';
 import { C } from '../theme';
+import { calculateHistoryViewport, HISTORY_LINE_HEIGHT, HISTORY_VIEWPORT_HEIGHT } from '../features/history/history-viewport';
 import type { AppSettings, CommitDetail, CommitSummary } from '../domain/types';
 
 const HISTORY_PAGE_SIZE = 50;
@@ -33,6 +34,9 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
+  const historyListRef = useRef<HTMLDivElement | null>(null);
+  const [historyScrollTop, setHistoryScrollTop] = useState(0);
+  const [historyViewportHeight, setHistoryViewportHeight] = useState(HISTORY_VIEWPORT_HEIGHT);
   const loadedRepoId = useRef(initialCommits.length > 0 ? repoId : '');
 
   useEffect(() => {
@@ -89,10 +93,28 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
     };
   }, [backend, repoId, selectedHash, settings]);
 
+  useEffect(() => {
+    if (initialLoading || commits.length === 0) return;
+    const node = historyListRef.current;
+    if (!node) return;
+    const updateHeight = () => setHistoryViewportHeight(node.clientHeight || HISTORY_VIEWPORT_HEIGHT);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [commits.length, initialLoading]);
+
   const selectedSummary = useMemo(
     () => commits.find(commit => commit.hash === selectedHash) ?? null,
     [commits, selectedHash],
   );
+  const historyViewport = useMemo(
+    () => calculateHistoryViewport({ rowCount: commits.length, scrollTop: historyScrollTop, viewportHeight: historyViewportHeight }),
+    [commits.length, historyScrollTop, historyViewportHeight],
+  );
+  const handleHistoryScroll = () => {
+    setHistoryScrollTop(historyListRef.current?.scrollTop ?? 0);
+  };
   const commitGraph = useMemo(() => {
     const rows = buildCommitGraph(commits);
     return { rows, laneCount: Math.max(1, ...rows.map(row => Math.max(row.lanesBefore, row.lanesAfter))) };
@@ -168,8 +190,8 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
 
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, background: C.appBg }}>
-      <div style={{ flex: 1, minWidth: 0, borderRight: `1px solid ${C.border}`, overflowY: 'auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.panel1, position: 'sticky', top: 0, zIndex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.border}`, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.panel1, flexShrink: 0 }}>
           <div style={{ color: C.textSecondary, fontSize: 11 }}>{historyLabel}</div>
           {hasMore && (
             <button
@@ -181,19 +203,25 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
             </button>
           )}
         </div>
-        <div>
-          {commits.map((commit, index) => (
+        <div ref={historyListRef} onScroll={handleHistoryScroll} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div style={{ position: 'relative', height: historyViewport.totalHeight }}>
+            <div style={{ position: 'absolute', top: historyViewport.offsetTop, left: 0, right: 0 }}>
+              {commits.slice(historyViewport.start, historyViewport.end).map((commit, index) => {
+                const rowIndex = historyViewport.start + index;
+                return (
             <div
               key={commit.hash}
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'auto minmax(0, 1fr)',
-                minHeight: 56,
+                height: HISTORY_LINE_HEIGHT,
+                minHeight: HISTORY_LINE_HEIGHT,
+                boxSizing: 'border-box',
                 background: commit.hash === selectedHash ? `${C.btnPrimary}12` : 'transparent',
                 borderBottom: `1px solid ${C.border}30`,
               }}
             >
-              <CommitGraphRow row={commitGraph.rows[index]!} selected={commit.hash === selectedHash} laneCount={commitGraph.laneCount} />
+              <CommitGraphRow row={commitGraph.rows[rowIndex]!} selected={commit.hash === selectedHash} laneCount={commitGraph.laneCount} />
               <button
                 onClick={() => setSelectedHash(commit.hash)}
                 style={{
@@ -239,7 +267,10 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
                 </div>
               </button>
             </div>
-          ))}
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

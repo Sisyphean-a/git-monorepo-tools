@@ -10,6 +10,23 @@ let nextSessionId = 0;
  */
 export const MAX_COMMAND_OUTPUT_CHARS = 256 * 1024;
 
+export function pruneCommandConsoles(
+  current: Record<string, CommandConsoleState | null>,
+  repoIds: readonly string[],
+) {
+  const knownRepoIds = new Set(repoIds);
+  let changed = false;
+  const next: Record<string, CommandConsoleState | null> = {};
+  for (const [repoId, console] of Object.entries(current)) {
+    if (!knownRepoIds.has(repoId)) {
+      changed = true;
+      continue;
+    }
+    next[repoId] = console;
+  }
+  return changed ? next : current;
+}
+
 export function formatCommandTime(timestamp: number) {
   const date = new Date(timestamp);
   return [date.getHours(), date.getMinutes(), date.getSeconds()]
@@ -25,7 +42,27 @@ export function appendCommandOutput(current: string, text: string) {
   if (next.length <= MAX_COMMAND_OUTPUT_CHARS) {
     return { output: next, truncated: false };
   }
-  return { output: next.slice(next.length - MAX_COMMAND_OUTPUT_CHARS), truncated: true };
+  return { output: takeCommandOutputTail(next), truncated: true };
+}
+
+function takeCommandOutputTail(value: string) {
+  let start = value.length - MAX_COMMAND_OUTPUT_CHARS;
+  if (start > 0 && isLowSurrogate(value.charCodeAt(start))) {
+    start += 1;
+  }
+  let end = value.length;
+  if (end > start && isHighSurrogate(value.charCodeAt(end - 1))) {
+    end -= 1;
+  }
+  return value.slice(start, end);
+}
+
+function isHighSurrogate(value: number) {
+  return value >= 0xd800 && value <= 0xdbff;
+}
+
+function isLowSurrogate(value: number) {
+  return value >= 0xdc00 && value <= 0xdfff;
 }
 
 export function createCommandConsoleSession(

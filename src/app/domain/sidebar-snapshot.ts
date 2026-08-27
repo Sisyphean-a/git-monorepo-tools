@@ -1,4 +1,4 @@
-import { replaceRepoInList } from './repo-snapshot-merge.js';
+import { replaceRepoInList, toRepoSummary } from './repo-snapshot-merge.js';
 import type { AppSnapshot, Repo, RepoSnapshotUpdate } from './types.js';
 
 export interface SidebarSnapshot {
@@ -19,6 +19,6 @@ export function mergeSidebarRepoUpdate(snapshot: SidebarSnapshot, update: RepoSn
   return {
     ...snapshot,
     scannedAt: update.scannedAt,
-    repos: replaceRepoInList(snapshot.repos, update.repo),
+    repos: replaceRepoInList(snapshot.repos, toRepoSummary(update.repo)),
   };
 }

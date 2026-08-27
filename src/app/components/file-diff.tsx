@@ -7,6 +7,7 @@ import {
   DIFF_LINE_HEIGHT,
   DIFF_VIEWPORT_HEIGHT,
 } from '../features/diff/diff-viewport';
+import { getDiffLine, indexDiffLines, measureDiffWidth } from '../features/diff/diff-lines';
 
 interface FileDiffPanelProps {
   file: FileChange;
@@ -34,18 +35,6 @@ function diffLineStyle(line: string) {
   return { color: C.textSecondary, background: 'transparent' };
 }
 
-function renderedColumns(line: string) {
-  let columns = 0;
-  for (const character of line) {
-    columns += character === '\t' ? 4 - (columns % 4) : 1;
-  }
-  return columns;
-}
-
-function diffWidth(lines: string[]) {
-  return lines.reduce((widest, line) => Math.max(widest, renderedColumns(line)), 1);
-}
-
 function useVirtualScrollTop() {
   const [scrollTop, setScrollTop] = useState(0);
   const animationFrame = useRef<number | null>(null);
@@ -65,15 +54,18 @@ function useVirtualScrollTop() {
 }
 
 function DiffContent({ content }: { content: string }) {
-  const lines = useMemo(() => content ? content.split(/\r?\n/) : [], [content]);
-  const width = useMemo(() => diffWidth(lines), [lines]);
+  const lineStarts = useMemo(() => indexDiffLines(content), [content]);
+  const width = useMemo(() => measureDiffWidth(content, lineStarts), [content, lineStarts]);
   const { scrollTop, handleScroll } = useVirtualScrollTop();
-  const viewport = calculateDiffViewport({ lineCount: lines.length, scrollTop });
+  const viewport = calculateDiffViewport({ lineCount: lineStarts.length, scrollTop });
 
   if (!content) {
     return <div style={{ padding: 14, color: C.textWeak, fontSize: 11 }}>当前文件没有可显示的文本差异</div>;
   }
-  const visibleLines = lines.slice(viewport.start, viewport.end);
+  const visibleLines = Array.from(
+    { length: viewport.end - viewport.start },
+    (_, index) => getDiffLine(content, lineStarts, viewport.start + index),
+  );
 
   return (
     <div

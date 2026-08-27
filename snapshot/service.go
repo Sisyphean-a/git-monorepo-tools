@@ -79,7 +79,7 @@ func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppS
 	return AppSnapshot{
 		ScannedAt:        formatDateTime(scanTime),
 		Categories:       uniqueCategories(ordered),
-		Repos:            orderedDetails(ordered),
+		Repos:            orderedRepos(ordered),
 		RepoDetails:      orderedDetailsMap(ordered),
 		SelectedRepoID:   selectedID,
 		PullResults:      results,

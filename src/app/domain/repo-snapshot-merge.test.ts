@@ -69,6 +69,7 @@ test('mergeRepoSnapshotUpdate replaces only target repo fields and candidates', 
   assert.equal(repoA.modified, 0);
   assert.equal(repoBCandidates[0]?.id, 'new');
   assert.deepEqual(next.repos.map(item => item.id), ['repo-a', 'repo-b']);
+  assert.equal('files' in next.repos[1]!, false);
 });
 
 test('mergeRepoSnapshotUpdate preserves reading data and stable file identities', () => {
@@ -205,6 +206,7 @@ test('mergeSidebarRepoUpdate updates only sidebar summary fields', () => {
   assert.equal(next.scannedAt, 'sidebar-scan');
   assert.equal(next.repos[1]?.id, 'repo-b');
   assert.equal(next.repos[1]?.modified, 4);
+  assert.equal('files' in next.repos[1]!, false);
   assert.deepEqual(next.categories, ['测试']);
 });
 

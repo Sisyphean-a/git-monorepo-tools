@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Download, GitCommit, MinusSquare, PlusSquare, RefreshCw, RotateCcw, Sparkles, Upload } from 'lucide-react';
 import { formatComboSummary, getBuiltInCommandLabel, getRepoCommands } from './command-catalog';
 import { createComboCommitMessageState } from './combo-commit-message-state';
-import { createCommandConsoleSession, type CommandConsoleUpdater } from './repo-command-console';
+import { createCommandConsoleSession, pruneCommandConsoles, type CommandConsoleUpdater } from './repo-command-console';
 import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButton, RepoCommandResult, RepoDetail, RepoMutationAction } from '../../domain/types';
 import type { PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
 import type { CommandConsoleState } from './command-console-state';
@@ -10,6 +10,7 @@ import type { AppBackend } from '../../application/ports';
 
 interface UseRepoCommandPanelArgs {
   repo: RepoDetail;
+  repoIds: readonly string[];
   settings: AppSettings;
   onRefresh: () => Promise<void>;
   onMutateRepo: (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => Promise<void>;
@@ -20,6 +21,7 @@ interface UseRepoCommandPanelArgs {
 
 export function useRepoCommandPanel({
   repo,
+  repoIds,
   settings,
   onRefresh,
   onMutateRepo,
@@ -48,6 +50,10 @@ export function useRepoCommandPanel({
     setAiError(null);
     // Rule: 命令输出属于工作区日志，只能由用户显式清空，切换项目不得重置。
   }, [repo.id]);
+
+  useEffect(() => {
+    setCommandConsoles(current => pruneCommandConsoles(current, repoIds));
+  }, [repoIds]);
 
   const repoActionBody = (body?: Record<string, unknown>) => ({
     ...(body ?? {}),

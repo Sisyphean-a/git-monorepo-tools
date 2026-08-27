@@ -112,14 +112,6 @@ func uniqueCategories(items []repoSnapshot) []string {
 	return categories
 }
 
-func orderedDetails(items []repoSnapshot) []RepoDetail {
-	repos := make([]RepoDetail, 0, len(items))
-	for _, item := range items {
-		repos = append(repos, item.detail)
-	}
-	return repos
-}
-
 func orderedDetailsMap(items []repoSnapshot) map[string]RepoDetail {
 	details := map[string]RepoDetail{}
 	for _, item := range items {

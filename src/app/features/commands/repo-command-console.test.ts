@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendCommandOutput, createCommandConsoleSession, formatCommandTime, MAX_COMMAND_OUTPUT_CHARS } from './repo-command-console.js';
+import { appendCommandOutput, createCommandConsoleSession, formatCommandTime, MAX_COMMAND_OUTPUT_CHARS, pruneCommandConsoles } from './repo-command-console.js';
 import type { CommandConsoleState } from './command-console-state.js';
 import type { CommandConsoleUpdater } from './repo-command-console.js';
 
@@ -85,6 +85,14 @@ test('command output keeps only the tail once it exceeds the cap and marks itsel
   assert.ok(current?.output.endsWith(tail));
 });
 
+test('command output truncation does not split a UTF-16 surrogate pair', () => {
+  const appended = appendCommandOutput('', `😀${'x'.repeat(MAX_COMMAND_OUTPUT_CHARS - 1)}`);
+
+  assert.equal(appended.truncated, true);
+  assert.equal(appended.output[0], 'x');
+  assert.ok(!/^[\uDC00-\uDFFF]/.test(appended.output));
+});
+
 test('truncation flag survives later writes without growing the output', () => {
   const { store, updateRepo } = createConsoleStore();
   const session = createCommandConsoleSession('A', updateRepo('A'), '命令', 'npm test');
@@ -103,6 +111,18 @@ test('appendCommandOutput leaves short output untouched', () => {
   const appended = appendCommandOutput('abc', 'def');
   assert.equal(appended.output, 'abcdef');
   assert.equal(appended.truncated, false);
+});
+
+test('pruneCommandConsoles removes output for repositories no longer present', () => {
+  const retained = { sessionId: 1, title: '命令', command: 'git status', status: 'success' as const, output: 'kept', startedAt: 1, endedAt: 2 };
+  const removed = { ...retained, sessionId: 2, output: 'removed' };
+  const current = { A: retained, B: removed };
+
+  const next = pruneCommandConsoles(current, ['A']);
+
+  assert.deepEqual(next, { A: retained });
+  assert.notEqual(next, current);
+  assert.equal(pruneCommandConsoles(next, ['A']), next);
 });
 
 test('formatCommandTime displays the command start time as HH:MM:SS', () => {
