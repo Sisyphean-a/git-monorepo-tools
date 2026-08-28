@@ -931,8 +931,8 @@ test('history bindings use dedicated Wails bridge', async () => {
         staged: false,
       }];
     },
-    GetFileDiff: async (request: { repoId: string; filePath: string; staged: boolean; previousPath?: string; commitHash?: string; snapshot: { repoPath?: string } }) => {
-      calls.push(`GetFileDiff:${request.repoId}:${request.filePath}:${request.staged}:${request.snapshot.repoPath}:${request.previousPath ?? '-'}:${request.commitHash ?? 'working'}`);
+    GetFileDiff: async (request: { repoId: string; filePath: string; staged: boolean; previousPath?: string; commitHash?: string; parentHash?: string; snapshot: { repoPath?: string } }) => {
+      calls.push(`GetFileDiff:${request.repoId}:${request.filePath}:${request.staged}:${request.snapshot.repoPath}:${request.previousPath ?? '-'}:${request.commitHash ?? 'working'}:${request.parentHash ?? '-'}`);
       return {
         repoId: request.repoId,
         path: request.filePath,
@@ -1006,6 +1006,7 @@ test('history bindings use dedicated Wails bridge', async () => {
       untracked: false,
       previousPath: 'src/app/old-api.ts',
       commitHash: 'abc',
+      parentHash: 'parent-commit',
       target: { path: '/repo/a', category: '测试' },
     });
     assert.equal(commitDiff.content, '@@ -1 +1 @@\n-old\n+new');
@@ -1020,7 +1021,7 @@ test('history bindings use dedicated Wails bridge', async () => {
     'GetRepoHistory:repo-1:50:50',
     'GetCommitDetail:repo-1:abc',
     'GetWorkingDiffFiles:repo-1:/repo/a:测试',
-    'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:-:working',
-    'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:src/app/old-api.ts:abc',
+    'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:-:working:-',
+    'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:src/app/old-api.ts:abc:parent-commit',
   ]);
 });

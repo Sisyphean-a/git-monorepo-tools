@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { countWrappedLineRows, filterSideBySideDisplayRows, measureSideBySideWidth, parseSideBySideDiff } from './side-by-side.js';
+import { countWrappedLineRows, filterSideBySideDisplayRows, measureSideBySideWidth, parseSideBySideDiff, parseSideBySideDisplayRows } from './side-by-side.js';
 
 test('side-by-side parser pairs deleted and added lines with line numbers', () => {
   const rows = parseSideBySideDiff([
@@ -49,7 +49,7 @@ test('side-by-side parser keeps unpaired additions, metadata, and CRLF lines', (
 });
 
 test('display rows omit diff metadata and hunk headers', () => {
-  const rows = filterSideBySideDisplayRows(parseSideBySideDiff([
+  const content = [
     'diff --git a/file.txt b/file.txt',
     'index 123..456 100644',
     '--- a/file.txt',
@@ -57,7 +57,8 @@ test('display rows omit diff metadata and hunk headers', () => {
     '@@ -1 +1 @@',
     '-old',
     '+new',
-  ].join('\n')));
+  ].join('\n');
+  const rows = filterSideBySideDisplayRows(parseSideBySideDiff(content));
 
   assert.deepEqual(rows, [
     {
@@ -66,6 +67,7 @@ test('display rows omit diff metadata and hunk headers', () => {
       right: { lineNumber: 1, text: 'new', kind: 'added' },
     },
   ]);
+  assert.deepEqual(parseSideBySideDisplayRows(content), rows);
 });
 
 test('wrapped line rows account for tabs and long text', () => {

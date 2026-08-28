@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type UIEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type UIEvent } from 'react';
 import { Check, GitCompare, X } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
 import { C } from '../theme';
@@ -6,7 +6,7 @@ import type { AppSettings, CommitDetail, DiffViewerRequest, FileChange, RepoDeta
 import { buildDiffRowOffsets, calculateVariableDiffViewport, DIFF_LINE_HEIGHT } from '../features/diff/diff-viewport';
 import { chooseDefaultWorkingDiffMode, filterWorkingDiffFiles, type WorkingDiffMode } from '../features/diff/diff-viewer-state';
 import { createFileDiffLoader, type FileDiffLoader } from '../features/diff/file-diff-loader';
-import { countWrappedLineRows, filterSideBySideDisplayRows, parseSideBySideDiff, type SideBySideCell, type SideBySideRow } from '../features/diff/side-by-side';
+import { countWrappedLineRows, parseSideBySideDisplayRows, type SideBySideCell, type SideBySideDisplayRow, type SideBySideRow } from '../features/diff/side-by-side';
 
 interface DiffViewerModalProps {
   request: DiffViewerRequest | null;
@@ -17,8 +17,10 @@ interface DiffViewerModalProps {
 
 type DiffLoadState =
   | { status: 'loading' }
-  | { status: 'ready'; content: string }
+  | { status: 'ready'; rows: SideBySideDisplayRow[] }
   | { status: 'error'; message: string };
+
+const EMPTY_DIFF_ROWS: SideBySideDisplayRow[] = [];
 
 export function DiffViewerModal({ request, repo, settings, onClose }: DiffViewerModalProps) {
   const backend = useAppBackend();
@@ -133,16 +135,29 @@ export function DiffViewerModal({ request, repo, settings, onClose }: DiffViewer
     () => request?.kind === 'commit' ? commitFiles : filterWorkingDiffFiles(workingFiles, workingMode),
     [commitFiles, request?.kind, workingFiles, workingMode],
   );
+  const normalizedFilePaths = useMemo(() => files.map(file => file.path.toLowerCase()), [files]);
   const visibleFiles = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return query ? files.filter(file => file.path.toLowerCase().includes(query)) : files;
-  }, [files, search]);
+    if (!query) return files;
+    const result: FileChange[] = [];
+    for (let index = 0; index < files.length; index += 1) {
+      if (normalizedFilePaths[index]?.includes(query)) {
+        const file = files[index];
+        if (file) result.push(file);
+      }
+    }
+    return result;
+  }, [files, normalizedFilePaths, search]);
 
   useEffect(() => {
     setSelectedFileId(current => files.some(file => file.id === current) ? current : files[0]?.id ?? null);
   }, [files]);
 
-  const selectedFile = !loading && !loadError ? files.find(file => file.id === selectedFileId) ?? null : null;
+  const selectedFile = useMemo(() => {
+    if (loading || loadError) return null;
+    return files.find(file => file.id === selectedFileId) ?? files[0] ?? null;
+  }, [files, loadError, loading, selectedFileId]);
+  const commitParentHash = commitDetail?.parentHashes[0];
   const diffLoader = useMemo<FileDiffLoader | null>(() => {
     if (!request || !repoAvailable) return null;
     const currentRequest = request;
@@ -154,17 +169,40 @@ export function DiffViewerModal({ request, repo, settings, onClose }: DiffViewer
       staged: currentRequest.kind === 'working' && workingMode === 'staged',
       untracked: false,
       commitHash: currentRequest.kind === 'commit' ? currentRequest.commitHash : undefined,
+      parentHash: currentRequest.kind === 'commit' ? commitParentHash : undefined,
       settings,
       target: { path: repoPath, category: repoCategory },
     }));
-  }, [backend, repoAvailable, repoCategory, repoPath, requestKey, settings, workingMode]);
+  }, [backend, commitParentHash, repoAvailable, repoCategory, repoPath, requestKey, settings, workingMode]);
+
+  const workingCounts = useMemo(() => {
+    let staged = 0;
+    let unstaged = 0;
+    for (const file of workingFiles) {
+      if (file.untracked) continue;
+      if (file.staged) staged += 1;
+      else unstaged += 1;
+    }
+    return { staged, unstaged };
+  }, [workingFiles]);
+  const stagedCount = workingCounts.staged;
+  const unstagedCount = workingCounts.unstaged;
+  const reviewedCount = useMemo(
+    () => files.reduce((count, file) => count + (reviewedIds.has(file.id) ? 1 : 0), 0),
+    [files, reviewedIds],
+  );
+  const toggleReviewed = useCallback((fileId: string) => {
+    setReviewedIds(current => {
+      const next = new Set(current);
+      if (next.has(fileId)) next.delete(fileId);
+      else next.add(fileId);
+      return next;
+    });
+  }, []);
 
   if (!open || !request) return null;
 
   const isWorking = request.kind === 'working';
-  const stagedCount = filterWorkingDiffFiles(workingFiles, 'staged').length;
-  const unstagedCount = filterWorkingDiffFiles(workingFiles, 'unstaged').length;
-  const reviewedCount = files.filter(file => reviewedIds.has(file.id)).length;
   const sourceLabel = isWorking
     ? workingMode === 'staged' ? '暂存变更' : '未暂存变更'
     : `历史提交 · ${commitDetail?.shortHash ?? request.commitHash.slice(0, 8)}`;
@@ -174,14 +212,6 @@ export function DiffViewerModal({ request, repo, settings, onClose }: DiffViewer
     setWorkingMode(nextMode);
     setSelectedFileId(null);
     setReviewedIds(new Set());
-  };
-  const toggleReviewed = (fileId: string) => {
-    setReviewedIds(current => {
-      const next = new Set(current);
-      if (next.has(fileId)) next.delete(fileId);
-      else next.add(fileId);
-      return next;
-    });
   };
 
   return (
@@ -261,7 +291,7 @@ export function DiffViewerModal({ request, repo, settings, onClose }: DiffViewer
                   files={visibleFiles}
                   loading={loading}
                   emptyMessage={files.length === 0 ? '当前来源没有可显示的变更' : '没有匹配的文件'}
-                  selectedFileId={selectedFileId}
+                  selectedFileId={selectedFile?.id ?? null}
                   reviewedIds={reviewedIds}
                   onSelect={setSelectedFileId}
                   onToggleReviewed={toggleReviewed}
@@ -338,12 +368,16 @@ function DiffFileList({ files, loading, emptyMessage, selectedFileId, reviewedId
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollFrame = useRef<number | null>(null);
+  const pendingScrollTop = useRef(0);
+  const currentScrollTop = useRef(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(360);
 
   useEffect(() => {
     if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
     scrollFrame.current = null;
+    pendingScrollTop.current = 0;
+    currentScrollTop.current = 0;
     setScrollTop(0);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [files]);
@@ -364,10 +398,14 @@ function DiffFileList({ files, loading, emptyMessage, selectedFileId, reviewedId
 
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const nextScrollTop = event.currentTarget.scrollTop;
+    if (nextScrollTop === pendingScrollTop.current && scrollFrame.current !== null) return;
+    if (nextScrollTop === currentScrollTop.current && scrollFrame.current === null) return;
+    pendingScrollTop.current = nextScrollTop;
     if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
     scrollFrame.current = requestAnimationFrame(() => {
       scrollFrame.current = null;
-      setScrollTop(nextScrollTop);
+      currentScrollTop.current = pendingScrollTop.current;
+      setScrollTop(currentScrollTop.current);
     });
   }, []);
   const viewport = calculateFileListViewport(files.length, scrollTop, viewportHeight);
@@ -387,8 +425,8 @@ function DiffFileList({ files, loading, emptyMessage, selectedFileId, reviewedId
               selected={!loading && file.id === selectedFileId}
               reviewed={reviewedIds.has(file.id)}
               disabled={loading}
-              onSelect={() => onSelect(file.id)}
-              onToggleReviewed={() => onToggleReviewed(file.id)}
+              onSelect={onSelect}
+              onToggleReviewed={onToggleReviewed}
             />
           ))}
         </div>
@@ -414,10 +452,10 @@ function calculateFileListViewport(lineCount: number, scrollTop: number, viewpor
   };
 }
 
-function DiffFileRow({ file, selected, reviewed, disabled, onSelect, onToggleReviewed }: { file: FileChange; selected: boolean; reviewed: boolean; disabled: boolean; onSelect: () => void; onToggleReviewed: () => void }) {
+const DiffFileRow = memo(function DiffFileRow({ file, selected, reviewed, disabled, onSelect, onToggleReviewed }: { file: FileChange; selected: boolean; reviewed: boolean; disabled: boolean; onSelect: (fileId: string) => void; onToggleReviewed: (fileId: string) => void }) {
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', gap: 4, height: DIFF_FILE_ROW_HEIGHT, boxSizing: 'border-box', padding: '2px 6px 2px 8px', background: selected ? C.selectedBg : 'transparent', borderLeft: `2px solid ${selected ? C.btnPrimary : 'transparent'}`, opacity: disabled ? 0.7 : 1 }}>
-      <button type="button" disabled={disabled} onClick={onSelect} aria-current={selected ? 'true' : undefined} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 7, background: 'none', border: 'none', color: C.textSecondary, cursor: disabled ? 'wait' : 'pointer', padding: '8px 3px', textAlign: 'left' }}>
+      <button type="button" disabled={disabled} onClick={() => onSelect(file.id)} aria-current={selected ? 'true' : undefined} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 7, background: 'none', border: 'none', color: C.textSecondary, cursor: disabled ? 'wait' : 'pointer', padding: '8px 3px', textAlign: 'left' }}>
         <StatusTag status={file.status} />
         <span title={file.previousPath ? `${file.previousPath} → ${file.path}` : file.path} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: file.status === 'D' ? C.deleted : C.textPrimary, textDecoration: file.status === 'D' ? 'line-through' : 'none' }}>
           {file.previousPath ? `${file.previousPath} → ${file.path}` : file.path}
@@ -427,17 +465,17 @@ function DiffFileRow({ file, selected, reviewed, disabled, onSelect, onToggleRev
           {file.deletions > 0 && <span style={{ color: C.deleted }}>-{file.deletions}</span>}
         </span>
       </button>
-      <button type="button" disabled={disabled} onClick={onToggleReviewed} aria-label={reviewed ? '取消已查看' : '标记已查看'} title={reviewed ? '取消已查看' : '标记已查看'} style={{ alignSelf: 'center', background: 'none', border: 'none', color: reviewed ? C.added : C.textWeak, cursor: disabled ? 'wait' : 'pointer', padding: 5, display: 'flex' }}>
+      <button type="button" disabled={disabled} onClick={() => onToggleReviewed(file.id)} aria-label={reviewed ? '取消已查看' : '标记已查看'} title={reviewed ? '取消已查看' : '标记已查看'} style={{ alignSelf: 'center', background: 'none', border: 'none', color: reviewed ? C.added : C.textWeak, cursor: disabled ? 'wait' : 'pointer', padding: 5, display: 'flex' }}>
         <Check size={12} />
       </button>
     </div>
   );
-}
+});
 
-function StatusTag({ status }: { status: FileChange['status'] }) {
+const StatusTag = memo(function StatusTag({ status }: { status: FileChange['status'] }) {
   const color = status === 'A' ? C.added : status === 'D' ? C.deleted : status === 'R' ? C.needPull : C.modified;
   return <span style={{ flexShrink: 0, width: 18, color, background: `${color}20`, borderRadius: 3, padding: '2px 3px', textAlign: 'center', fontSize: 9, fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{status}</span>;
-}
+});
 
 function reviewButtonStyle(reviewed: boolean) {
   return {
@@ -467,7 +505,7 @@ function measureDiffCharacterWidth() {
   return context.measureText('0').width || DIFF_DEFAULT_CHARACTER_WIDTH;
 }
 
-function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLoader }) {
+const SideBySideDiff = memo(function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLoader }) {
   const leftScrollRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const scrollFrame = useRef<number | null>(null);
@@ -476,20 +514,60 @@ function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLo
   const [state, setState] = useState<DiffLoadState>({ status: 'loading' });
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(560);
-  const [wrapColumns, setWrapColumns] = useState({ left: 72, right: 72 });
+  const [wrapColumns, setWrapColumns] = useState({ left: 0, right: 0 });
   const [measuredRowHeights, setMeasuredRowHeights] = useState<Map<number, number>>(() => new Map());
-  const reportRowHeight = useCallback((rowIndex: number, height: number) => {
+  const measuredRowHeightsRef = useRef(new Map<number, number>());
+  const pendingRowHeights = useRef(new Map<number, number>());
+  const measurementFrame = useRef<number | null>(null);
+
+  const clearMeasuredRowHeights = useCallback(() => {
+    if (measurementFrame.current !== null) cancelAnimationFrame(measurementFrame.current);
+    measurementFrame.current = null;
+    pendingRowHeights.current.clear();
+    measuredRowHeightsRef.current.clear();
+    setMeasuredRowHeights(previous => previous.size === 0 ? previous : new Map());
+  }, []);
+
+  const flushMeasuredRowHeights = useCallback(() => {
+    measurementFrame.current = null;
+    const pending = pendingRowHeights.current;
+    pendingRowHeights.current = new Map();
+    if (pending.size === 0) return;
     setMeasuredRowHeights(previous => {
-      const current = previous.get(rowIndex) ?? 0;
-      if (height <= current) return previous;
-      const next = new Map(previous);
-      next.set(rowIndex, height);
+      let next = previous;
+      for (const [rowIndex, height] of pending) {
+        if (height <= (previous.get(rowIndex) ?? 0)) continue;
+        if (next === previous) next = new Map(previous);
+        next.set(rowIndex, height);
+      }
       return next;
     });
   }, []);
 
+  const reportRowHeight = useCallback((rowIndex: number, height: number, synchronous = false) => {
+    const nextHeight = Math.max(DIFF_LINE_HEIGHT, Math.ceil(height));
+    const knownHeight = Math.max(
+      measuredRowHeightsRef.current.get(rowIndex) ?? 0,
+      pendingRowHeights.current.get(rowIndex) ?? 0,
+    );
+    if (nextHeight <= knownHeight) return;
+    measuredRowHeightsRef.current.set(rowIndex, nextHeight);
+    pendingRowHeights.current.set(rowIndex, nextHeight);
+    if (synchronous) {
+      if (measurementFrame.current !== null) cancelAnimationFrame(measurementFrame.current);
+      flushMeasuredRowHeights();
+    } else if (measurementFrame.current === null) {
+      measurementFrame.current = requestAnimationFrame(flushMeasuredRowHeights);
+    }
+  }, [flushMeasuredRowHeights]);
+
+  useEffect(() => () => {
+    if (measurementFrame.current !== null) cancelAnimationFrame(measurementFrame.current);
+  }, []);
+
   useEffect(() => {
     let active = true;
+    clearMeasuredRowHeights();
     setState({ status: 'loading' });
     setScrollTop(0);
     currentScrollTop.current = 0;
@@ -498,7 +576,7 @@ function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLo
     if (rightScrollRef.current) rightScrollRef.current.scrollTop = 0;
     void loader.load(file).then(
       diff => {
-        if (active) setState({ status: 'ready', content: diff.content });
+        if (active) setState({ status: 'ready', rows: parseSideBySideDisplayRows(diff.content) });
       },
       error => {
         if (active) setState({ status: 'error', message: error instanceof Error ? error.message : '差异加载失败' });
@@ -506,11 +584,12 @@ function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLo
     );
     return () => {
       active = false;
+      loader.dispose?.();
       if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
     };
-  }, [file, loader]);
+  }, [clearMeasuredRowHeights, file, loader]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (state.status !== 'ready') return;
     const leftNode = leftScrollRef.current;
     const rightNode = rightScrollRef.current;
@@ -518,7 +597,8 @@ function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLo
     const characterWidth = measureDiffCharacterWidth();
     const toColumns = (node: HTMLDivElement) => Math.max(1, Math.floor((node.clientWidth - DIFF_LINE_NUMBER_WIDTH - DIFF_CELL_HORIZONTAL_PADDING) / characterWidth));
     const updateSize = () => {
-      setViewportHeight(Math.min(leftNode.clientHeight || 560, rightNode.clientHeight || 560));
+      const nextViewportHeight = Math.min(leftNode.clientHeight || 560, rightNode.clientHeight || 560);
+      setViewportHeight(previous => previous === nextViewportHeight ? previous : nextViewportHeight);
       const nextWrapColumns = { left: toColumns(leftNode), right: toColumns(rightNode) };
       setWrapColumns(previous => previous.left === nextWrapColumns.left && previous.right === nextWrapColumns.right ? previous : nextWrapColumns);
     };
@@ -529,9 +609,14 @@ function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLo
     return () => observer.disconnect();
   }, [state.status]);
 
+  useEffect(() => {
+    clearMeasuredRowHeights();
+  }, [clearMeasuredRowHeights, wrapColumns.left, wrapColumns.right]);
+
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const nextScrollTop = event.currentTarget.scrollTop;
-    if (nextScrollTop === currentScrollTop.current) return;
+    if (nextScrollTop === pendingScrollTop.current && scrollFrame.current !== null) return;
+    if (nextScrollTop === currentScrollTop.current && scrollFrame.current === null) return;
     pendingScrollTop.current = nextScrollTop;
     if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
     scrollFrame.current = requestAnimationFrame(() => {
@@ -544,14 +629,34 @@ function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLo
       });
     });
   }, []);
-  const rows = useMemo(() => state.status === 'ready' ? filterSideBySideDisplayRows(parseSideBySideDiff(state.content)) : [], [state]);
-  const rowHeights = useMemo(() => rows.map((row, index) => {
-    if (row.kind !== 'lines') return DIFF_LINE_HEIGHT;
-    const leftRows = countWrappedLineRows(row.left.text, wrapColumns.left);
-    const rightRows = countWrappedLineRows(row.right.text, wrapColumns.right);
-    const estimatedHeight = Math.max(leftRows, rightRows) * DIFF_LINE_HEIGHT;
-    return Math.max(estimatedHeight, measuredRowHeights.get(index) ?? 0);
-  }), [rows, wrapColumns, measuredRowHeights]);
+  const rows = state.status === 'ready' ? state.rows : EMPTY_DIFF_ROWS;
+  const estimatedRowHeights = useMemo(() => {
+    const heights = new Array<number>(rows.length);
+    if (wrapColumns.left <= 0 || wrapColumns.right <= 0) {
+      heights.fill(DIFF_LINE_HEIGHT);
+      return heights;
+    }
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      if (!row || row.kind !== 'lines') {
+        heights[index] = DIFF_LINE_HEIGHT;
+        continue;
+      }
+      const leftRows = countWrappedLineRows(row.left.text, wrapColumns.left);
+      const rightRows = countWrappedLineRows(row.right.text, wrapColumns.right);
+      heights[index] = Math.max(leftRows, rightRows) * DIFF_LINE_HEIGHT;
+    }
+    return heights;
+  }, [rows, wrapColumns.left, wrapColumns.right]);
+  const rowHeights = useMemo(() => {
+    if (measuredRowHeights.size === 0) return estimatedRowHeights;
+    const heights = estimatedRowHeights.slice();
+    for (const [rowIndex, measuredHeight] of measuredRowHeights) {
+      const estimatedHeight = heights[rowIndex] ?? DIFF_LINE_HEIGHT;
+      heights[rowIndex] = Math.max(estimatedHeight, measuredHeight);
+    }
+    return heights;
+  }, [estimatedRowHeights, measuredRowHeights]);
   const rowOffsets = useMemo(() => buildDiffRowOffsets(rowHeights), [rowHeights]);
   const viewport = calculateVariableDiffViewport({ rowOffsets, scrollTop, viewportHeight });
 
@@ -587,7 +692,9 @@ function SideBySideDiff({ file, loader }: { file: FileChange; loader: FileDiffLo
       )}
     </div>
   );
-}
+});
+
+type DiffRowRegistration = (rowIndex: number, node: HTMLDivElement | null) => void;
 
 function DiffColumn({ side, rows, viewport, rowOffsets, scrollRef, onScroll, onRowResize }: {
   side: 'left' | 'right';
@@ -596,23 +703,55 @@ function DiffColumn({ side, rows, viewport, rowOffsets, scrollRef, onScroll, onR
   rowOffsets: number[];
   scrollRef: RefObject<HTMLDivElement>;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
-  onRowResize: (rowIndex: number, height: number) => void;
+  onRowResize: (rowIndex: number, height: number, synchronous?: boolean) => void;
 }) {
+  const rowElements = useRef(new Map<number, HTMLDivElement>());
+  const resizeObserver = useRef<ResizeObserver | null>(null);
+  const registerRow = useCallback<DiffRowRegistration>((rowIndex, node) => {
+    const previous = rowElements.current.get(rowIndex);
+    if (previous && previous !== node) resizeObserver.current?.unobserve(previous);
+    if (!node) {
+      rowElements.current.delete(rowIndex);
+      return;
+    }
+    rowElements.current.set(rowIndex, node);
+    resizeObserver.current?.observe(node);
+  }, []);
+
+  useEffect(() => {
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const target = entry.target as HTMLElement;
+        const rowIndex = Number(target.dataset.diffRowIndex);
+        const expectedHeight = Number(target.dataset.diffRowHeight);
+        if (Number.isInteger(rowIndex) && (!Number.isFinite(expectedHeight) || entry.contentRect.height > expectedHeight)) {
+          onRowResize(rowIndex, entry.contentRect.height);
+        }
+      }
+    });
+    resizeObserver.current = observer;
+    for (const node of rowElements.current.values()) observer.observe(node);
+    return () => {
+      observer.disconnect();
+      if (resizeObserver.current === observer) resizeObserver.current = null;
+    };
+  }, [onRowResize]);
+
   return (
     <div
       ref={scrollRef}
       onScroll={onScroll}
       role="region"
       aria-label={side === 'left' ? '旧版本代码差异' : '新版本代码差异'}
-      style={{ minWidth: 0, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', scrollbarGutter: 'stable', borderRight: side === 'left' ? `1px solid ${C.border}` : undefined }}
+      style={{ minWidth: 0, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', scrollbarGutter: 'stable', overflowAnchor: 'none', borderRight: side === 'left' ? `1px solid ${C.border}` : undefined }}
     >
-      <div style={{ position: 'relative', minWidth: '100%', width: '100%', height: viewport.totalHeight, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
-        <div style={{ position: 'absolute', top: viewport.offsetTop, left: 0, right: 0 }}>
+      <div style={{ position: 'relative', minWidth: '100%', width: '100%', height: viewport.totalHeight, contain: 'layout style' }}>
+        <div style={{ position: 'absolute', top: viewport.offsetTop, left: 0, right: 0, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
           {rows.slice(viewport.start, viewport.end).map((row, index) => {
             const rowIndex = viewport.start + index;
             const rowTop = rowOffsets[rowIndex] ?? 0;
             const rowHeight = (rowOffsets[rowIndex + 1] ?? rowTop + DIFF_LINE_HEIGHT) - rowTop;
-            return <SideColumnRowView key={rowIndex} row={row} side={side} height={rowHeight} rowIndex={rowIndex} onResize={onRowResize} />;
+            return <SideColumnRowView key={rowIndex} row={row} side={side} height={rowHeight} rowIndex={rowIndex} registerRow={registerRow} onResize={onRowResize} />;
           })}
         </div>
       </div>
@@ -620,33 +759,37 @@ function DiffColumn({ side, rows, viewport, rowOffsets, scrollRef, onScroll, onR
   );
 }
 
-function SideColumnRowView({ row, side, height, rowIndex, onResize }: { row: SideBySideRow; side: 'left' | 'right'; height: number; rowIndex: number; onResize: (rowIndex: number, height: number) => void }) {
+const SideColumnRowView = memo(function SideColumnRowView({ row, side, height, rowIndex, registerRow, onResize }: { row: SideBySideRow; side: 'left' | 'right'; height: number; rowIndex: number; registerRow: DiffRowRegistration; onResize: (rowIndex: number, height: number, synchronous?: boolean) => void }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const node = rowRef.current;
     if (!node) return;
-    const report = () => onResize(rowIndex, Math.ceil(node.getBoundingClientRect().height));
-    report();
-    const observer = new ResizeObserver(report);
-    observer.observe(node);
-    return () => observer.disconnect();
+    registerRow(rowIndex, node);
+    return () => registerRow(rowIndex, null);
+  }, [registerRow, rowIndex]);
+
+  useLayoutEffect(() => {
+    const node = rowRef.current;
+    if (!node) return;
+    const actualHeight = Math.ceil(node.getBoundingClientRect().height);
+    if (actualHeight > height) onResize(rowIndex, actualHeight, true);
   }, [height, onResize, rowIndex]);
 
   return (
-    <div ref={rowRef} style={{ minHeight: height }}>
+    <div ref={rowRef} data-diff-row-index={rowIndex} data-diff-row-height={height} style={{ minHeight: height }}>
       {row.kind === 'meta' && <DiffSpecialRow text={side === 'left' ? row.text : ''} color={C.textWeak} background={C.panel1} minHeight={height} />}
       {row.kind === 'hunk' && <DiffSpecialRow text={side === 'left' ? row.text : ''} color={C.needPull} background={`${C.needPull}12`} minHeight={height} />}
       {row.kind === 'lines' && <DiffCell cell={side === 'left' ? row.left : row.right} minHeight={height} />}
     </div>
   );
-}
+});
 
-function DiffSpecialRow({ text, color, background, minHeight }: { text: string; color: string; background: string; minHeight: number }) {
+const DiffSpecialRow = memo(function DiffSpecialRow({ text, color, background, minHeight }: { text: string; color: string; background: string; minHeight: number }) {
   return <div style={{ width: '100%', minWidth: '100%', minHeight, lineHeight: `${DIFF_LINE_HEIGHT}px`, padding: '0 12px', color, background, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', boxSizing: 'border-box' }}>{text || ' '}</div>;
-}
+});
 
-function DiffCell({ cell, minHeight }: { cell: SideBySideCell; minHeight: number }) {
+const DiffCell = memo(function DiffCell({ cell, minHeight }: { cell: SideBySideCell; minHeight: number }) {
   const isAdded = cell.kind === 'added';
   const isDeleted = cell.kind === 'deleted';
   const background = isAdded ? `${C.added}16` : isDeleted ? `${C.deleted}16` : cell.kind === 'empty' ? `${C.panel1}80` : 'transparent';
@@ -657,4 +800,4 @@ function DiffCell({ cell, minHeight }: { cell: SideBySideCell; minHeight: number
       <span style={{ display: 'block', flex: 1, minWidth: 0, padding: '0 10px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', tabSize: 4 }}>{cell.text || ' '}</span>
     </div>
   );
-}
+});

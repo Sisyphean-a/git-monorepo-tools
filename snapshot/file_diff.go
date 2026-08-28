@@ -58,9 +58,13 @@ func (s *Service) getCommitFileDiff(request FileDiffRequest) (FileDiff, error) {
 	}
 	commitHash := strings.TrimSpace(request.CommitHash)
 	executor := newGitExecutor(request.Snapshot)
-	base, err := executor.commitDiffBase(repoPath, commitHash)
-	if err != nil {
-		return FileDiff{}, err
+	// 提交详情已解析第一父提交时直接复用，避免每个文件再启动一次 rev-list。
+	base := strings.TrimSpace(request.ParentHash)
+	if base == "" {
+		base, err = executor.commitDiffBase(repoPath, commitHash)
+		if err != nil {
+			return FileDiff{}, err
+		}
 	}
 	diffArgs := []string{"diff", "--no-ext-diff", "--find-renames", "--unified=3", base, commitHash, "--"}
 	if strings.TrimSpace(request.PreviousPath) != "" {

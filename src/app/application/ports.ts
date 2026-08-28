@@ -80,6 +80,7 @@ export interface FileDiffRequest {
   staged: boolean;
   untracked: boolean;
   commitHash?: string;
+  parentHash?: string;
   settings?: AppSettings;
   target?: RepoRefreshTarget;
 }

@@ -102,6 +102,35 @@ func TestGetFileDiffRejectsPathTraversal(t *testing.T) {
 	}
 }
 
+func TestGetFileDiffAcceptsKnownCommitParent(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "tracked.txt", "base\n", "init")
+	writeTestFile(t, repoPath, "tracked.txt", "base\nchanged\n")
+	runTestGit(t, repoPath, "commit", "-am", "change")
+
+	service, repoID, request := buildFileDiffFixture(t, root)
+	detail, err := service.GetCommitDetail(repoID, request, "HEAD")
+	if err != nil {
+		t.Fatalf("get commit detail: %v", err)
+	}
+	if len(detail.ParentHashes) != 1 {
+		t.Fatalf("expected one commit parent, got %v", detail.ParentHashes)
+	}
+
+	diff, err := service.GetFileDiff(FileDiffRequest{
+		RepoID: repoID, Snapshot: request, FilePath: "tracked.txt", Status: "M",
+		CommitHash: detail.Hash, ParentHash: detail.ParentHashes[0],
+	})
+	if err != nil {
+		t.Fatalf("get commit file diff with known parent: %v", err)
+	}
+	if !strings.Contains(diff.Content, "+changed") {
+		t.Fatalf("unexpected commit diff: %q", diff.Content)
+	}
+}
+
 func TestGetFileDiffRejectsRepositoryInternalFile(t *testing.T) {
 	root := t.TempDir()
 	repoPath := filepath.Join(root, "repo")

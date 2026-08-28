@@ -30,6 +30,7 @@ type FileDiffRequest struct {
 	Staged       bool    `json:"staged"`
 	Untracked    bool    `json:"untracked"`
 	CommitHash   string  `json:"commitHash,omitempty"`
+	ParentHash   string  `json:"parentHash,omitempty"`
 }
 
 type RepoCommandRequest struct {

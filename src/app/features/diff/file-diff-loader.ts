@@ -4,6 +4,7 @@ export type FetchFileDiff = (file: FileChange) => Promise<FileDiff>;
 
 export interface FileDiffLoader {
   load(file: FileChange): Promise<FileDiff>;
+  dispose?(): void;
 }
 
 export function fileDiffKey(file: FileChange) {
@@ -26,16 +27,22 @@ export function createFileDiffLoader(fetchDiff: FetchFileDiff): FileDiffLoader {
     const existing = pendingRequests.get(key);
     if (existing) return existing;
 
-    const pending = fetchDiff(file).then(diff => {
-      pendingRequests.delete(key);
+    let pending: Promise<FileDiff>;
+    pending = fetchDiff(file).then(diff => {
+      if (pendingRequests.get(key) === pending) pendingRequests.delete(key);
       return diff;
     }, error => {
-      pendingRequests.delete(key);
+      if (pendingRequests.get(key) === pending) pendingRequests.delete(key);
       throw error;
     });
     pendingRequests.set(key, pending);
     return pending;
   };
 
-  return { load };
+  const dispose = () => {
+    // Wails 无法取消进行中的进程，但切换/关闭时清空引用可尽早释放这一代请求。
+    pendingRequests.clear();
+  };
+
+  return { load, dispose };
 }

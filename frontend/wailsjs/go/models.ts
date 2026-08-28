@@ -522,6 +522,7 @@ export namespace snapshot {
 	    staged: boolean;
 	    untracked: boolean;
 	    commitHash?: string;
+	    parentHash?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new FileDiffRequest(source);
@@ -537,6 +538,7 @@ export namespace snapshot {
 	        this.staged = source["staged"];
 	        this.untracked = source["untracked"];
 	        this.commitHash = source["commitHash"];
+	        this.parentHash = source["parentHash"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

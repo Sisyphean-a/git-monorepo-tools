@@ -76,6 +76,30 @@ test('file diff loader retries after a failed request', async () => {
   assert.equal(calls, 2);
 });
 
+test('file diff loader releases pending references when disposed', async () => {
+  const resolvers: Array<(value: FileDiff) => void> = [];
+  let calls = 0;
+  const load = createFileDiffLoader(() => {
+    calls += 1;
+    return new Promise<FileDiff>(resolve => {
+      resolvers.push(resolve);
+    });
+  });
+
+  const first = load.load(file);
+  load.dispose?.();
+  const second = load.load(file);
+  assert.notEqual(first, second);
+  assert.equal(calls, 2);
+  resolvers[0]?.(diff);
+  await first;
+  const third = load.load(file);
+  assert.equal(third, second);
+  assert.equal(calls, 2);
+  resolvers[1]?.(diff);
+  await second;
+});
+
 test('separate loader generations isolate late results', async () => {
   let resolveOld: ((value: FileDiff) => void) | undefined;
   const oldLoader = createFileDiffLoader(() => new Promise(resolve => {
