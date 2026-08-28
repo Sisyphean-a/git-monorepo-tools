@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, CommitDetail, FileDiff, PullResult, RepoCommandResult, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
+import type { AppSettings, AppSnapshot, CommitDetail, FileChange, FileDiff, PullResult, RepoCommandResult, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
 import type {
   BatchResponse,
   CommitDetailRequest,
@@ -8,6 +8,7 @@ import type {
   RepoHistoryRequest,
   RepoInteractionBackend,
   RepoRefreshTarget,
+  WorkingDiffFilesRequest,
   SnapshotFetchOptions,
   TerminalSessionRequest,
   WorkspaceBackend,
@@ -52,9 +53,11 @@ type WailsFileDiffRequest = {
   repoId: string;
   snapshot: SnapshotRequest;
   filePath: string;
+  previousPath?: string;
   status: FileDiffRequest['status'];
   staged: boolean;
   untracked: boolean;
+  commitHash?: string;
 };
 
 type WailsBindings = {
@@ -66,6 +69,7 @@ type WailsBindings = {
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
   GetRepoHistory: (repoId: string, request: SnapshotRequest, offset: number, limit: number) => Promise<RepoHistoryPage>;
   GetCommitDetail: (repoId: string, request: SnapshotRequest, hash: string) => Promise<CommitDetail>;
+  GetWorkingDiffFiles?: (repoId: string, request: SnapshotRequest) => Promise<FileChange[]>;
   GetFileDiff: (request: WailsFileDiffRequest) => Promise<FileDiff>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
   EnsureTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
@@ -196,7 +200,15 @@ export async function fetchCommitDetail({ repoId, hash, settings }: CommitDetail
   return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
 }
 
-export async function fetchFileDiff({ repoId, filePath, status, staged, untracked, settings, target }: FileDiffRequest) {
+export async function fetchWorkingDiffFiles({ repoId, settings, target }: WorkingDiffFilesRequest) {
+  const binding = getWailsBindings().GetWorkingDiffFiles;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 工作区差异文件绑定不可用');
+  }
+  return binding(repoId, buildSnapshotRequest(settings, undefined, target));
+}
+
+export async function fetchFileDiff({ repoId, filePath, previousPath, status, staged, untracked, commitHash, settings, target }: FileDiffRequest) {
   const binding = getWailsBindings().GetFileDiff;
   if (typeof binding !== 'function') {
     throw new Error('Wails 文件差异绑定不可用');
@@ -205,9 +217,11 @@ export async function fetchFileDiff({ repoId, filePath, status, staged, untracke
     repoId,
     snapshot: buildSnapshotRequest(settings, undefined, target),
     filePath,
+    previousPath,
     status,
     staged,
     untracked,
+    commitHash,
   });
 }
 
@@ -299,6 +313,7 @@ export const wailsClient: WorkspaceBackend & RepoInteractionBackend = {
   fetchRepoLog,
   fetchRepoHistory,
   fetchCommitDetail,
+  fetchWorkingDiffFiles,
   fetchFileDiff,
   runRepoCommand,
   generateCommitMessage,

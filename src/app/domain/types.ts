@@ -27,6 +27,7 @@ export interface FileChange {
   additions: number;
   deletions: number;
   size: string;
+  previousPath?: string;
   sizeBytes?: number;
   previousSize?: string;
   previousSizeBytes?: number;
@@ -40,6 +41,10 @@ export interface FileDiff {
   staged: boolean;
   content: string;
 }
+
+export type DiffViewerRequest =
+  | { kind: 'working'; repoId: string }
+  | { kind: 'commit'; repoId: string; commitHash: string; commitDetail?: CommitDetail };
 
 export interface PullResult {
   id: string;
@@ -212,6 +217,7 @@ export interface CommitDetail extends CommitSummary {
   authorEmail: string;
   committedAt: string;
   filesChanged: string[];
+  changedFiles: FileChange[];
 }
 
 export interface RepoHistoryPage {

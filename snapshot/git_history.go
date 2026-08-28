@@ -6,7 +6,10 @@ import (
 	"strings"
 )
 
-const defaultHistoryPageSize = 50
+const (
+	defaultHistoryPageSize = 50
+	emptyTreeHash          = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+)
 
 // Flow: Git determines the all-ref topological order; the returned parent hashes let the UI continue one graph while it appends pages.
 func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) ([]CommitSummary, bool, error) {
@@ -101,12 +104,151 @@ func (executor gitExecutor) loadCommitDetail(repoPath, hash string) (CommitDetai
 	if err != nil {
 		return CommitDetail{}, err
 	}
-	statsOutput, err := executor.runGit(repoPath, []string{"show", "--numstat", "--format=", hash})
+	changes, err := executor.loadCommitChanges(repoPath, detail)
 	if err != nil {
 		return CommitDetail{}, err
 	}
-	applyCommitDetailStats(&detail, statsOutput)
+	detail.ChangedFiles = changes
+	detail.FilesChanged = make([]string, 0, len(changes))
+	for _, change := range changes {
+		detail.FilesChanged = append(detail.FilesChanged, change.Path)
+		detail.Additions += change.Additions
+		detail.Deletions += change.Deletions
+		detail.Files++
+	}
 	return detail, nil
+}
+
+func (executor gitExecutor) commitDiffBase(repoPath, hash string) (string, error) {
+	output, err := executor.runGit(repoPath, []string{"rev-list", "--parents", "-n", "1", hash})
+	if err != nil {
+		return "", err
+	}
+	parts := strings.Fields(output)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("未找到提交：%s", hash)
+	}
+	if len(parts) == 1 {
+		return emptyTreeHash, nil
+	}
+	return parts[1], nil
+}
+
+type commitFileStatus struct {
+	status       string
+	path         string
+	previousPath string
+}
+
+func (executor gitExecutor) loadCommitChanges(repoPath string, detail CommitDetail) ([]FileChange, error) {
+	base := emptyTreeHash
+	if len(detail.ParentHashes) > 0 {
+		base = detail.ParentHashes[0]
+	}
+	statusOutput, err := executor.runGitRaw(repoPath, commitDiffArgs("--name-status", base, detail.Hash))
+	if err != nil {
+		return nil, err
+	}
+	statsOutput, err := executor.runGitRaw(repoPath, commitDiffArgs("--numstat", base, detail.Hash))
+	if err != nil {
+		return nil, err
+	}
+	statuses := parseCommitNameStatus(statusOutput)
+	stats := parseCommitNumstat(statsOutput)
+	if len(statuses) != len(stats) {
+		return nil, fmt.Errorf("提交差异文件列表格式异常：文件 %d，统计 %d", len(statuses), len(stats))
+	}
+	changes := make([]FileChange, 0, len(statuses))
+	for index, status := range statuses {
+		stat := stats[index]
+		changes = append(changes, FileChange{
+			ID:           status.path + "::commit",
+			Status:       status.status,
+			Path:         status.path,
+			PreviousPath: status.previousPath,
+			Additions:    stat.additions,
+			Deletions:    stat.deletions,
+		})
+	}
+	return changes, nil
+}
+
+func commitDiffArgs(format, base, hash string) []string {
+	return []string{"diff", "--no-ext-diff", "--find-renames", format, "-z", base, hash, "--"}
+}
+
+func parseCommitNameStatus(output string) []commitFileStatus {
+	tokens := strings.Split(output, "\x00")
+	statuses := make([]commitFileStatus, 0)
+	for index := 0; index < len(tokens); {
+		rawStatus := tokens[index]
+		index++
+		if rawStatus == "" || index >= len(tokens) {
+			continue
+		}
+		path := normalizePath(tokens[index])
+		index++
+		if path == "" {
+			continue
+		}
+		status := normalizeCommitFileStatus(rawStatus)
+		previousPath := ""
+		if rawStatus[0] == 'R' || rawStatus[0] == 'C' {
+			previousPath = path
+			if index >= len(tokens) {
+				break
+			}
+			path = normalizePath(tokens[index])
+			index++
+		}
+		if path != "" {
+			statuses = append(statuses, commitFileStatus{status: status, path: path, previousPath: previousPath})
+		}
+	}
+	return statuses
+}
+
+func normalizeCommitFileStatus(raw string) string {
+	if raw == "" {
+		return "M"
+	}
+	switch raw[0] {
+	case 'A', 'D', 'M', 'R':
+		return string(raw[0])
+	case 'C':
+		return "A"
+	default:
+		return "M"
+	}
+}
+
+type commitFileStat struct {
+	additions int
+	deletions int
+}
+
+func parseCommitNumstat(output string) []commitFileStat {
+	tokens := strings.Split(output, "\x00")
+	stats := make([]commitFileStat, 0)
+	for index := 0; index < len(tokens); {
+		record := tokens[index]
+		index++
+		if record == "" {
+			continue
+		}
+		parts := strings.SplitN(record, "\t", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		if parts[2] == "" {
+			if index+1 >= len(tokens) {
+				break
+			}
+			index += 2
+		}
+		stats = append(stats, commitFileStat{additions: toNumber(parts[0]), deletions: toNumber(parts[1])})
+	}
+	return stats
 }
 
 func parseCommitDetail(output string) (CommitDetail, error) {

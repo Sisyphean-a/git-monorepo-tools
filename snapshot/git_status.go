@@ -164,6 +164,75 @@ func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) 
 	)
 }
 
+// Flow: 差异查看器只读取已跟踪文件的状态和行数；未跟踪扫描、文件大小与正文均留到各自边界处理。
+func (executor gitExecutor) loadWorkingDiffFiles(repoPath string) ([]FileChange, error) {
+	statusOutput, statusErr := executor.runGitRaw(repoPath, []string{
+		"status", "--porcelain=v1", "-z", "--untracked-files=no", "--no-renames",
+	})
+	stagedStatuses, unstagedStatuses := parseWorkingStatus(statusOutput)
+	staged, stagedErr := executor.loadWorkingDiffStats(repoPath, true, stagedStatuses)
+	unstaged, unstagedErr := executor.loadWorkingDiffStats(repoPath, false, unstagedStatuses)
+	changes := buildWorkingDiffChanges(staged, true)
+	changes = append(changes, buildWorkingDiffChanges(unstaged, false)...)
+	slices.SortFunc(changes, compareFileChanges)
+	return changes, firstGitError(statusErr, stagedErr, unstagedErr)
+}
+
+func (executor gitExecutor) loadWorkingDiffStats(repoPath string, staged bool, statuses map[string]string) (map[string]FileChange, error) {
+	args := []string{"diff", "--no-ext-diff"}
+	if staged {
+		args = append(args, "--cached")
+	}
+	args = append(args, "--numstat", "-z", "--no-renames")
+	statsOutput, statsErr := executor.runGitRaw(repoPath, args)
+	stats, parseErr := parseNumstat(statsOutput, statuses)
+	return stats, firstGitError(statsErr, parseErr)
+}
+
+func parseWorkingStatus(output string) (map[string]string, map[string]string) {
+	staged := map[string]string{}
+	unstaged := map[string]string{}
+	for _, record := range strings.Split(output, "\x00") {
+		if len(record) < 4 || record[2] != ' ' {
+			continue
+		}
+		path := normalizePath(record[3:])
+		if path == "" {
+			continue
+		}
+		if record[0] != ' ' && record[0] != '?' && record[0] != '!' {
+			staged[path] = workingFileStatus(record[0])
+		}
+		if record[1] != ' ' && record[1] != '?' && record[1] != '!' {
+			unstaged[path] = workingFileStatus(record[1])
+		}
+	}
+	return staged, unstaged
+}
+
+func workingFileStatus(status byte) string {
+	switch status {
+	case 'A':
+		return "A"
+	case 'D':
+		return "D"
+	case 'R':
+		return "R"
+	default:
+		return "M"
+	}
+}
+
+func buildWorkingDiffChanges(stats map[string]FileChange, staged bool) []FileChange {
+	changes := make([]FileChange, 0, len(stats))
+	for _, stat := range stats {
+		stat.ID = stat.Path + "::" + stagedLabel(staged)
+		stat.Staged = staged
+		changes = append(changes, stat)
+	}
+	return changes
+}
+
 func parseDiffBaseObjects(output string) map[string]string {
 	objects := map[string]string{}
 	records := strings.Split(output, "\x00")

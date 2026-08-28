@@ -85,6 +85,7 @@ export namespace snapshot {
 	    additions: number;
 	    deletions: number;
 	    size: string;
+	    previousPath?: string;
 	    sizeBytes?: number;
 	    previousSize?: string;
 	    previousSizeBytes?: number;
@@ -103,6 +104,7 @@ export namespace snapshot {
 	        this.additions = source["additions"];
 	        this.deletions = source["deletions"];
 	        this.size = source["size"];
+	        this.previousPath = source["previousPath"];
 	        this.sizeBytes = source["sizeBytes"];
 	        this.previousSize = source["previousSize"];
 	        this.previousSizeBytes = source["previousSizeBytes"];
@@ -369,6 +371,7 @@ export namespace snapshot {
 	    authorEmail: string;
 	    committedAt: string;
 	    filesChanged: string[];
+	    changedFiles: FileChange[];
 	
 	    static createFrom(source: any = {}) {
 	        return new CommitDetail(source);
@@ -391,7 +394,26 @@ export namespace snapshot {
 	        this.authorEmail = source["authorEmail"];
 	        this.committedAt = source["committedAt"];
 	        this.filesChanged = source["filesChanged"];
+	        this.changedFiles = this.convertValues(source["changedFiles"], FileChange);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	
 	
@@ -495,9 +517,11 @@ export namespace snapshot {
 	    repoId: string;
 	    snapshot: Request;
 	    filePath: string;
+	    previousPath?: string;
 	    status: string;
 	    staged: boolean;
 	    untracked: boolean;
+	    commitHash?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new FileDiffRequest(source);
@@ -508,9 +532,11 @@ export namespace snapshot {
 	        this.repoId = source["repoId"];
 	        this.snapshot = this.convertValues(source["snapshot"], Request);
 	        this.filePath = source["filePath"];
+	        this.previousPath = source["previousPath"];
 	        this.status = source["status"];
 	        this.staged = source["staged"];
 	        this.untracked = source["untracked"];
+	        this.commitHash = source["commitHash"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

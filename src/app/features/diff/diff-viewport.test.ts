@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateDiffViewport, DIFF_LINE_HEIGHT } from './diff-viewport.js';
+import { buildDiffRowOffsets, calculateDiffViewport, calculateVariableDiffViewport, DIFF_LINE_HEIGHT } from './diff-viewport.js';
 
 test('diff viewport renders visible rows with overscan', () => {
   const viewport = calculateDiffViewport({
@@ -14,6 +14,19 @@ test('diff viewport renders visible rows with overscan', () => {
     end: 38,
     offsetTop: 12 * DIFF_LINE_HEIGHT,
     totalHeight: 100 * DIFF_LINE_HEIGHT,
+  });
+});
+
+test('variable diff viewport uses wrapped row heights and offsets', () => {
+  const rowOffsets = buildDiffRowOffsets([DIFF_LINE_HEIGHT, DIFF_LINE_HEIGHT * 3, DIFF_LINE_HEIGHT, DIFF_LINE_HEIGHT * 2]);
+  const viewport = calculateVariableDiffViewport({ rowOffsets, scrollTop: DIFF_LINE_HEIGHT + 2, viewportHeight: DIFF_LINE_HEIGHT * 2 });
+
+  assert.deepEqual(viewport, {
+    start: 0,
+    end: 4,
+    offsetTop: 0,
+    totalHeight: DIFF_LINE_HEIGHT * 7,
+    rowOffsets,
   });
 });
 

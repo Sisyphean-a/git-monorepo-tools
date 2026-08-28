@@ -7,6 +7,7 @@ import {
   fetchCommitDetail,
   fetchFileDiff,
   fetchRepoHistory,
+  fetchWorkingDiffFiles,
   fetchSnapshot,
   fetchWorkspaceBootstrap,
   generateCommitMessage,
@@ -907,10 +908,31 @@ test('history bindings use dedicated Wails bridge', async () => {
         authorEmail: 'test@example.com',
         committedAt: '2026-07-06T10:00:00+08:00',
         filesChanged: ['src/app/components/repo-history-tab.tsx'],
+        changedFiles: [{
+          id: 'src/app/components/repo-history-tab.tsx::commit',
+          status: 'M',
+          path: 'src/app/components/repo-history-tab.tsx',
+          additions: 10,
+          deletions: 2,
+          size: '',
+          staged: false,
+        }],
       };
     },
-    GetFileDiff: async (request: { repoId: string; filePath: string; staged: boolean; snapshot: { repoPath?: string } }) => {
-      calls.push(`GetFileDiff:${request.repoId}:${request.filePath}:${request.staged}:${request.snapshot.repoPath}`);
+    GetWorkingDiffFiles: async (repoId: string, request: { repoPath?: string; repoCategory?: string }) => {
+      calls.push(`GetWorkingDiffFiles:${repoId}:${request.repoPath}:${request.repoCategory}`);
+      return [{
+        id: 'src/app/api.ts::unstaged',
+        status: 'M',
+        path: 'src/app/api.ts',
+        additions: 1,
+        deletions: 0,
+        size: '',
+        staged: false,
+      }];
+    },
+    GetFileDiff: async (request: { repoId: string; filePath: string; staged: boolean; previousPath?: string; commitHash?: string; snapshot: { repoPath?: string } }) => {
+      calls.push(`GetFileDiff:${request.repoId}:${request.filePath}:${request.staged}:${request.snapshot.repoPath}:${request.previousPath ?? '-'}:${request.commitHash ?? 'working'}`);
       return {
         repoId: request.repoId,
         path: request.filePath,
@@ -960,6 +982,13 @@ test('history bindings use dedicated Wails bridge', async () => {
     const detail = await fetchCommitDetail({ repoId: 'repo-1', hash: 'abc' });
     assert.equal(detail.authorEmail, 'test@example.com');
     assert.equal(detail.filesChanged[0], 'src/app/components/repo-history-tab.tsx');
+    assert.equal(detail.changedFiles[0]?.status, 'M');
+    const workingFiles = await fetchWorkingDiffFiles({
+      repoId: 'repo-1',
+      settings: undefined,
+      target: { path: '/repo/a', category: '测试' },
+    });
+    assert.equal(workingFiles[0]?.path, 'src/app/api.ts');
     const diff = await fetchFileDiff({
       repoId: 'repo-1',
       filePath: 'src/app/api.ts',
@@ -969,6 +998,17 @@ test('history bindings use dedicated Wails bridge', async () => {
       target: { path: '/repo/a', category: '测试' },
     });
     assert.equal(diff.content, '@@ -1 +1 @@\n-old\n+new');
+    const commitDiff = await fetchFileDiff({
+      repoId: 'repo-1',
+      filePath: 'src/app/api.ts',
+      status: 'M',
+      staged: false,
+      untracked: false,
+      previousPath: 'src/app/old-api.ts',
+      commitHash: 'abc',
+      target: { path: '/repo/a', category: '测试' },
+    });
+    assert.equal(commitDiff.content, '@@ -1 +1 @@\n-old\n+new');
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -979,6 +1019,8 @@ test('history bindings use dedicated Wails bridge', async () => {
   assert.deepEqual(calls, [
     'GetRepoHistory:repo-1:50:50',
     'GetCommitDetail:repo-1:abc',
-    'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a',
+    'GetWorkingDiffFiles:repo-1:/repo/a:测试',
+    'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:-:working',
+    'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:src/app/old-api.ts:abc',
   ]);
 });

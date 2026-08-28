@@ -20,6 +20,7 @@ type workspaceService interface {
 	GetRepoLog(string, snapshot.Request) (snapshot.RepoLog, error)
 	GetRepoHistory(string, snapshot.Request, int, int) (snapshot.RepoHistoryPage, error)
 	GetCommitDetail(string, snapshot.Request, string) (snapshot.CommitDetail, error)
+	GetWorkingDiffFiles(string, snapshot.Request) ([]snapshot.FileChange, error)
 	GetFileDiff(snapshot.FileDiffRequest) (snapshot.FileDiff, error)
 	GenerateCommitMessage(string, snapshot.Request, snapshot.AICommitSettings) (string, error)
 	RunRepoCommand(snapshot.RepoCommandRequest) (snapshot.RepoCommandResult, error)
@@ -108,6 +109,10 @@ func (a *App) GetRepoHistory(repoID string, request snapshot.Request, offset, li
 
 func (a *App) GetCommitDetail(repoID string, request snapshot.Request, hash string) (snapshot.CommitDetail, error) {
 	return a.workspace.GetCommitDetail(repoID, request, hash)
+}
+
+func (a *App) GetWorkingDiffFiles(repoID string, request snapshot.Request) ([]snapshot.FileChange, error) {
+	return a.workspace.GetWorkingDiffFiles(repoID, request)
 }
 
 func (a *App) GetFileDiff(request snapshot.FileDiffRequest) (snapshot.FileDiff, error) {

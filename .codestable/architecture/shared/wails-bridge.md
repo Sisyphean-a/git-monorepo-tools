@@ -12,6 +12,8 @@
 - `App.OpenLocalPath` 是前端请求系统默认程序打开本地文件或目录的唯一桥接：桌面层必须拒绝空值、相对路径和不存在目标，并以参数化进程调用执行，不能经 shell 拼接目标文本。
 - 长输出使用事件：仓库终端为 `repo-terminal-output`、`repo-terminal-exit`，自定义命令为 `repo-command-output`；负载必须携带会话或流标识，避免不同仓库/命令串流。新增终端标签通过 `CreateTerminalSession` 创建独立会话，关闭时通过 `CloseTerminalSession` 显式终止。
 - `RepoHistoryPage` 的提交摘要包含父提交哈希，供前端在不额外请求提交详情的前提下绘制历史拓扑。
+- `App.GetWorkingDiffFiles` 只重新读取当前仓库已跟踪的暂存/未暂存文件状态和行数，不扫描未跟踪文件，也不计算文件系统大小；统一差异查看器用它快速建立清单，再通过 `App.GetFileDiff` 按当前文件读取正文。
+- `App.GetFileDiff` 的 `commitHash` 为空时读取当前仓库暂存或未暂存差异；非空时读取该提交相对第一父提交的差异，根提交使用空树。历史重命名文件同时传递旧路径，保证单文件差异仍保留重命名语义。前端仍通过同一个应用层文件差异端口调用，仓库路径与分类作为目标传递。
 - `frontend/wailsjs/` 由 Wails 生成，只能通过生成流程更新。
 
 ## 变更规则
@@ -20,4 +22,4 @@
 
 ## 代码锚点
 
-`app.go`、`internal/desktop/client.go`、`src/app/infrastructure/wails-client.ts`、`src/app/application/ports.ts`、`src/app/infrastructure/wails-app-backend.ts`、`src/app/features/terminal/terminal-workspace.tsx`。
+`app.go`、`snapshot/file_diff.go`、`snapshot/git_history.go`、`internal/desktop/client.go`、`src/app/infrastructure/wails-client.ts`、`src/app/application/ports.ts`、`src/app/infrastructure/wails-app-backend.ts`、`src/app/features/diff/`、`src/app/components/diff-viewer-modal.tsx`、`src/app/features/terminal/terminal-workspace.tsx`。

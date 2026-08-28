@@ -251,6 +251,166 @@ func TestGetCommitDetailSupportsMultiLineBody(t *testing.T) {
 	if len(detail.FilesChanged) != 1 || detail.FilesChanged[0] != "tracked.txt" {
 		t.Fatalf("expected tracked.txt in files changed, got %#v", detail.FilesChanged)
 	}
+	if len(detail.ChangedFiles) != 1 || detail.ChangedFiles[0].Path != "tracked.txt" {
+		t.Fatalf("expected tracked.txt change details, got %#v", detail.ChangedFiles)
+	}
+	if detail.ChangedFiles[0].Status != "M" || detail.ChangedFiles[0].Additions != 1 || detail.ChangedFiles[0].Deletions != 0 {
+		t.Fatalf("unexpected tracked.txt change details: %#v", detail.ChangedFiles[0])
+	}
+}
+
+func TestGetWorkingDiffFilesSkipsUntrackedAndKeepsStageBoundaries(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "tracked.txt", "base\n", "init")
+
+	if err := os.WriteFile(filepath.Join(repoPath, "tracked.txt"), []byte("base\nstaged\n"), 0o644); err != nil {
+		t.Fatalf("write staged change: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"add", "--", "tracked.txt"}); err != nil {
+		t.Fatalf("stage change: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "tracked.txt"), []byte("base\nstaged\nunstaged\n"), 0o644); err != nil {
+		t.Fatalf("write unstaged change: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "ignored-from-viewer.txt"), []byte("untracked\n"), 0o644); err != nil {
+		t.Fatalf("write untracked file: %v", err)
+	}
+
+	files, err := NewService(root).GetWorkingDiffFiles(repoIDForPath(repoPath), Request{
+		RepoPath: repoPath, RepoCategory: "测试",
+	})
+	if err != nil {
+		t.Fatalf("get working diff files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected staged and unstaged tracked entries only, got %#v", files)
+	}
+	if files[0].Path != "tracked.txt" || !files[0].Staged || files[1].Path != "tracked.txt" || files[1].Staged {
+		t.Fatalf("expected stage boundaries to remain visible, got %#v", files)
+	}
+	for _, file := range files {
+		if file.Untracked {
+			t.Fatalf("expected untracked files to be excluded, got %#v", file)
+		}
+	}
+}
+
+func TestGetFileDiffReadsCommitAgainstParent(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "tracked.txt", "base\n", "init")
+	commitTestFile(t, repoPath, "tracked.txt", "base\ncommit\n", "change")
+
+	service, repoID, request := buildFileDiffFixture(t, root)
+	hash, err := runGitStrict(repoPath, []string{"rev-parse", "HEAD"})
+	if err != nil {
+		t.Fatalf("resolve commit hash: %v", err)
+	}
+	diff, err := service.GetFileDiff(FileDiffRequest{
+		RepoID: repoID, Snapshot: request, FilePath: "tracked.txt", CommitHash: hash,
+	})
+	if err != nil {
+		t.Fatalf("get commit diff: %v", err)
+	}
+	if !strings.Contains(diff.Content, "+commit") || strings.Contains(diff.Content, "+base") {
+		t.Fatalf("unexpected commit diff: %q", diff.Content)
+	}
+}
+
+func TestGetFileDiffReadsRootCommitAgainstEmptyTree(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "root.txt", "root\n", "root commit")
+
+	service, repoID, request := buildFileDiffFixture(t, root)
+	hash, err := runGitStrict(repoPath, []string{"rev-parse", "HEAD"})
+	if err != nil {
+		t.Fatalf("resolve root commit hash: %v", err)
+	}
+	diff, err := service.GetFileDiff(FileDiffRequest{
+		RepoID: repoID, Snapshot: request, FilePath: "root.txt", CommitHash: hash,
+	})
+	if err != nil {
+		t.Fatalf("get root commit diff: %v", err)
+	}
+	if !strings.Contains(diff.Content, "+root") {
+		t.Fatalf("unexpected root commit diff: %q", diff.Content)
+	}
+}
+
+func TestGetCommitDetailReportsRenamedFile(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "old.txt", "same\n", "init")
+	if _, err := runGitStrict(repoPath, []string{"mv", "old.txt", "new.txt"}); err != nil {
+		t.Fatalf("rename file: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"commit", "-m", "rename"}); err != nil {
+		t.Fatalf("commit rename: %v", err)
+	}
+
+	service, repoID, request := buildFileDiffFixture(t, root)
+	hash, err := runGitStrict(repoPath, []string{"rev-parse", "HEAD"})
+	if err != nil {
+		t.Fatalf("resolve rename commit hash: %v", err)
+	}
+	detail, err := service.GetCommitDetail(repoID, request, hash)
+	if err != nil {
+		t.Fatalf("get rename commit detail: %v", err)
+	}
+	if len(detail.ChangedFiles) != 1 || detail.ChangedFiles[0].Status != "R" || detail.ChangedFiles[0].Path != "new.txt" || detail.ChangedFiles[0].PreviousPath != "old.txt" {
+		t.Fatalf("expected renamed file detail, got %#v", detail.ChangedFiles)
+	}
+	diff, err := service.GetFileDiff(FileDiffRequest{
+		RepoID: repoID, Snapshot: request, FilePath: "new.txt", PreviousPath: "old.txt", CommitHash: hash,
+	})
+	if err != nil {
+		t.Fatalf("get renamed file diff: %v", err)
+	}
+	if !strings.Contains(diff.Content, "rename from old.txt") || !strings.Contains(diff.Content, "rename to new.txt") {
+		t.Fatalf("expected rename metadata, got %q", diff.Content)
+	}
+}
+
+func TestGetFileDiffReadsMergeCommitAgainstFirstParent(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "repo")
+	initTestRepo(t, repoPath)
+	commitTestFile(t, repoPath, "base.txt", "base\n", "base")
+	if _, err := runGitStrict(repoPath, []string{"branch", "feature"}); err != nil {
+		t.Fatalf("create feature branch: %v", err)
+	}
+	commitTestFile(t, repoPath, "main.txt", "main\n", "main")
+	if _, err := runGitStrict(repoPath, []string{"checkout", "feature"}); err != nil {
+		t.Fatalf("checkout feature: %v", err)
+	}
+	commitTestFile(t, repoPath, "feature.txt", "feature\n", "feature")
+	if _, err := runGitStrict(repoPath, []string{"checkout", "-"}); err != nil {
+		t.Fatalf("checkout main: %v", err)
+	}
+	if _, err := runGitStrict(repoPath, []string{"merge", "--no-ff", "feature", "-m", "merge feature"}); err != nil {
+		t.Fatalf("merge feature: %v", err)
+	}
+
+	service, repoID, request := buildFileDiffFixture(t, root)
+	hash, err := runGitStrict(repoPath, []string{"rev-parse", "HEAD"})
+	if err != nil {
+		t.Fatalf("resolve merge commit hash: %v", err)
+	}
+	diff, err := service.GetFileDiff(FileDiffRequest{
+		RepoID: repoID, Snapshot: request, FilePath: "feature.txt", CommitHash: hash,
+	})
+	if err != nil {
+		t.Fatalf("get merge commit diff: %v", err)
+	}
+	if !strings.Contains(diff.Content, "+feature") {
+		t.Fatalf("unexpected merge commit diff: %q", diff.Content)
+	}
 }
 
 func TestResolveRepoFromEntriesLoadsOnlyMatchingRepo(t *testing.T) {

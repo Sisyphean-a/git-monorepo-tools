@@ -15,6 +15,7 @@ import {
 import { createFileDiffLoader } from '../features/diff/file-diff-loader';
 import type {
   AppSettings,
+  DiffViewerRequest,
   RepoCommandResult,
   RepoDetail,
   RepoMutationAction,
@@ -35,6 +36,7 @@ interface WorkspaceProps {
   onRunCustomCommand: (repoPath: string, command: string, streamId?: string) => Promise<RepoCommandResult>;
   onOpenSettings: (tab?: SettingsTab) => void;
   onOpenCommands: () => void;
+  onOpenDiffViewer: (request: DiffViewerRequest) => void;
   onViewLog: (repoId: string) => Promise<void>;
   onError: (error: unknown, fallback: string) => void;
 }
@@ -106,6 +108,7 @@ export function Workspace({
   onRunCustomCommand,
   onOpenSettings,
   onOpenCommands,
+  onOpenDiffViewer,
   onViewLog,
   onError,
 }: WorkspaceProps) {
@@ -193,6 +196,7 @@ export function Workspace({
         fileSummary={fileSummary}
         onOpenFolder={handleOpenFolder}
         onOpenTerminal={handleOpenTerminal}
+        onOpenDiffViewer={() => onOpenDiffViewer({ kind: 'working', repoId: repo.id })}
         onOpenSettings={() => onOpenSettings('git-behavior')}
       />
 
@@ -307,6 +311,7 @@ export function Workspace({
                 active={mainTab === 'history'}
                 onOpenTerminal={handleOpenTerminal}
                 onSendToTerminal={handleSendToTerminal}
+                onOpenDiffViewer={detail => onOpenDiffViewer({ kind: 'commit', repoId: repo.id, commitHash: detail.hash, commitDetail: detail })}
               />
             </div>
             {terminalEnabled && (

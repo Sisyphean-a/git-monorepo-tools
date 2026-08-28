@@ -8,6 +8,10 @@ import (
 )
 
 func (s *Service) GetFileDiff(request FileDiffRequest) (FileDiff, error) {
+	if strings.TrimSpace(request.CommitHash) != "" {
+		return s.getCommitFileDiff(request)
+	}
+
 	entry, err := s.resolveRepoEntry(request.RepoID, request.Snapshot)
 	if err != nil {
 		return FileDiff{}, err
@@ -37,6 +41,45 @@ func (s *Service) GetFileDiff(request FileDiffRequest) (FileDiff, error) {
 		return FileDiff{}, fmt.Errorf("未找到当前变更：%s", path)
 	}
 	return FileDiff{RepoID: request.RepoID, Path: path, Staged: request.Staged, Content: content}, nil
+}
+
+func (s *Service) getCommitFileDiff(request FileDiffRequest) (FileDiff, error) {
+	entry, err := s.resolveRepoEntry(request.RepoID, request.Snapshot)
+	if err != nil {
+		return FileDiff{}, err
+	}
+	path, err := normalizeDiffPath(request.FilePath)
+	if err != nil {
+		return FileDiff{}, err
+	}
+	repoPath := normalizePath(entry.repoPath)
+	if repoIDForPath(repoPath) != request.RepoID {
+		return FileDiff{}, fmt.Errorf("仓库路径与标识不匹配：%s", repoPath)
+	}
+	commitHash := strings.TrimSpace(request.CommitHash)
+	executor := newGitExecutor(request.Snapshot)
+	base, err := executor.commitDiffBase(repoPath, commitHash)
+	if err != nil {
+		return FileDiff{}, err
+	}
+	diffArgs := []string{"diff", "--no-ext-diff", "--find-renames", "--unified=3", base, commitHash, "--"}
+	if strings.TrimSpace(request.PreviousPath) != "" {
+		previousPath, err := normalizeDiffPath(request.PreviousPath)
+		if err != nil {
+			return FileDiff{}, err
+		}
+		diffArgs = append(diffArgs, previousPath, path)
+	} else {
+		diffArgs = append(diffArgs, path)
+	}
+	content, err := executor.runGit(repoPath, diffArgs)
+	if err != nil {
+		return FileDiff{}, err
+	}
+	if content == "" {
+		return FileDiff{}, fmt.Errorf("未找到提交差异：%s", path)
+	}
+	return FileDiff{RepoID: request.RepoID, Path: path, Content: content}, nil
 }
 
 func isFileStatus(status string) bool {

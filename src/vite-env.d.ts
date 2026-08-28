@@ -86,6 +86,18 @@ interface Window {
           },
           hash: string,
         ) => Promise<import('./app/domain/types').CommitDetail>;
+        GetWorkingDiffFiles: (
+          repoId: string,
+          request: {
+            scanRoots: Array<{ path: string; category: string }>;
+            concurrency: number;
+            pullStrategy: 'ff-only' | 'rebase' | 'merge';
+            pushStrategy: 'upstream-only' | 'all';
+            refreshRemotes: boolean;
+            repoPath?: string;
+            repoCategory?: string;
+          },
+        ) => Promise<import('./app/domain/types').FileChange[]>;
         GetFileDiff: (request: {
           repoId: string;
           snapshot: {
@@ -98,7 +110,11 @@ interface Window {
             repoCategory?: string;
           };
           filePath: string;
+          previousPath?: string;
+          status: import('./app/domain/types').FileStatus;
           staged: boolean;
+          untracked: boolean;
+          commitHash?: string;
         }) => Promise<import('./app/domain/types').FileDiff>;
         EnsureTerminalSession: (request: {
           repoId: string;

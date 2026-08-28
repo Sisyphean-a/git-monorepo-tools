@@ -105,6 +105,14 @@ func (s *Service) GetCommitDetail(repoID string, request Request, hash string) (
 	return newGitExecutor(request).loadCommitDetail(entry.repoPath, hash)
 }
 
+func (s *Service) GetWorkingDiffFiles(repoID string, request Request) ([]FileChange, error) {
+	entry, err := s.resolveRepoEntry(repoID, request)
+	if err != nil {
+		return nil, err
+	}
+	return newGitExecutor(request).loadWorkingDiffFiles(entry.repoPath)
+}
+
 func (executor gitExecutor) mutateRepo(repo RepoDetail, action string, request Request, body RepoActionRequest) error {
 	switch action {
 	case "stage-all":

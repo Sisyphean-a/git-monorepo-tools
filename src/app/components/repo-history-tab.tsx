@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Copy, GitBranch, GitCommit, GitMerge, TerminalSquare } from 'lucide-react';
+import { Clock3, Copy, GitBranch, GitCommit, GitCompare, GitMerge, TerminalSquare } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
 import { buildCommitGraph, CommitGraphRow } from './commit-graph';
 import { C } from '../theme';
@@ -18,9 +18,10 @@ interface RepoHistoryTabProps {
   active: boolean;
   onOpenTerminal: () => void;
   onSendToTerminal?: (command: string) => Promise<void>;
+  onOpenDiffViewer: (detail: CommitDetail) => void;
 }
 
-export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHasMore, settings, active, onOpenTerminal, onSendToTerminal }: RepoHistoryTabProps) {
+export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHasMore, settings, active, onOpenTerminal, onSendToTerminal, onOpenDiffViewer }: RepoHistoryTabProps) {
   const backend = useAppBackend();
   const [commits, setCommits] = useState<CommitSummary[]>(initialCommits);
   const [total, setTotal] = useState(initialTotal);
@@ -287,6 +288,13 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
               style={detailActionBtn(Boolean(selectedSummary))}
             >
               <Copy size={11} /> {copiedHash === selectedSummary?.hash ? '已复制' : '复制 hash'}
+            </button>
+            <button
+              onClick={() => detail && onOpenDiffViewer(detail)}
+              disabled={!detail}
+              style={detailActionBtn(Boolean(detail))}
+            >
+              <GitCompare size={11} /> 查看差异
             </button>
             <button
               onClick={() => void sendToTerminal()}

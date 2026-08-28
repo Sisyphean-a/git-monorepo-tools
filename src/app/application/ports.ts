@@ -66,12 +66,20 @@ export interface CommitDetailRequest {
   settings?: AppSettings;
 }
 
+export interface WorkingDiffFilesRequest {
+  repoId: string;
+  settings?: AppSettings;
+  target?: RepoRefreshTarget;
+}
+
 export interface FileDiffRequest {
   repoId: string;
   filePath: string;
+  previousPath?: string;
   status: FileChange['status'];
   staged: boolean;
   untracked: boolean;
+  commitHash?: string;
   settings?: AppSettings;
   target?: RepoRefreshTarget;
 }
@@ -93,6 +101,7 @@ export interface TerminalSessionRequest {
 export interface RepoInteractionBackend {
   fetchRepoHistory(request: RepoHistoryRequest): Promise<RepoHistoryPage>;
   fetchCommitDetail(request: CommitDetailRequest): Promise<CommitDetail>;
+  fetchWorkingDiffFiles(request: WorkingDiffFilesRequest): Promise<FileChange[]>;
   fetchFileDiff(request: FileDiffRequest): Promise<FileDiff>;
   generateCommitMessage(repoId: string, settings: AppSettings): Promise<string>;
   ensureTerminalSession(request: TerminalSessionRequest): Promise<TerminalSessionInfo>;

@@ -38,6 +38,10 @@ export function GetSnapshot(arg1) {
   return window['go']['main']['App']['GetSnapshot'](arg1);
 }
 
+export function GetWorkingDiffFiles(arg1, arg2) {
+  return window['go']['main']['App']['GetWorkingDiffFiles'](arg1, arg2);
+}
+
 export function GetWorkspaceBootstrap(arg1) {
   return window['go']['main']['App']['GetWorkspaceBootstrap'](arg1);
 }

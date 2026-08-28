@@ -22,12 +22,14 @@ type RepoActionRequest struct {
 }
 
 type FileDiffRequest struct {
-	RepoID    string  `json:"repoId"`
-	Snapshot  Request `json:"snapshot"`
-	FilePath  string  `json:"filePath"`
-	Status    string  `json:"status"`
-	Staged    bool    `json:"staged"`
-	Untracked bool    `json:"untracked"`
+	RepoID       string  `json:"repoId"`
+	Snapshot     Request `json:"snapshot"`
+	FilePath     string  `json:"filePath"`
+	PreviousPath string  `json:"previousPath,omitempty"`
+	Status       string  `json:"status"`
+	Staged       bool    `json:"staged"`
+	Untracked    bool    `json:"untracked"`
+	CommitHash   string  `json:"commitHash,omitempty"`
 }
 
 type RepoCommandRequest struct {
@@ -126,6 +128,7 @@ type FileChange struct {
 	Additions         int    `json:"additions"`
 	Deletions         int    `json:"deletions"`
 	Size              string `json:"size"`
+	PreviousPath      string `json:"previousPath,omitempty"`
 	SizeBytes         int64  `json:"sizeBytes,omitempty"`
 	PreviousSize      string `json:"previousSize,omitempty"`
 	PreviousSizeBytes int64  `json:"previousSizeBytes,omitempty"`
@@ -167,10 +170,11 @@ type CommitSummary struct {
 
 type CommitDetail struct {
 	CommitSummary
-	Body         string   `json:"body"`
-	AuthorEmail  string   `json:"authorEmail"`
-	CommittedAt  string   `json:"committedAt"`
-	FilesChanged []string `json:"filesChanged"`
+	Body         string       `json:"body"`
+	AuthorEmail  string       `json:"authorEmail"`
+	CommittedAt  string       `json:"committedAt"`
+	FilesChanged []string     `json:"filesChanged"`
+	ChangedFiles []FileChange `json:"changedFiles"`
 }
 
 type RepoHistoryPage struct {

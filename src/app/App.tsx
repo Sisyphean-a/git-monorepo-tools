@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AddRepoMenu } from './components/add-repo-menu';
 import { AppFrame } from './components/common';
 import { CommandModal } from './components/command-modal';
+import { DiffViewerModal } from './components/diff-viewer-modal';
 import { LogViewerModal } from './components/log-viewer-modal';
 import { PullAllDrawer } from './components/pull-all-drawer';
 import { SettingsModal } from './components/settings-modal';
@@ -11,7 +12,7 @@ import { BackendProvider } from './application/backend-context';
 import { TerminalWorkspaceProvider } from './features/terminal/terminal-workspace';
 import { useBatchController } from './application/use-batch-controller';
 import { useWorkspaceController } from './application/use-workspace-controller';
-import type { SettingsTab } from './domain/types';
+import type { DiffViewerRequest, SettingsTab } from './domain/types';
 import { settingsStore } from './infrastructure/settings-store';
 import { wailsAppBackend } from './infrastructure/wails-app-backend';
 import { C } from './theme';
@@ -94,6 +95,7 @@ function WorkspaceLayout({
         onRunCustomCommand={workspace.runRepoCommand}
         onOpenSettings={dialogs.openSettings}
         onOpenCommands={dialogs.openCommands}
+        onOpenDiffViewer={dialogs.openDiffViewer}
         onViewLog={workspace.openRepoLog}
         onError={workspace.reportActionError}
       />
@@ -162,6 +164,12 @@ function AppDialogs({
         }}
       />
       <LogViewerModal log={workspace.repoLog} onClose={workspace.closeRepoLog} />
+      <DiffViewerModal
+        request={dialogs.diffViewerRequest}
+        repo={dialogs.diffViewerRequest ? snapshot.repoDetails[dialogs.diffViewerRequest.repoId] ?? null : null}
+        settings={workspace.settings}
+        onClose={dialogs.closeDiffViewer}
+      />
     </>
   );
 }
@@ -186,6 +194,7 @@ function useDialogs() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai-commit');
   const [commandsOpen, setCommandsOpen] = useState(false);
+  const [diffViewerRequest, setDiffViewerRequest] = useState<DiffViewerRequest | null>(null);
   return {
     addMenuOpen,
     openAddMenu: () => setAddMenuOpen(true),
@@ -200,6 +209,9 @@ function useDialogs() {
     commandsOpen,
     openCommands: () => setCommandsOpen(true),
     closeCommands: () => setCommandsOpen(false),
+    diffViewerRequest,
+    openDiffViewer: (request: DiffViewerRequest) => setDiffViewerRequest(request),
+    closeDiffViewer: () => setDiffViewerRequest(null),
   };
 }
 
