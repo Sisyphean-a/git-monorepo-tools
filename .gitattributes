@@ -1,0 +1,2 @@
+# Wails 生成文件由代码生成器写入 LF；固定换行，避免 Windows Git 自动转换造成伪修改。
+frontend/wailsjs/** text eol=lf
