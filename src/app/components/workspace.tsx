@@ -8,7 +8,6 @@ import { RepoHistoryTab } from './repo-history-tab';
 import { useAppBackend } from '../application/backend-context';
 import { useRepoCommandPanel } from '../features/commands/use-repo-command-panel';
 import {
-  useTerminalWorkspace,
   useTerminalWorkspaceTabs,
   type WorkspaceMainTab,
 } from '../features/terminal/terminal-workspace';
@@ -113,7 +112,6 @@ export function Workspace({
   onError,
 }: WorkspaceProps) {
   const backend = useAppBackend();
-  const terminalWorkspace = useTerminalWorkspace();
   const terminalTabs = useTerminalWorkspaceTabs(repoDetails, selectedRepoId);
   const repoIds = useMemo(() => Object.keys(repoDetails), [repoDetails]);
   const repo = repoDetails[terminalTabs.activeRepoId];
@@ -175,12 +173,6 @@ export function Workspace({
     // Rule: periodic snapshots replace RepoDetail objects; only stable request inputs may reload an open diff.
     [backend, repo.id, repo.path, repo.category, settings],
   );
-  const handleSendToTerminal = async (command: string) => {
-    await terminalWorkspace.sendToDefaultSession(
-      { repoId: repo.id, repoPath: repo.path },
-      `${command}\r`,
-    );
-  };
   const isConflict = repo.conflicts > 0;
 
   const mainTabs: { key: MainTab; label: string }[] = [
@@ -309,8 +301,6 @@ export function Workspace({
                 initialHasMore={repo.historyHasMore}
                 settings={settings}
                 active={mainTab === 'history'}
-                onOpenTerminal={handleOpenTerminal}
-                onSendToTerminal={handleSendToTerminal}
                 onOpenDiffViewer={detail => onOpenDiffViewer({ kind: 'commit', repoId: repo.id, commitHash: detail.hash, commitDetail: detail })}
               />
             </div>

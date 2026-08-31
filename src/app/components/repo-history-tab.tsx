@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Copy, GitBranch, GitCommit, GitCompare, GitMerge, TerminalSquare } from 'lucide-react';
+import { Clock3, Copy, GitBranch, GitCommit, GitCompare, GitMerge } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
 import { buildCommitGraph, CommitGraphRow } from './commit-graph';
 import { C } from '../theme';
@@ -16,12 +16,10 @@ interface RepoHistoryTabProps {
   initialHasMore: boolean;
   settings: AppSettings;
   active: boolean;
-  onOpenTerminal: () => void;
-  onSendToTerminal?: (command: string) => Promise<void>;
   onOpenDiffViewer: (detail: CommitDetail) => void;
 }
 
-export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHasMore, settings, active, onOpenTerminal, onSendToTerminal, onOpenDiffViewer }: RepoHistoryTabProps) {
+export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHasMore, settings, active, onOpenDiffViewer }: RepoHistoryTabProps) {
   const backend = useAppBackend();
   const [commits, setCommits] = useState<CommitSummary[]>(initialCommits);
   const [total, setTotal] = useState(initialTotal);
@@ -32,7 +30,6 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [copiedHash, setCopiedHash] = useState('');
-  const [terminalBusy, setTerminalBusy] = useState(false);
   const [initialLoading, setInitialLoading] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
   const historyListRef = useRef<HTMLDivElement | null>(null);
@@ -166,17 +163,6 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
     }
   };
 
-  const sendToTerminal = async () => {
-    if (!detail || !onSendToTerminal || terminalBusy) return;
-    setTerminalBusy(true);
-    try {
-      onOpenTerminal();
-      await onSendToTerminal(`git show --stat --decorate ${detail.hash}`);
-    } finally {
-      setTerminalBusy(false);
-    }
-  };
-
   if (initialLoading) {
     return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>正在加载提交历史…</div>;
   }
@@ -295,13 +281,6 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
               style={detailActionBtn(Boolean(detail))}
             >
               <GitCompare size={11} /> 查看差异
-            </button>
-            <button
-              onClick={() => void sendToTerminal()}
-              disabled={!detail || !onSendToTerminal || terminalBusy}
-              style={detailActionBtn(Boolean(detail && onSendToTerminal), true)}
-            >
-              <TerminalSquare size={11} /> {terminalBusy ? '发送中…' : '在终端查看'}
             </button>
           </div>
         </div>
