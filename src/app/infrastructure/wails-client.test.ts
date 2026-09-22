@@ -12,8 +12,10 @@ import {
   fetchWorkspaceBootstrap,
   generateCommitMessage,
   invokeLocalRepoAction,
+  listRepoDirectory,
   openLocalPath,
   mutateRepo,
+  readRepoFile,
   refreshRepo,
   readClipboardImagePath,
   readClipboardText,
@@ -870,7 +872,7 @@ test('refreshRepo uses dedicated binding', async () => {
   ]);
 });
 
-test('history bindings use dedicated Wails bridge', async () => {
+test('history and repository file bindings use dedicated Wails bridge', async () => {
   const calls: string[] = [];
   const originalWindow = globalThis.window;
 
@@ -945,6 +947,14 @@ test('history bindings use dedicated Wails bridge', async () => {
         }],
       };
     },
+    ListRepoDirectory: async (repoId: string, request: { repoPath?: string; repoCategory?: string }, path: string) => {
+      calls.push(`ListRepoDirectory:${repoId}:${request.repoPath}:${request.repoCategory}:${path || '.'}`);
+      return [{ name: 'src', path: 'src', isDir: true }];
+    },
+    ReadRepoFile: async (repoId: string, request: { repoPath?: string; repoCategory?: string }, path: string) => {
+      calls.push(`ReadRepoFile:${repoId}:${request.repoPath}:${request.repoCategory}:${path}`);
+      return { path, content: 'export {};\n', size: 11 };
+    },
     GetWorkingDiffFiles: async (repoId: string, request: { repoPath?: string; repoCategory?: string }) => {
       calls.push(`GetWorkingDiffFiles:${repoId}:${request.repoPath}:${request.repoCategory}`);
       return [{
@@ -1012,6 +1022,18 @@ test('history bindings use dedicated Wails bridge', async () => {
     assert.equal(detail.authorEmail, 'test@example.com');
     assert.equal(detail.filesChanged[0], 'src/app/components/repo-history-tab.tsx');
     assert.equal(detail.changedFiles[0]?.status, 'M');
+    const rootEntries = await listRepoDirectory({
+      repoId: 'repo-1',
+      path: '',
+      target: { path: '/repo/a', category: '测试' },
+    });
+    assert.deepEqual(rootEntries, [{ name: 'src', path: 'src', isDir: true }]);
+    const file = await readRepoFile({
+      repoId: 'repo-1',
+      path: 'src/app.ts',
+      target: { path: '/repo/a', category: '测试' },
+    });
+    assert.equal(file.content, 'export {};\n');
     const workingFiles = await fetchWorkingDiffFiles({
       repoId: 'repo-1',
       settings: undefined,
@@ -1049,6 +1071,8 @@ test('history bindings use dedicated Wails bridge', async () => {
   assert.deepEqual(calls, [
     'GetRepoHistory:repo-1:50:50',
     'GetCommitDetail:repo-1:abc',
+    'ListRepoDirectory:repo-1:/repo/a:测试:.',
+    'ReadRepoFile:repo-1:/repo/a:测试:src/app.ts',
     'GetWorkingDiffFiles:repo-1:/repo/a:测试',
     'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:-:working:-',
     'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:src/app/old-api.ts:abc:parent-commit',

@@ -202,6 +202,18 @@ type FileDiff struct {
 	Content string `json:"content"`
 }
 
+type RepoTreeEntry struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
+}
+
+type RepoFileContent struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Size    int64  `json:"size"`
+}
+
 type BatchResult struct {
 	Updates   []RepoSnapshotUpdate `json:"updates,omitempty"`
 	Results   []PullResult         `json:"results,omitempty"`

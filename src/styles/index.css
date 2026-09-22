@@ -39,7 +39,8 @@ button {
 }
 
 .sidebar-category-button:hover,
-.sidebar-repo-item[data-selected='false']:hover {
+.sidebar-repo-item[data-selected='false']:hover,
+.repo-file-tree-row[data-selected='false']:hover {
   background: rgba(221, 235, 255, 0.04) !important;
 }
 

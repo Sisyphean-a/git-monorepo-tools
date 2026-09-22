@@ -19,6 +19,7 @@ const (
 type Service struct {
 	projectRoot string
 	commands    *commandRegistry
+	repoFiles   repoFileBrowser
 }
 
 type repoEntry struct {
@@ -35,6 +36,10 @@ type repoSnapshot struct {
 
 func NewService(projectRoot string) *Service {
 	return &Service{projectRoot: normalizePath(projectRoot), commands: newCommandRegistry()}
+}
+
+func (s *Service) CloseRepoFileBrowser() {
+	s.repoFiles.close()
 }
 
 func (s *Service) BuildAppSnapshot(request Request) (AppSnapshot, error) {

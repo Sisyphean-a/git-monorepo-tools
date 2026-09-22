@@ -42,6 +42,18 @@ export interface FileDiff {
   content: string;
 }
 
+export interface RepoTreeEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+}
+
+export interface RepoFileContent {
+  path: string;
+  content: string;
+  size: number;
+}
+
 export type DiffViewerRequest =
   | { kind: 'working'; repoId: string }
   | { kind: 'commit'; repoId: string; commitHash: string; commitDetail?: CommitDetail };

@@ -25,6 +25,8 @@ export function GetWorkingDiffFiles(arg1:string,arg2:snapshot.Request):Promise<A
 
 export function GetWorkspaceBootstrap(arg1:snapshot.Request):Promise<snapshot.WorkspaceBootstrap>;
 
+export function ListRepoDirectory(arg1:string,arg2:snapshot.Request,arg3:string):Promise<Array<snapshot.RepoTreeEntry>>;
+
 export function MutateRepo(arg1:string,arg2:string,arg3:snapshot.Request,arg4:snapshot.RepoActionRequest):Promise<snapshot.RepoSnapshotUpdate>;
 
 export function OpenConflicts(arg1:string):Promise<void>;
@@ -40,6 +42,8 @@ export function PickFolder():Promise<string>;
 export function ReadClipboardImagePath():Promise<string>;
 
 export function ReadClipboardText():Promise<string>;
+
+export function ReadRepoFile(arg1:string,arg2:snapshot.Request,arg3:string):Promise<snapshot.RepoFileContent>;
 
 export function RefreshRepo(arg1:string,arg2:snapshot.Request):Promise<snapshot.RepoSnapshotUpdate>;
 

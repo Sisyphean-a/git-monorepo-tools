@@ -1,10 +1,11 @@
-import type { AppSettings, AppSnapshot, CommitDetail, FileChange, FileDiff, PullResult, RepoCommandResult, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
+import type { AppSettings, AppSnapshot, CommitDetail, FileChange, FileDiff, PullResult, RepoCommandResult, RepoFileContent, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, RepoTreeEntry, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
 import type {
   BatchResponse,
   CommitDetailRequest,
   FileDiffRequest,
   LocalRepoAction,
   RepoCommandRequest,
+  RepoFileRequest,
   RepoHistoryRequest,
   RepoInteractionBackend,
   RepoRefreshTarget,
@@ -69,6 +70,8 @@ type WailsBindings = {
   GetRepoLog: (repoId: string, request: SnapshotRequest) => Promise<RepoLog>;
   GetRepoHistory: (repoId: string, request: SnapshotRequest, offset: number, limit: number) => Promise<RepoHistoryPage>;
   GetCommitDetail: (repoId: string, request: SnapshotRequest, hash: string) => Promise<CommitDetail>;
+  ListRepoDirectory?: (repoId: string, request: SnapshotRequest, path: string) => Promise<RepoTreeEntry[]>;
+  ReadRepoFile?: (repoId: string, request: SnapshotRequest, path: string) => Promise<RepoFileContent>;
   GetWorkingDiffFiles?: (repoId: string, request: SnapshotRequest) => Promise<FileChange[]>;
   GetFileDiff: (request: WailsFileDiffRequest) => Promise<FileDiff>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
@@ -202,6 +205,22 @@ export async function fetchCommitDetail({ repoId, hash, settings }: CommitDetail
   return getWailsBindings().GetCommitDetail(repoId, buildSnapshotRequest(settings), hash);
 }
 
+export async function listRepoDirectory({ repoId, path, settings, target }: RepoFileRequest) {
+  const binding = getWailsBindings().ListRepoDirectory;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 仓库目录绑定不可用');
+  }
+  return binding(repoId, buildSnapshotRequest(settings, undefined, target), path);
+}
+
+export async function readRepoFile({ repoId, path, settings, target }: RepoFileRequest) {
+  const binding = getWailsBindings().ReadRepoFile;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 仓库文件绑定不可用');
+  }
+  return binding(repoId, buildSnapshotRequest(settings, undefined, target), path);
+}
+
 export async function fetchWorkingDiffFiles({ repoId, settings, target }: WorkingDiffFilesRequest) {
   const binding = getWailsBindings().GetWorkingDiffFiles;
   if (typeof binding !== 'function') {
@@ -320,6 +339,8 @@ export const wailsClient: WorkspaceBackend & RepoInteractionBackend = {
   fetchRepoLog,
   fetchRepoHistory,
   fetchCommitDetail,
+  listRepoDirectory,
+  readRepoFile,
   fetchWorkingDiffFiles,
   fetchFileDiff,
   runRepoCommand,

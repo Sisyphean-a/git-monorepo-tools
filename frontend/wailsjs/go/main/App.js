@@ -46,6 +46,10 @@ export function GetWorkspaceBootstrap(arg1) {
   return window['go']['main']['App']['GetWorkspaceBootstrap'](arg1);
 }
 
+export function ListRepoDirectory(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ListRepoDirectory'](arg1, arg2, arg3);
+}
+
 export function MutateRepo(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['MutateRepo'](arg1, arg2, arg3, arg4);
 }
@@ -76,6 +80,10 @@ export function ReadClipboardImagePath() {
 
 export function ReadClipboardText() {
   return window['go']['main']['App']['ReadClipboardText']();
+}
+
+export function ReadRepoFile(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReadRepoFile'](arg1, arg2, arg3);
 }
 
 export function RefreshRepo(arg1, arg2) {

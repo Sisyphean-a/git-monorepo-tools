@@ -6,9 +6,11 @@ import type {
   FileDiff,
   PullResult,
   RepoCommandResult,
+  RepoFileContent,
   RepoHistoryPage,
   RepoLog,
   RepoMutationAction,
+  RepoTreeEntry,
   RepoSnapshotUpdate,
   TerminalSessionInfo,
   WorkspaceBootstrap,
@@ -67,6 +69,13 @@ export interface CommitDetailRequest {
   settings?: AppSettings;
 }
 
+export interface RepoFileRequest {
+  repoId: string;
+  path: string;
+  settings?: AppSettings;
+  target?: RepoRefreshTarget;
+}
+
 export interface WorkingDiffFilesRequest {
   repoId: string;
   settings?: AppSettings;
@@ -103,6 +112,8 @@ export interface TerminalSessionRequest {
 export interface RepoInteractionBackend {
   fetchRepoHistory(request: RepoHistoryRequest): Promise<RepoHistoryPage>;
   fetchCommitDetail(request: CommitDetailRequest): Promise<CommitDetail>;
+  listRepoDirectory(request: RepoFileRequest): Promise<RepoTreeEntry[]>;
+  readRepoFile(request: RepoFileRequest): Promise<RepoFileContent>;
   fetchWorkingDiffFiles(request: WorkingDiffFilesRequest): Promise<FileChange[]>;
   fetchFileDiff(request: FileDiffRequest): Promise<FileDiff>;
   generateCommitMessage(repoId: string, settings: AppSettings): Promise<string>;

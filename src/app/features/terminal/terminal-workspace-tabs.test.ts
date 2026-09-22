@@ -28,6 +28,9 @@ test('each repository keeps its own selected main tab', () => {
   tabs = selectMainTabForRepo(tabs, 'repo-b', 'history');
   assert.equal(resolveMainTabForRepo(tabs, 'repo-a', terminals), 'terminal');
   assert.equal(resolveMainTabForRepo(tabs, 'repo-b', terminals), 'history');
+
+  tabs = selectMainTabForRepo(tabs, 'repo-b', 'files');
+  assert.equal(resolveMainTabForRepo(tabs, 'repo-b', terminals), 'files');
 });
 
 test('keeps the active independent terminal when it belongs to the selected repository', () => {

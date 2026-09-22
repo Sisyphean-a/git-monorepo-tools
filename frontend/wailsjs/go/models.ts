@@ -641,6 +641,22 @@ export namespace snapshot {
 	    }
 	}
 	
+	export class RepoFileContent {
+	    path: string;
+	    content: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoFileContent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.content = source["content"];
+	        this.size = source["size"];
+	    }
+	}
 	export class RepoHistoryPage {
 	    repoId: string;
 	    repoName: string;
@@ -704,6 +720,22 @@ export namespace snapshot {
 	    }
 	}
 	
+	export class RepoTreeEntry {
+	    name: string;
+	    path: string;
+	    isDir: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoTreeEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.isDir = source["isDir"];
+	    }
+	}
 	
 	
 	export class WorkspaceBootstrap {

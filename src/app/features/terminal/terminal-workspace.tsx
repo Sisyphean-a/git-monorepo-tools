@@ -3,7 +3,7 @@ import type { RepoInteractionBackend, RuntimeBackend, TerminalSessionRequest } f
 import type { RepoDetail, TerminalSessionInfo } from '../../domain/types.js';
 
 export type RepoTerminalState = 'idle' | 'starting' | 'running' | 'active' | 'exited' | 'failed';
-export type WorkspaceMainTab = 'changes' | 'history' | 'terminal' | IndependentTerminalTabId;
+export type WorkspaceMainTab = 'changes' | 'history' | 'files' | 'terminal' | IndependentTerminalTabId;
 export type IndependentTerminalTabId = `terminal-${number}`;
 export type WorkspaceMainTabsByRepo = Readonly<Record<string, WorkspaceMainTab>>;
 

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
@@ -22,6 +22,7 @@ import type {
 } from '../domain/types';
 
 type MainTab = WorkspaceMainTab;
+const RepoFilesTab = lazy(async () => ({ default: (await import('./repo-files-tab')).RepoFilesTab }));
 const RepoTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).RepoTerminalTab }));
 const IndependentTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).IndependentTerminalTab }));
 
@@ -115,15 +116,6 @@ export function Workspace({
   const terminalTabs = useTerminalWorkspaceTabs(repoDetails, selectedRepoId);
   const repoIds = useMemo(() => Object.keys(repoDetails), [repoDetails]);
   const repo = repoDetails[terminalTabs.activeRepoId];
-
-  if (!repo) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>
-        未发现可展示的仓库
-      </div>
-    );
-  }
-
   const {
     mainTab,
     terminalEnabled,
@@ -133,6 +125,20 @@ export function Workspace({
     openIndependentTerminal,
     closeIndependentTerminal,
   } = terminalTabs;
+  const [filesEnabled, setFilesEnabled] = useState(false);
+
+  useEffect(() => {
+    if (mainTab === 'files') setFilesEnabled(true);
+  }, [mainTab]);
+
+  if (!repo) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>
+        未发现可展示的仓库
+      </div>
+    );
+  }
+
   const fileSummary = summarizeFiles(repo.files);
   const isChecking = repo.status === 'checking';
 
@@ -179,6 +185,7 @@ export function Workspace({
   const mainTabs: { key: MainTab; label: string }[] = [
     { key: 'changes', label: `变更 ${fileSummary.total > 0 ? `(${fileSummary.total})` : ''}` },
     { key: 'history', label: '历史' },
+    { key: 'files', label: '文件' },
     { key: 'terminal', label: '终端' },
   ];
 
@@ -305,6 +312,21 @@ export function Workspace({
                 active={mainTab === 'history'}
                 onOpenDiffViewer={detail => onOpenDiffViewer({ kind: 'commit', repoId: repo.id, commitHash: detail.hash, commitDetail: detail })}
               />
+            </div>
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                visibility: mainTab === 'files' ? 'visible' : 'hidden',
+                pointerEvents: mainTab === 'files' ? 'auto' : 'none',
+              }}
+            >
+              {filesEnabled && (
+                <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>正在加载文件浏览器…</div>}>
+                  <RepoFilesTab key={repo.id} repo={repo} settings={settings} active={mainTab === 'files'} />
+                </Suspense>
+              )}
             </div>
             {terminalEnabled && (
               <Suspense fallback={null}>
