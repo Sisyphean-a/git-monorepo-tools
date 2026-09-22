@@ -1,0 +1,227 @@
+/* 颜色与 src/app/theme.ts 保持一致；只在本模块被动态加载时生效。 */
+
+.file-preview-markdown {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #ddebff;
+  overflow-wrap: break-word;
+}
+
+.file-preview-markdown > *:first-child {
+  margin-top: 0;
+}
+
+.file-preview-markdown h1,
+.file-preview-markdown h2,
+.file-preview-markdown h3,
+.file-preview-markdown h4,
+.file-preview-markdown h5,
+.file-preview-markdown h6 {
+  margin: 20px 0 10px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: #ddebff;
+}
+
+.file-preview-markdown h1 {
+  font-size: 20px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #253244;
+}
+
+.file-preview-markdown h2 {
+  font-size: 17px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #253244;
+}
+
+.file-preview-markdown h3 {
+  font-size: 15px;
+}
+
+.file-preview-markdown h4,
+.file-preview-markdown h5,
+.file-preview-markdown h6 {
+  font-size: 13px;
+  color: #8fa6bf;
+}
+
+.file-preview-markdown p,
+.file-preview-markdown ul,
+.file-preview-markdown ol,
+.file-preview-markdown blockquote,
+.file-preview-markdown table,
+.file-preview-markdown pre {
+  margin: 0 0 12px;
+}
+
+.file-preview-markdown ul,
+.file-preview-markdown ol {
+  padding-left: 22px;
+}
+
+.file-preview-markdown li + li {
+  margin-top: 4px;
+}
+
+.file-preview-markdown li > ul,
+.file-preview-markdown li > ol {
+  margin: 4px 0 0;
+}
+
+.file-preview-markdown a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.file-preview-markdown a:hover {
+  text-decoration: underline;
+}
+
+.file-preview-markdown code {
+  padding: 1px 4px;
+  border: 1px solid #253244;
+  border-radius: 4px;
+  background: #141f2d;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+}
+
+.file-preview-markdown pre.file-preview-code-block {
+  padding: 12px 14px;
+  border: 1px solid #253244;
+  border-radius: 6px;
+  background: #141f2d;
+  overflow-x: auto;
+}
+
+.file-preview-markdown pre.file-preview-code-block code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.file-preview-markdown blockquote {
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid #2e3d52;
+  color: #8fa6bf;
+}
+
+.file-preview-markdown hr {
+  height: 0;
+  border: 0;
+  border-top: 1px solid #253244;
+}
+
+.file-preview-markdown table {
+  border-collapse: collapse;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.file-preview-markdown th,
+.file-preview-markdown td {
+  padding: 4px 10px;
+  border: 1px solid #253244;
+  text-align: left;
+}
+
+.file-preview-markdown th {
+  background: #141f2d;
+  font-weight: 600;
+}
+
+.file-preview-markdown img {
+  max-width: 100%;
+  border: 1px solid #253244;
+  border-radius: 6px;
+}
+
+.file-preview-markdown input[type='checkbox'] {
+  margin-right: 6px;
+  vertical-align: middle;
+  /* 任务列表只展示仓库里的状态，预览不可编辑。 */
+  pointer-events: none;
+}
+
+.file-preview-image-note {
+  color: #5f7084;
+  border-bottom: 1px dashed #253244;
+}
+
+/* highlight.js token 颜色映射到项目色板 */
+
+.hljs {
+  color: #ddebff;
+  background: transparent;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #5f7084;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-literal,
+.hljs-section,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-name {
+  color: #a78bfa;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta .hljs-string {
+  color: #10b981;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: #f59e0b;
+}
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_ {
+  color: #38bdf8;
+}
+
+.hljs-type,
+.hljs-built_in,
+.hljs-builtin-name {
+  color: #ddebff;
+}
+
+.hljs-tag {
+  color: #8fa6bf;
+}
+
+.hljs-meta,
+.hljs-subst {
+  color: #8fa6bf;
+}
+
+.hljs-deletion {
+  color: #ef4444;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}

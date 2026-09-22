@@ -10,6 +10,7 @@
 - 绑定失败必须作为 rejected promise 返回，调用方展示或传播实际错误；不得把绑定缺失伪装为成功。
 - Windows 终端剪贴板经专用绑定读取：`App.ReadClipboardImagePath` 通过 STA 读取器返回临时 PNG 路径，`App.ReadClipboardText` 通过原生 Win32 文本格式返回字符串。前端只能通过运行时端口取得这些值，不能依赖 WebView 的 `navigator.clipboard`、浏览器 `paste` 事件或 Wails runtime `ClipboardGetText`，这些路径在桌面 WebView 中可能不派发或永久不返回。Wails 会把 Go 错误以字符串或对象形式拒绝，前端诊断必须保留非 `Error` 错误详情。
 - `App.OpenLocalPath` 是前端请求系统默认程序打开本地文件或目录的唯一桥接：桌面层必须拒绝空值、相对路径和不存在目标，并以参数化进程调用执行，不能经 shell 拼接目标文本。
+- 外部链接统一经 `src/app/infrastructure/wails-runtime.ts` 的 `openExternalURL`（`BrowserOpenURL`）交给系统默认浏览器；终端链接与 Markdown 预览外链是仅有的两个使用者，渲染层不得直接把链接交给 WebView 导航。
 - 长输出使用事件：仓库终端为 `repo-terminal-output`、`repo-terminal-exit`，自定义命令为 `repo-command-output`；负载必须携带会话或流标识，避免不同仓库/命令串流。新增终端标签通过 `CreateTerminalSession` 创建独立会话，关闭时通过 `CloseTerminalSession` 显式终止。
 - `RepoHistoryPage` 的提交摘要包含父提交哈希，供前端在不额外请求提交详情的前提下绘制历史拓扑。
 - `App.GetWorkingDiffFiles` 只重新读取当前仓库已跟踪的暂存/未暂存文件状态和行数，不扫描未跟踪文件，也不计算文件系统大小；统一差异查看器用它快速建立清单，再通过 `App.GetFileDiff` 按当前文件读取正文。
@@ -24,4 +25,4 @@
 
 ## 代码锚点
 
-`app.go`、`snapshot/file_diff.go`、`snapshot/repo_files.go`、`snapshot/repo_ignore_session.go`、`snapshot/git_history.go`、`snapshot/command_runner.go`、`internal/desktop/client.go`、`src/app/infrastructure/wails-client.ts`、`src/app/application/ports.ts`、`src/app/infrastructure/wails-app-backend.ts`、`src/app/features/diff/`、`src/app/components/diff-viewer-modal.tsx`、`src/app/components/repo-files-tab.tsx`、`src/app/features/terminal/terminal-workspace.tsx`。
+`app.go`、`snapshot/file_diff.go`、`snapshot/repo_files.go`、`snapshot/repo_ignore_session.go`、`snapshot/git_history.go`、`snapshot/command_runner.go`、`internal/desktop/client.go`、`src/app/infrastructure/wails-client.ts`、`src/app/application/ports.ts`、`src/app/infrastructure/wails-app-backend.ts`、`src/app/features/diff/`、`src/app/features/files/`、`src/app/components/diff-viewer-modal.tsx`、`src/app/components/repo-files-tab.tsx`、`src/app/features/terminal/terminal-workspace.tsx`。

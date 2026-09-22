@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen, LoaderCircle } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
 import type { AppSettings, RepoDetail, RepoFileContent, RepoTreeEntry } from '../domain/types';
+import { detectPreviewKind, maxPreviewRenderBytes } from '../features/files/file-preview-kind';
+import { resolveMarkdownLink } from '../features/files/markdown-links';
 import { C } from '../theme';
+import type { FilePreviewRenderer } from '../features/files/file-renderer';
 
 interface RepoFilesTabProps {
   repo: RepoDetail;
@@ -21,12 +24,30 @@ type FileState =
   | { status: 'loaded'; file: RepoFileContent }
   | { status: 'error'; path: string; message: string };
 
+type MarkdownView = 'preview' | 'raw';
+
+interface RenderedFile {
+  path: string;
+  kind: 'markdown' | 'code';
+  html: string;
+}
+
+// Effect: 高亮与 Markdown 渲染器只在首次需要时加载，不打开代码/Markdown 文件的会话不付这份体积。
+let rendererPromise: Promise<FilePreviewRenderer> | null = null;
+function loadFilePreviewRenderer() {
+  rendererPromise ??= import('../features/files/file-renderer');
+  return rendererPromise;
+}
+
 export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
   const backend = useAppBackend();
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set(['']));
   const [selectedPath, setSelectedPath] = useState('');
   const [fileState, setFileState] = useState<FileState>({ status: 'idle' });
+  const [renderedFile, setRenderedFile] = useState<RenderedFile | null>(null);
+  const [renderNotice, setRenderNotice] = useState<string | null>(null);
+  const [markdownView, setMarkdownView] = useState<MarkdownView>('preview');
   const directoryRequestSequence = useRef(0);
   const activeDirectoryRequests = useRef(new Map<string, number>());
   const fileRequestSequence = useRef(0);
@@ -96,18 +117,60 @@ export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
     void loadDirectory(path);
   };
 
-  const selectFile = async (entry: RepoTreeEntry) => {
+  const selectFile = async (path: string) => {
     const sequence = ++fileRequestSequence.current;
-    setSelectedPath(entry.path);
-    setFileState({ status: 'loading', path: entry.path });
+    setSelectedPath(path);
+    setFileState({ status: 'loading', path });
+    setRenderedFile(null);
+    setRenderNotice(null);
+    setMarkdownView('preview');
     try {
-      const file = await backend.readRepoFile({ repoId: repo.id, path: entry.path, settings, target });
-      if (sequence === fileRequestSequence.current) setFileState({ status: 'loaded', file });
+      const file = await backend.readRepoFile({ repoId: repo.id, path, settings, target });
+      if (sequence !== fileRequestSequence.current) return;
+      setFileState({ status: 'loaded', file });
+      const kind = detectPreviewKind(file.path);
+      if (kind === 'text') return;
+      if (file.size > maxPreviewRenderBytes) {
+        setRenderNotice('文件较大，已关闭高亮与预览渲染');
+        return;
+      }
+      try {
+        const renderer = await loadFilePreviewRenderer();
+        if (sequence !== fileRequestSequence.current) return;
+        setRenderedFile({ path: file.path, kind, html: renderer.renderFilePreviewHtml({ path: file.path, content: file.content, kind }) });
+      } catch (error) {
+        // Failure 降级：高亮或渲染失败只影响展示形式，已读到的正文仍以纯文本保留。
+        if (sequence === fileRequestSequence.current) setRenderNotice(`预览渲染失败，已按纯文本显示：${readErrorMessage(error, '未知错误')}`);
+      }
     } catch (error) {
       if (sequence === fileRequestSequence.current) {
-        setFileState({ status: 'error', path: entry.path, message: readErrorMessage(error, '文件读取失败') });
+        setFileState({ status: 'error', path, message: readErrorMessage(error, '文件读取失败') });
       }
     }
+  };
+
+  // Flow: 打开 Markdown 内部链接时先展开目标的祖先目录，使文件树定位到同一文件。
+  const openLinkedFile = async (path: string) => {
+    const ancestors = path.split('/').slice(0, -1).reduce<string[]>(
+      (accumulator, segment) => [...accumulator, accumulator.length ? `${accumulator[accumulator.length - 1]}/${segment}` : segment],
+      [],
+    );
+    if (ancestors.length > 0) {
+      setExpandedPaths(current => new Set([...current, ...ancestors]));
+      for (const ancestor of ancestors) void loadDirectory(ancestor);
+    }
+    await selectFile(path);
+  };
+
+  const handlePreviewClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    // Rule: 预览区内的链接一律不走 WebView 默认导航，只由这里分流到外部浏览器或应用内文件。
+    event.preventDefault();
+    const anchor = (event.target as HTMLElement).closest('a');
+    const href = anchor?.getAttribute('data-md-href');
+    if (!href || !renderedFile) return;
+    const target = resolveMarkdownLink(renderedFile.path, href);
+    if (target.kind === 'external') backend.openExternalURL(target.url);
+    else if (target.kind === 'repo-file') void openLinkedFile(target.path);
   };
 
   return (
@@ -124,7 +187,7 @@ export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
             expandedPaths={expandedPaths}
             selectedPath={selectedPath}
             onToggleDirectory={toggleDirectory}
-            onSelectFile={entry => void selectFile(entry)}
+            onSelectFile={entry => void selectFile(entry.path)}
             onRetryDirectory={path => void loadDirectory(path)}
           />
         </div>
@@ -134,7 +197,14 @@ export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
       </div>
 
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: C.appBg }}>
-        <FilePreview state={fileState} />
+        <FilePreview
+          state={fileState}
+          renderedFile={renderedFile}
+          notice={renderNotice}
+          markdownView={markdownView}
+          onMarkdownViewChange={setMarkdownView}
+          onPreviewClick={handlePreviewClick}
+        />
       </div>
     </div>
   );
@@ -272,7 +342,21 @@ function TreeHint({ depth, text, icon, action, error, onClick }: { depth: number
   );
 }
 
-function FilePreview({ state }: { state: FileState }) {
+function FilePreview({
+  state,
+  renderedFile,
+  notice,
+  markdownView,
+  onMarkdownViewChange,
+  onPreviewClick,
+}: {
+  state: FileState;
+  renderedFile: RenderedFile | null;
+  notice: string | null;
+  markdownView: MarkdownView;
+  onMarkdownViewChange: (view: MarkdownView) => void;
+  onPreviewClick: (event: ReactMouseEvent<HTMLDivElement>) => void;
+}) {
   if (state.status === 'idle') {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, color: C.textWeak }}>
@@ -283,12 +367,25 @@ function FilePreview({ state }: { state: FileState }) {
   }
 
   const path = state.status === 'loaded' ? state.file.path : state.path;
+  const file = state.status === 'loaded' ? state.file : null;
+  const kind = file ? detectPreviewKind(file.path) : 'text';
+  const activeHtml = file && renderedFile && renderedFile.path === file.path ? renderedFile.html : null;
+  const showMarkdownPreview = kind === 'markdown' && activeHtml !== null && markdownView === 'preview';
+  const showHighlightedCode = kind === 'code' && activeHtml !== null;
+
   return (
     <>
       <div style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${C.border}`, background: C.panel1, color: C.textSecondary, flexShrink: 0 }}>
         <File size={13} color={C.textWeak} />
         <span title={path} style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>{path}</span>
-        {state.status === 'loaded' && <span style={{ color: C.textWeak, fontSize: 10, flexShrink: 0 }}>{formatBytes(state.file.size)}</span>}
+        {notice && <span title={notice} style={{ color: C.textWeak, fontSize: 10, flexShrink: 0, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notice}</span>}
+        {kind === 'markdown' && activeHtml !== null && (
+          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+            <ViewModeButton active={markdownView === 'preview'} label="预览" onClick={() => onMarkdownViewChange('preview')} />
+            <ViewModeButton active={markdownView === 'raw'} label="原文" onClick={() => onMarkdownViewChange('raw')} />
+          </div>
+        )}
+        {file && <span style={{ color: C.textWeak, fontSize: 10, flexShrink: 0 }}>{formatBytes(file.size)}</span>}
       </div>
       {state.status === 'loading' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: C.textWeak, fontSize: 12 }}>
@@ -300,14 +397,64 @@ function FilePreview({ state }: { state: FileState }) {
           {state.message}
         </div>
       )}
-      {state.status === 'loaded' && (
-        <pre style={{ flex: 1, minWidth: 0, minHeight: 0, margin: 0, padding: '14px 16px 28px', overflow: 'auto', color: C.textPrimary, fontFamily: 'JetBrains Mono, Consolas, monospace', fontSize: 12, lineHeight: 1.65, tabSize: 2, whiteSpace: 'pre', background: C.appBg }}>
-          {state.file.content}
+      {file && showMarkdownPreview && (
+        <div style={previewBodyStyle}>
+          <div className="file-preview-markdown" onClick={onPreviewClick} dangerouslySetInnerHTML={{ __html: activeHtml ?? '' }} />
+        </div>
+      )}
+      {file && !showMarkdownPreview && showHighlightedCode && (
+        <pre style={previewBodyStyle}>
+          <code className="hljs" style={codeTextStyle} dangerouslySetInnerHTML={{ __html: activeHtml ?? '' }} />
+        </pre>
+      )}
+      {file && !showMarkdownPreview && !showHighlightedCode && (
+        <pre style={previewBodyStyle}>
+          {file.content}
         </pre>
       )}
     </>
   );
 }
+
+function ViewModeButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: `1px solid ${active ? C.borderLight : 'transparent'}`,
+        borderRadius: 6,
+        background: active ? C.panel3 : 'transparent',
+        color: active ? C.textPrimary : C.textWeak,
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        fontSize: 10,
+        padding: '2px 8px',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+const previewBodyStyle = {
+  flex: 1,
+  minWidth: 0,
+  minHeight: 0,
+  margin: 0,
+  padding: '14px 16px 28px',
+  overflow: 'auto',
+  background: C.appBg,
+  color: C.textPrimary,
+} as const;
+
+const codeTextStyle = {
+  fontFamily: 'JetBrains Mono, Consolas, monospace',
+  fontSize: 12,
+  lineHeight: 1.65,
+  tabSize: 2,
+  whiteSpace: 'pre',
+} as const;
 
 function isPathWithin(candidate: string, parent: string) {
   return candidate === parent || (parent === '' ? candidate !== '' : candidate.startsWith(`${parent}/`));
