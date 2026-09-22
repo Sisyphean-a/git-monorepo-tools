@@ -65,6 +65,30 @@ function isLowSurrogate(value: number) {
   return value >= 0xdc00 && value <= 0xdfff;
 }
 
+export type CommandConsoleActionKind = 'clear' | 'terminate';
+
+export interface CommandConsoleAction {
+  kind: CommandConsoleActionKind;
+  label: string;
+  disabled: boolean;
+}
+
+/**
+ * Rule: 运行中的命令只能终止，结束后才能清空；终止请求发出后不得重复触发。
+ */
+export function resolveCommandConsoleAction(
+  status: CommandConsoleState['status'],
+  terminateRequested: boolean,
+): CommandConsoleAction {
+  if (status !== 'running') {
+    return { kind: 'clear', label: '清空', disabled: false };
+  }
+  if (terminateRequested) {
+    return { kind: 'terminate', label: '终止中…', disabled: true };
+  }
+  return { kind: 'terminate', label: '终止', disabled: false };
+}
+
 export function createCommandConsoleSession(
   repoId: string,
   updateConsole: (updater: CommandConsoleUpdater) => void,

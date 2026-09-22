@@ -34,6 +34,8 @@
     "src/app/features/commands/command-catalog.test.ts",
     "src/app/features/commands/combo-commit-message-state.test.ts",
     "src/app/features/commands/repo-command-console.test.ts",
+    "src/app/features/commands/command-terminators.ts",
+    "src/app/features/commands/command-terminators.test.ts",
     "src/app/infrastructure/settings-store.ts",
     "src/app/infrastructure/settings-store.test.ts",
     "src/app/application/snapshot-coordinator.ts",

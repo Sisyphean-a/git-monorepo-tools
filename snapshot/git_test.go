@@ -1,6 +1,8 @@
 package snapshot
 
 import (
+	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 )
 
 func TestRunGitTimeoutStopsChildProcess(t *testing.T) {
@@ -370,4 +373,17 @@ func TestExtractBranchPreservesDottedBranchNames(t *testing.T) {
 			t.Errorf("extractBranch(%q) = %q, want %q", test.line, got, test.want)
 		}
 	}
+}
+
+func delayedMarkerScript(markerPath string) string {
+	return fmt.Sprintf("Start-Sleep -Seconds 2; Set-Content -LiteralPath %q -Value 'child'", markerPath)
+}
+
+func encodePowerShellCommand(value string) string {
+	characters := utf16.Encode([]rune(value))
+	bytes := make([]byte, len(characters)*2)
+	for index, character := range characters {
+		binary.LittleEndian.PutUint16(bytes[index*2:], character)
+	}
+	return base64.StdEncoding.EncodeToString(bytes)
 }

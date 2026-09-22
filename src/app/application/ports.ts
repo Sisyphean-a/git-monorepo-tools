@@ -48,6 +48,7 @@ export interface WorkspaceBackend {
   runBatch(operation: 'pull' | 'push', settings?: AppSettings): Promise<BatchResponse>;
   fetchRepoLog(repoId: string, settings: AppSettings): Promise<RepoLog>;
   runRepoCommand(request: RepoCommandRequest): Promise<RepoCommandResult>;
+  stopRepoCommand(streamId: string): Promise<void>;
   invokeLocalRepoAction(action: LocalRepoAction, path: string): Promise<void>;
   openLocalPath(path: string): Promise<void>;
   pickFolder(): Promise<string | null>;

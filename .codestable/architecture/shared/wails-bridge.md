@@ -14,6 +14,7 @@
 - `RepoHistoryPage` 的提交摘要包含父提交哈希，供前端在不额外请求提交详情的前提下绘制历史拓扑。
 - `App.GetWorkingDiffFiles` 只重新读取当前仓库已跟踪的暂存/未暂存文件状态和行数，不扫描未跟踪文件，也不计算文件系统大小；统一差异查看器用它快速建立清单，再通过 `App.GetFileDiff` 按当前文件读取正文。
 - `App.GetFileDiff` 的 `commitHash` 为空时读取当前仓库暂存或未暂存差异；非空时读取该提交相对第一父提交的差异，根提交使用空树。历史重命名文件同时传递旧路径，保证单文件差异仍保留重命名语义。已取得提交详情时前端可把 `parentHash` 一并传入，后端直接复用第一父提交，省去每个文件重复解析父提交；省略时后端回退到原有解析路径。前端仍通过同一个应用层文件差异端口调用，仓库路径与分类作为目标传递。
+- `App.StopRepoCommand` 是终止自定义命令的唯一桥接：按 `streamId` 定位运行中的命令并杀掉整棵进程树，未知或已结束的 `streamId` 必须返回错误，不得静默成功；前端只在命令运行中把它显示为“终止”，失败时必须恢复可重试状态。
 - `frontend/wailsjs/` 由 Wails 生成，只能通过生成流程更新。
 
 ## 变更规则
@@ -22,4 +23,4 @@
 
 ## 代码锚点
 
-`app.go`、`snapshot/file_diff.go`、`snapshot/git_history.go`、`internal/desktop/client.go`、`src/app/infrastructure/wails-client.ts`、`src/app/application/ports.ts`、`src/app/infrastructure/wails-app-backend.ts`、`src/app/features/diff/`、`src/app/components/diff-viewer-modal.tsx`、`src/app/features/terminal/terminal-workspace.tsx`。
+`app.go`、`snapshot/file_diff.go`、`snapshot/git_history.go`、`snapshot/command_runner.go`、`internal/desktop/client.go`、`src/app/infrastructure/wails-client.ts`、`src/app/application/ports.ts`、`src/app/infrastructure/wails-app-backend.ts`、`src/app/features/diff/`、`src/app/components/diff-viewer-modal.tsx`、`src/app/features/terminal/terminal-workspace.tsx`。

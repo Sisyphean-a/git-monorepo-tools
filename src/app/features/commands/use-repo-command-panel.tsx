@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Download, GitCommit, MinusSquare, PlusSquare, RefreshCw, RotateCcw, Sparkles, Upload } from 'lucide-react';
 import { formatComboSummary, getBuiltInCommandLabel, getRepoCommands } from './command-catalog';
 import { createComboCommitMessageState } from './combo-commit-message-state';
+import { createCommandTerminators } from './command-terminators';
 import { createCommandConsoleSession, pruneCommandConsoles, type CommandConsoleUpdater } from './repo-command-console';
 import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButton, RepoCommandResult, RepoDetail, RepoMutationAction } from '../../domain/types';
 import type { PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
@@ -16,7 +17,7 @@ interface UseRepoCommandPanelArgs {
   onMutateRepo: (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => Promise<void>;
   onRunCustomCommand: (repoPath: string, command: string, streamId?: string) => Promise<RepoCommandResult>;
   onOpenCommands: () => void;
-  backend: Pick<AppBackend, 'generateCommitMessage' | 'onEvent'>;
+  backend: Pick<AppBackend, 'generateCommitMessage' | 'onEvent' | 'stopRepoCommand'>;
 }
 
 export function useRepoCommandPanel({
@@ -35,6 +36,8 @@ export function useRepoCommandPanel({
   // Rule: 命令输出按仓库隔离存储，每个项目有独立的输出区域；切换项目时各自保留，互不覆盖。
   const [commandConsoles, setCommandConsoles] = useState<Record<string, CommandConsoleState | null>>({});
   const scopeRef = useRef(0);
+  // Rule: 每个仓库同一时刻至多有一个可终止的运行中会话；会话结束必须清除，避免终止打到已完成的命令。
+  const [terminators] = useState(createCommandTerminators);
   const files = repo.files;
   const stagedCount = files.reduce((count, file) => count + Number(file.staged), 0);
 
@@ -131,6 +134,11 @@ export function useRepoCommandPanel({
 
   const runCombo = (combo: CommandCombo) => {
     triggerBusyAction(`combo:${combo.id}`, async isActive => {
+      let cancelled = false;
+      terminators.register(repo.id, () => {
+        cancelled = true;
+        return Promise.resolve();
+      });
       const session = createCommandConsoleSession(
         repo.id,
         updateRepoConsole(repo.id),
@@ -143,6 +151,11 @@ export function useRepoCommandPanel({
 
       try {
         for (const action of combo.actions) {
+          if (cancelled) {
+            session.appendLine('已终止：剩余步骤未执行');
+            session.finish('failed');
+            return;
+          }
           session.appendLine(`> ${getBuiltInCommandLabel(action)}`);
           const result = await executeBuiltInAction(
             action,
@@ -156,6 +169,8 @@ export function useRepoCommandPanel({
       } catch (error) {
         session.appendLine(error instanceof Error ? error.message : '执行失败');
         session.finish('failed');
+      } finally {
+        terminators.clear(repo.id);
       }
     });
   };
@@ -164,6 +179,16 @@ export function useRepoCommandPanel({
     triggerBusyAction(`${scope}-command:${command.id}`, async isActive => {
       const streamId = `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const session = createCommandConsoleSession(repo.id, updateRepoConsole(repo.id), command.label, command.command);
+      let terminateRequested = false;
+      terminators.register(repo.id, () => {
+        terminateRequested = true;
+        return backend.stopRepoCommand(streamId).catch(error => {
+          // Failure: 命令可能在点击瞬间已结束；恢复可重试状态并显式提示，而不是停在“终止中…”。
+          terminateRequested = false;
+          if (isActive()) setAiError(error instanceof Error ? error.message : '终止命令失败');
+          throw error;
+        });
+      });
       const stopListening = backend.onEvent('repo-command-output', payload => {
         const event = readRuntimePayload(payload);
         if (event?.streamId !== streamId) return;
@@ -173,6 +198,11 @@ export function useRepoCommandPanel({
       try {
         const result = await onRunCustomCommand(repo.path, command.command, streamId);
         if (result.output) session.write(result.output);
+        if (terminateRequested) {
+          session.appendLine('已终止');
+          session.finish('failed');
+          return;
+        }
         session.appendLine(result.exitCode === 0 ? '[exit 0]' : `[exit ${result.exitCode}]`);
         let refreshFailed = false;
         await onRefresh().catch(error => {
@@ -185,6 +215,7 @@ export function useRepoCommandPanel({
         session.finish('failed');
       } finally {
         stopListening();
+        terminators.clear(repo.id);
       }
     });
   };
@@ -293,6 +324,7 @@ export function useRepoCommandPanel({
     commandConsole: commandConsoles[repo.id] ?? null,
     setCommitMessage,
     clearCommandConsole: () => updateRepoConsole(repo.id)(() => null),
+    terminateCommandConsole: () => terminators.terminate(repo.id),
   };
 }
 

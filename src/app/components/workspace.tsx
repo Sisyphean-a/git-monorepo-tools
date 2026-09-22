@@ -145,6 +145,7 @@ export function Workspace({
     commandConsole,
     setCommitMessage,
     clearCommandConsole,
+    terminateCommandConsole,
   } = useRepoCommandPanel({
     repo,
     repoIds,
@@ -281,6 +282,7 @@ export function Workspace({
                   commandConsole={commandConsole}
                   onMessageChange={setCommitMessage}
                   onClearConsole={clearCommandConsole}
+                  onTerminateConsole={terminateCommandConsole}
                 />
               </div>
             </div>

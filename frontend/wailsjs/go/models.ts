@@ -586,7 +586,6 @@ export namespace snapshot {
 	    repoPath: string;
 	    command: string;
 	    streamId?: string;
-	    timeoutSeconds: number;
 	    proxy: GitProxySettings;
 	
 	    static createFrom(source: any = {}) {
@@ -598,7 +597,6 @@ export namespace snapshot {
 	        this.repoPath = source["repoPath"];
 	        this.command = source["command"];
 	        this.streamId = source["streamId"];
-	        this.timeoutSeconds = source["timeoutSeconds"];
 	        this.proxy = this.convertValues(source["proxy"], GitProxySettings);
 	    }
 	

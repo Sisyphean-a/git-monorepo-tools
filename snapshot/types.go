@@ -34,11 +34,10 @@ type FileDiffRequest struct {
 }
 
 type RepoCommandRequest struct {
-	RepoPath       string           `json:"repoPath"`
-	Command        string           `json:"command"`
-	StreamID       string           `json:"streamId,omitempty"`
-	TimeoutSeconds int              `json:"timeoutSeconds"`
-	Proxy          GitProxySettings `json:"proxy"`
+	RepoPath string           `json:"repoPath"`
+	Command  string           `json:"command"`
+	StreamID string           `json:"streamId,omitempty"`
+	Proxy    GitProxySettings `json:"proxy"`
 }
 
 type RepoCommandResult struct {

@@ -51,4 +51,6 @@ export function RunBatch(arg1:string,arg2:snapshot.Request):Promise<snapshot.Bat
 
 export function RunRepoCommand(arg1:snapshot.RepoCommandRequest):Promise<snapshot.RepoCommandResult>;
 
+export function StopRepoCommand(arg1:string):Promise<void>;
+
 export function WriteTerminalInput(arg1:string,arg2:string):Promise<void>;

@@ -20,6 +20,7 @@ import {
   resizeTerminal,
   restartTerminalSession,
   runRepoCommand,
+  stopRepoCommand,
   writeTerminalInput,
 } from './wails-client.js';
 import { DEFAULT_SETTINGS } from './settings-store.js';
@@ -70,6 +71,9 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    StopRepoCommand: async () => {
       throw new Error('unused');
     },
     EnsureTerminalSession: async () => {
@@ -164,6 +168,9 @@ test('fetchWorkspaceBootstrap uses dedicated binding', async () => {
     RunRepoCommand: async () => {
       throw new Error('unused');
     },
+    StopRepoCommand: async () => {
+      throw new Error('unused');
+    },
     EnsureTerminalSession: async () => {
       throw new Error('unused');
     },
@@ -239,6 +246,9 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    StopRepoCommand: async () => {
       throw new Error('unused');
     },
     EnsureTerminalSession: async () => {
@@ -327,6 +337,9 @@ test('generateCommitMessage uses dedicated binding', async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    StopRepoCommand: async () => {
       throw new Error('unused');
     },
     EnsureTerminalSession: async () => {
@@ -464,6 +477,9 @@ test('mutateRepo accepts discard-all action', async () => {
     RunRepoCommand: async () => {
       throw new Error('unused');
     },
+    StopRepoCommand: async () => {
+      throw new Error('unused');
+    },
     EnsureTerminalSession: async () => {
       throw new Error('unused');
     },
@@ -508,8 +524,9 @@ test('mutateRepo accepts discard-all action', async () => {
   assert.deepEqual(calls, ['MutateRepo:discard-all']);
 });
 
-test('runRepoCommand uses dedicated binding with current execution settings', async () => {
-  const calls: Array<{ repoPath: string; command: string; timeoutSeconds: number; proxyPort: number }> = [];
+test('runRepoCommand and stopRepoCommand use dedicated bindings', async () => {
+  const calls: Array<{ repoPath: string; command: string; proxyPort: number }> = [];
+  const stopped: string[] = [];
   const originalWindow = globalThis.window;
 
   const bindings = {
@@ -537,13 +554,12 @@ test('runRepoCommand uses dedicated binding with current execution settings', as
     GetCommitDetail: async () => {
       throw new Error('unused');
     },
-    RunRepoCommand: async ({ repoPath, command, timeoutSeconds, proxy }: {
+    RunRepoCommand: async ({ repoPath, command, proxy }: {
       repoPath: string;
       command: string;
-      timeoutSeconds: number;
       proxy: { port: number };
     }) => {
-      calls.push({ repoPath, command, timeoutSeconds, proxyPort: proxy.port });
+      calls.push({ repoPath, command, proxyPort: proxy.port });
       return {
         repoPath,
         command,
@@ -552,6 +568,9 @@ test('runRepoCommand uses dedicated binding with current execution settings', as
         startedAt: 1,
         endedAt: 2,
       };
+    },
+    StopRepoCommand: async (streamId: string) => {
+      stopped.push(streamId);
     },
     EnsureTerminalSession: async () => {
       throw new Error('unused');
@@ -588,13 +607,13 @@ test('runRepoCommand uses dedicated binding with current execution settings', as
   try {
     const settings = {
       gitBehavior: {
-        timeoutSeconds: 120,
         proxy: { enabled: true, host: 'proxy.test', port: 2080 },
       },
     } as AppSettings;
     const result = await runRepoCommand({ repoPath: '/repo/a', command: 'wails build', settings });
     assert.equal(result.output, 'build ok');
     assert.equal(result.exitCode, 0);
+    await stopRepoCommand('cmd-1');
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -602,7 +621,8 @@ test('runRepoCommand uses dedicated binding with current execution settings', as
     });
   }
 
-  assert.deepEqual(calls, [{ repoPath: '/repo/a', command: 'wails build', timeoutSeconds: 120, proxyPort: 2080 }]);
+  assert.deepEqual(calls, [{ repoPath: '/repo/a', command: 'wails build', proxyPort: 2080 }]);
+  assert.deepEqual(stopped, ['cmd-1']);
 });
 
 test('terminal bindings use dedicated Wails bridge', async () => {
@@ -635,6 +655,9 @@ test('terminal bindings use dedicated Wails bridge', async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    StopRepoCommand: async () => {
       throw new Error('unused');
     },
     EnsureTerminalSession: async ({ repoId, repoPath, cols, rows }: { repoId: string; repoPath: string; cols?: number; rows?: number }) => {
@@ -785,6 +808,9 @@ test('refreshRepo uses dedicated binding', async () => {
       throw new Error('unused');
     },
     RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    StopRepoCommand: async () => {
       throw new Error('unused');
     },
     EnsureTerminalSession: async () => {
@@ -941,6 +967,9 @@ test('history bindings use dedicated Wails bridge', async () => {
       };
     },
     RunRepoCommand: async () => {
+      throw new Error('unused');
+    },
+    StopRepoCommand: async () => {
       throw new Error('unused');
     },
     EnsureTerminalSession: async () => {

@@ -1,18 +1,13 @@
 package snapshot
 
 import (
-	"encoding/base64"
-	"encoding/binary"
 	"errors"
-	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -189,41 +184,82 @@ func TestRunRepoCommandRejectsMissingPath(t *testing.T) {
 	}
 }
 
-func TestRunRepoCommandStopsAtConfiguredTimeout(t *testing.T) {
+// Rule: 自定义命令不受 git 的“操作超时”约束，必须跑到自然结束。
+func TestRunRepoCommandRunsToCompletionWithoutTimeout(t *testing.T) {
 	service := NewService(t.TempDir())
 	result, err := service.RunRepoCommand(RepoCommandRequest{
-		RepoPath:       t.TempDir(),
-		Command:        slowShellCommand(),
-		TimeoutSeconds: 1,
+		RepoPath: t.TempDir(),
+		Command:  slowShellCommand(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "超时") {
-		t.Fatalf("expected timeout error, got result=%#v err=%v", result, err)
+	if err != nil {
+		t.Fatalf("expected command to finish, got err=%v", err)
 	}
-	if result.ExitCode != -1 {
-		t.Fatalf("expected timeout exit code, got %#v", result)
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit code 0, got %#v", result)
 	}
 }
 
-func TestRunRepoCommandTimeoutStopsChildProcess(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("child process tree verification runs on Windows")
-	}
-
-	markerPath := filepath.Join(t.TempDir(), "child-ran.txt")
+// Flow: 命令在后台阻塞运行时，终止必须让它真的返回而不是只停止显示。
+func TestStopRepoCommandTerminatesRunningCommand(t *testing.T) {
+	repoPath := t.TempDir()
 	service := NewService(t.TempDir())
-	_, err := service.RunRepoCommand(RepoCommandRequest{
-		RepoPath:       t.TempDir(),
-		Command:        childProcessShellCommand(markerPath),
-		TimeoutSeconds: 1,
-	})
-	if err == nil || !strings.Contains(err.Error(), "超时") {
-		t.Fatalf("expected timeout error, got %v", err)
+	streamID := "cmd-stop-test"
+	type outcome struct {
+		result RepoCommandResult
+		err    error
+	}
+	results := make(chan outcome, 1)
+
+	go func() {
+		result, err := service.RunRepoCommand(RepoCommandRequest{
+			RepoPath: repoPath,
+			Command:  slowShellCommand(),
+			StreamID: streamID,
+		})
+		results <- outcome{result: result, err: err}
+	}()
+
+	waitForRegisteredCommand(t, service.commands, streamID)
+	if err := service.StopRepoCommand(streamID); err != nil {
+		t.Fatalf("stop running command: %v", err)
 	}
 
-	time.Sleep(2500 * time.Millisecond)
-	if _, err := os.Stat(markerPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("expected child process to be terminated, stat error=%v", err)
+	select {
+	case got := <-results:
+		if got.err != nil {
+			t.Fatalf("expected terminated command to return a result, got err=%v", got.err)
+		}
+		if got.result.ExitCode == 0 {
+			t.Fatalf("expected non-zero exit code after termination, got %#v", got.result)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("expected terminated command to return")
 	}
+}
+
+func TestStopRepoCommandRejectsUnknownStream(t *testing.T) {
+	service := NewService(t.TempDir())
+	if err := service.StopRepoCommand("missing-stream"); err == nil {
+		t.Fatal("expected error for unknown stream id")
+	}
+	if err := service.StopRepoCommand("   "); err == nil {
+		t.Fatal("expected error for blank stream id")
+	}
+}
+
+func waitForRegisteredCommand(t *testing.T, registry *commandRegistry, streamID string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		registry.mu.Lock()
+		_, ok := registry.running[streamID]
+		registry.mu.Unlock()
+		if ok {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("expected command to be registered before termination")
 }
 
 func TestResolveWindowsCommandShellPrefersPwsh(t *testing.T) {
@@ -294,24 +330,6 @@ func slowShellCommand() string {
 		return "Start-Sleep -Seconds 3"
 	}
 	return "sleep 3"
-}
-
-func childProcessShellCommand(markerPath string) string {
-	encoded := encodePowerShellCommand(delayedMarkerScript(markerPath))
-	return fmt.Sprintf("Start-Process powershell.exe -ArgumentList '-NoLogo -NoProfile -NonInteractive -EncodedCommand %s'; Start-Sleep -Seconds 3", encoded)
-}
-
-func delayedMarkerScript(markerPath string) string {
-	return fmt.Sprintf("Start-Sleep -Seconds 2; Set-Content -LiteralPath %q -Value 'child'", markerPath)
-}
-
-func encodePowerShellCommand(value string) string {
-	characters := utf16.Encode([]rune(value))
-	bytes := make([]byte, len(characters)*2)
-	for index, character := range characters {
-		binary.LittleEndian.PutUint16(bytes[index*2:], character)
-	}
-	return base64.StdEncoding.EncodeToString(bytes)
 }
 
 func TestWaitForCommandReportsTerminationFailure(t *testing.T) {

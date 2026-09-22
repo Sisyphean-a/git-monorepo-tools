@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronUp, Copy, Settings2 } from 'lucide-react';
 import { C } from '../theme';
 import type { CommandConsoleState } from '../features/commands/command-console-state';
-import { formatCommandTime } from '../features/commands/repo-command-console';
+import { formatCommandTime, resolveCommandConsoleAction } from '../features/commands/repo-command-console';
 import { ToolbarBtn } from './workspace-parts';
 
 export interface PanelAction {
@@ -38,6 +38,7 @@ interface AiCommitPanelProps {
   commandConsole: CommandConsoleState | null;
   onMessageChange: (message: string) => void;
   onClearConsole: () => void;
+  onTerminateConsole: () => Promise<void>;
 }
 
 function MessageEditor({ message, error, onMessageChange }: Pick<AiCommitPanelProps, 'message' | 'error' | 'onMessageChange'>) {
@@ -143,12 +144,15 @@ function CommandSection({ section }: { section: PanelCommandSection }) {
 function CommandConsole({
   commandConsole,
   onClear,
+  onTerminate,
 }: {
   commandConsole: CommandConsoleState | null;
   onClear: () => void;
+  onTerminate: () => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(Boolean(commandConsole));
   const [copied, setCopied] = useState(false);
+  const [terminateRequested, setTerminateRequested] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
   const outputRef = useRef<HTMLPreElement | null>(null);
 
@@ -161,6 +165,11 @@ function CommandConsole({
     // 切换项目后复位复制反馈，避免新项目的按钮短暂显示对勾。
     setCopied(false);
   }, [commandConsole?.sessionId]);
+
+  useEffect(() => {
+    // 命令结束或换会话后复位终止请求，避免下一次运行直接显示“终止中…”。
+    setTerminateRequested(false);
+  }, [commandConsole?.sessionId, commandConsole?.status]);
 
   useEffect(() => () => {
     if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
@@ -188,6 +197,17 @@ function CommandConsole({
         copyTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
       })
       .catch(error => console.error('复制提交信息失败', error));
+  };
+
+  const consoleAction = resolveCommandConsoleAction(commandConsole?.status ?? 'success', terminateRequested);
+  const handleConsoleAction = () => {
+    if (consoleAction.kind !== 'terminate') {
+      onClear();
+      return;
+    }
+    setTerminateRequested(true);
+    // Failure: 终止失败（例如命令刚好结束）时恢复可重试状态，避免按钮停在“终止中…”。
+    void onTerminate().catch(() => setTerminateRequested(false));
   };
 
   const statusColor = commandConsole?.status === 'failed'
@@ -223,8 +243,12 @@ function CommandConsole({
             >
               {copied ? <Check size={12} strokeWidth={2.5} /> : <Copy size={12} />}
             </button>
-            <button onClick={onClear} style={{ background: 'none', border: 'none', color: C.textWeak, cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', fontSize: 10 }}>
-              清空
+            <button
+              onClick={handleConsoleAction}
+              disabled={consoleAction.disabled}
+              style={{ background: 'none', border: 'none', color: consoleAction.kind === 'terminate' ? C.needPull : C.textWeak, cursor: consoleAction.disabled ? 'default' : 'pointer', padding: 2, display: 'flex', alignItems: 'center', fontSize: 10 }}
+            >
+              {consoleAction.label}
             </button>
           </div>
         )}
@@ -262,6 +286,7 @@ export function AiCommitPanel({
   commandConsole,
   onMessageChange,
   onClearConsole,
+  onTerminateConsole,
 }: AiCommitPanelProps) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.appBg, overflow: 'hidden' }}>
@@ -284,7 +309,7 @@ export function AiCommitPanel({
         {commandSections.map(section => <CommandSection key={section.key} section={section} />)}
         <div style={{ flex: 1, minHeight: 0 }} />
       </div>
-      <CommandConsole commandConsole={commandConsole} onClear={onClearConsole} />
+      <CommandConsole commandConsole={commandConsole} onClear={onClearConsole} onTerminate={onTerminateConsole} />
     </div>
   );
 }

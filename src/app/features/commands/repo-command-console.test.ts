@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendCommandOutput, createCommandConsoleSession, formatCommandTime, MAX_COMMAND_OUTPUT_CHARS, pruneCommandConsoles } from './repo-command-console.js';
+import { appendCommandOutput, createCommandConsoleSession, formatCommandTime, MAX_COMMAND_OUTPUT_CHARS, pruneCommandConsoles, resolveCommandConsoleAction } from './repo-command-console.js';
 import type { CommandConsoleState } from './command-console-state.js';
 import type { CommandConsoleUpdater } from './repo-command-console.js';
 
@@ -128,4 +128,11 @@ test('pruneCommandConsoles removes output for repositories no longer present', (
 test('formatCommandTime displays the command start time as HH:MM:SS', () => {
   const timestamp = new Date(2025, 0, 2, 3, 4, 5).getTime();
   assert.equal(formatCommandTime(timestamp), '03:04:05');
+});
+
+test('console action switches from clear to terminate while a command is running', () => {
+  assert.deepEqual(resolveCommandConsoleAction('success', false), { kind: 'clear', label: '清空', disabled: false });
+  assert.deepEqual(resolveCommandConsoleAction('failed', false), { kind: 'clear', label: '清空', disabled: false });
+  assert.deepEqual(resolveCommandConsoleAction('running', false), { kind: 'terminate', label: '终止', disabled: false });
+  assert.deepEqual(resolveCommandConsoleAction('running', true), { kind: 'terminate', label: '终止中…', disabled: true });
 });

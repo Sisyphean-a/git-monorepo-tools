@@ -25,6 +25,7 @@ type workspaceService interface {
 	GenerateCommitMessage(string, snapshot.Request, snapshot.AICommitSettings) (string, error)
 	RunRepoCommand(snapshot.RepoCommandRequest) (snapshot.RepoCommandResult, error)
 	StreamRepoCommand(snapshot.RepoCommandRequest, func(string)) (snapshot.RepoCommandResult, error)
+	StopRepoCommand(string) error
 }
 
 type desktopGateway interface {
@@ -133,6 +134,10 @@ func (a *App) RunRepoCommand(request snapshot.RepoCommandRequest) (snapshot.Repo
 			"chunk":    chunk,
 		})
 	})
+}
+
+func (a *App) StopRepoCommand(streamID string) error {
+	return a.workspace.StopRepoCommand(streamID)
 }
 
 func (a *App) PickFolder() (string, error) {

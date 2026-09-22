@@ -40,7 +40,6 @@ type WailsRepoCommandRequest = {
   repoPath: string;
   command: string;
   streamId?: string;
-  timeoutSeconds: AppSettings['gitBehavior']['timeoutSeconds'];
   proxy: AppSettings['gitBehavior']['proxy'];
 };
 type WailsTerminalSessionRequest = {
@@ -73,6 +72,7 @@ type WailsBindings = {
   GetWorkingDiffFiles?: (repoId: string, request: SnapshotRequest) => Promise<FileChange[]>;
   GetFileDiff: (request: WailsFileDiffRequest) => Promise<FileDiff>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
+  StopRepoCommand: (streamId: string) => Promise<void>;
   EnsureTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
   CreateTerminalSession: (request: WailsTerminalSessionRequest) => Promise<TerminalSessionInfo>;
   RestartTerminalSession: (sessionId: string, cols: number, rows: number) => Promise<TerminalSessionInfo>;
@@ -145,6 +145,7 @@ function getWailsBindings(): WailsBindings {
     || typeof binding.GetRepoHistory !== 'function'
     || typeof binding.GetCommitDetail !== 'function'
     || typeof binding.RunRepoCommand !== 'function'
+    || typeof binding.StopRepoCommand !== 'function'
     || typeof binding.EnsureTerminalSession !== 'function'
     || typeof binding.RestartTerminalSession !== 'function'
     || typeof binding.WriteTerminalInput !== 'function'
@@ -232,9 +233,13 @@ export async function runRepoCommand({ repoPath, command, streamId, settings }: 
     repoPath,
     command,
     streamId,
-    timeoutSeconds: settings?.gitBehavior.timeoutSeconds ?? 60,
     proxy: settings?.gitBehavior.proxy ?? buildSnapshotRequest().proxy,
   });
+}
+
+// Failure: 命令已结束或 streamId 未知时后端显式报错，界面据此提示而不是假装终止成功。
+export async function stopRepoCommand(streamId: string) {
+  return getWailsBindings().StopRepoCommand(streamId);
 }
 
 export async function ensureTerminalSession({ repoId, repoPath, cols, rows }: TerminalSessionRequest) {
@@ -318,6 +323,7 @@ export const wailsClient: WorkspaceBackend & RepoInteractionBackend = {
   fetchWorkingDiffFiles,
   fetchFileDiff,
   runRepoCommand,
+  stopRepoCommand,
   generateCommitMessage,
   ensureTerminalSession,
   createTerminalSession,

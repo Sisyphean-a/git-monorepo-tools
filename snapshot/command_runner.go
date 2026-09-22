@@ -110,6 +110,11 @@ func (s *Service) StreamRepoCommand(request RepoCommandRequest, onChunk func(str
 	return s.runRepoCommand(request, onChunk, false)
 }
 
+// Failure: 未知或已结束的 streamId 返回错误，避免界面把“没有命令在跑”当作终止成功。
+func (s *Service) StopRepoCommand(streamID string) error {
+	return s.commands.terminate(streamID)
+}
+
 func (s *Service) runRepoCommand(request RepoCommandRequest, onChunk func(string), captureOutput bool) (RepoCommandResult, error) {
 	repoPath := normalizePath(strings.TrimSpace(request.RepoPath))
 	commandText := strings.TrimSpace(request.Command)
@@ -124,10 +129,10 @@ func (s *Service) runRepoCommand(request RepoCommandRequest, onChunk func(string
 	}
 
 	startedAt := time.Now()
-	executor := newGitExecutor(Request{Proxy: request.Proxy, TimeoutSeconds: request.TimeoutSeconds})
-	output, exitCode, err := executor.runShellCommand(shellCommand{
+	output, exitCode, err := runShellCommand(normalizedGitProxy(request.Proxy), s.commands, shellCommand{
 		repoPath:      repoPath,
 		commandText:   commandText,
+		streamID:      request.StreamID,
 		onChunk:       onChunk,
 		captureOutput: captureOutput,
 	})
@@ -148,14 +153,16 @@ func (s *Service) runRepoCommand(request RepoCommandRequest, onChunk func(string
 type shellCommand struct {
 	repoPath      string
 	commandText   string
+	streamID      string
 	onChunk       func(string)
 	captureOutput bool
 }
 
-func (executor gitExecutor) runShellCommand(command shellCommand) (string, int, error) {
+// Rule: 自定义命令跑到自然结束；调用方不设超时，只能由用户通过 streamId 主动终止。
+func runShellCommand(proxy GitProxySettings, registry *commandRegistry, command shellCommand) (string, int, error) {
 	cmd := buildShellCommand(command.repoPath, command.commandText)
 	applyBackgroundProcessAttrs(cmd)
-	cmd.Env = buildGitProcessEnv(executor.proxy)
+	cmd.Env = buildGitProcessEnv(proxy)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", -1, err
@@ -167,6 +174,8 @@ func (executor gitExecutor) runShellCommand(command shellCommand) (string, int, 
 	if err := cmd.Start(); err != nil {
 		return "", -1, err
 	}
+	registry.register(command.streamID, cmd)
+	defer registry.unregister(command.streamID)
 
 	var builder *cappedStringBuilder
 	if command.captureOutput {
@@ -177,18 +186,12 @@ func (executor gitExecutor) runShellCommand(command shellCommand) (string, int, 
 	streamGroup.Add(2)
 	go streamCommand(stdout, command.onChunk, builder, &lock, &streamGroup)
 	go streamCommand(stderr, command.onChunk, builder, &lock, &streamGroup)
-	waitErr, timedOut := waitForCommand(cmd, executor.timeout)
+	waitErr := cmd.Wait()
 	drainStreams(&streamGroup)
 
 	output := ""
 	if builder != nil {
 		output = builder.stringWithTruncationMarker()
-	}
-	if timedOut {
-		if waitErr != nil {
-			return output, -1, fmt.Errorf("命令执行超时（%s）：%v", executor.timeout, waitErr)
-		}
-		return output, -1, fmt.Errorf("命令执行超时（%s）", executor.timeout)
 	}
 	if waitErr == nil {
 		return output, 0, nil
@@ -330,4 +333,49 @@ func resolveWindowsCommandShell(lookPath func(string) (string, error)) string {
 		return path
 	}
 	return "powershell.exe"
+}
+
+// commandRegistry 登记带 streamId 的运行中命令，使界面能按 streamId 终止它。
+type commandRegistry struct {
+	mu      sync.Mutex
+	running map[string]*exec.Cmd
+}
+
+func newCommandRegistry() *commandRegistry {
+	return &commandRegistry{running: map[string]*exec.Cmd{}}
+}
+
+func (r *commandRegistry) register(streamID string, cmd *exec.Cmd) {
+	if streamID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.running[streamID] = cmd
+}
+
+func (r *commandRegistry) unregister(streamID string) {
+	if streamID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.running, streamID)
+}
+
+// Flow: 取到命令后释放锁再杀进程树，避免 taskkill 阻塞其他登记操作。
+func (r *commandRegistry) terminate(streamID string) error {
+	if strings.TrimSpace(streamID) == "" {
+		return errors.New("缺少命令流标识")
+	}
+	r.mu.Lock()
+	cmd, ok := r.running[streamID]
+	r.mu.Unlock()
+	if !ok {
+		return errors.New("命令已结束或不存在")
+	}
+	if err := terminateCommandTree(cmd); err != nil {
+		return fmt.Errorf("终止命令失败：%w", err)
+	}
+	return nil
 }

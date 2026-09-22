@@ -98,6 +98,10 @@ export function RunRepoCommand(arg1) {
   return window['go']['main']['App']['RunRepoCommand'](arg1);
 }
 
+export function StopRepoCommand(arg1) {
+  return window['go']['main']['App']['StopRepoCommand'](arg1);
+}
+
 export function WriteTerminalInput(arg1, arg2) {
   return window['go']['main']['App']['WriteTerminalInput'](arg1, arg2);
 }
