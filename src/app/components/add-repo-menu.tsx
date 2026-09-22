@@ -1,4 +1,4 @@
-import { FolderPlus, Plus, Tags, X } from 'lucide-react';
+import { Plus, Tags, X } from 'lucide-react';
 import { C } from '../theme';
 
 interface AddRepoMenuProps {
@@ -72,9 +72,9 @@ export function AddRepoMenu({ open, onClose, onAddFolder, onAddCategory }: AddRe
         </div>
         <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <ActionButton
-            icon={<FolderPlus size={14} />}
-            title="添加文件夹"
-            description="通过本机目录选择器加入新的扫描目录，并在下次扫描时发现真实仓库。"
+            icon={<Plus size={14} />}
+            title="添加仓库"
+            description="选择本机目录，自动扫描其中的 Git 仓库并加入侧栏，不使用 mock 数据。"
             onClick={onAddFolder}
           />
           <ActionButton
@@ -82,12 +82,6 @@ export function AddRepoMenu({ open, onClose, onAddFolder, onAddCategory }: AddRe
             title="添加分类"
             description="创建新的仓库分类名称，后续新增目录时可挂到该分类下。"
             onClick={onAddCategory}
-          />
-          <ActionButton
-            icon={<Plus size={14} />}
-            title="添加仓库"
-            description="当前浏览器版通过添加扫描目录纳入真实仓库，不使用 mock 数据。"
-            onClick={onAddFolder}
           />
         </div>
       </div>

@@ -14,6 +14,8 @@ interface RepoStatusPollingConfig {
   selectedRepoId: string;
   applyRepoUpdate: (update: RepoSnapshotUpdate) => void;
   runBackgroundTask: RunBackgroundTask;
+  /** 渐进启动扫描是否仍拥有 checking 项目；结束后轮询必须接管，避免仓库永久停在检查中。 */
+  startupScanActive: boolean;
 }
 
 export function useRepoStatusPolling(config: RepoStatusPollingConfig) {
@@ -23,6 +25,7 @@ export function useRepoStatusPolling(config: RepoStatusPollingConfig) {
 
   const enabled = config.settings.gitBehavior.autoScanEnabled;
   const repoIds = config.snapshot?.repos.map(repo => repo.id).join('\n') ?? '';
+  const pendingRepoIds = config.snapshot?.repos.filter(repo => repo.status === 'checking').map(repo => repo.id).join('\n') ?? '';
 
   useEffect(() => {
     if (!enabled || !config.selectedRepoId) return;
@@ -57,6 +60,17 @@ export function useRepoStatusPolling(config: RepoStatusPollingConfig) {
     const timer = window.setInterval(refreshBackgroundRepos, BACKGROUND_REPOS_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [enabled, repoIds]);
+
+  useEffect(() => {
+    // Rule: 自动扫描关闭时，启动扫描中断留下的 checking 仓库仍需一次性补齐，不能永久停在检查中。
+    if (enabled || config.startupScanActive || !pendingRepoIds) return;
+    const concurrency = configRef.current.settings.gitBehavior.concurrency;
+    void refreshRepoBatch(
+      pendingRepoIds.split('\n'),
+      concurrency,
+      repoId => refreshRepo(repoId, configRef, inFlightRef),
+    );
+  }, [enabled, config.startupScanActive, pendingRepoIds]);
 }
 
 async function refreshRepo(
@@ -68,7 +82,7 @@ async function refreshRepo(
   if (existing) return existing;
 
   const current = configRef.current;
-  const target = readRepoRefreshTarget(current.snapshot, repoId);
+  const target = readRepoRefreshTarget(current, repoId);
   if (!target) return;
 
   const request = current.runBackgroundTask(
@@ -96,9 +110,9 @@ async function refreshRepoBatch(
   await Promise.all(workers);
 }
 
-function readRepoRefreshTarget(snapshot: AppSnapshot | null, repoId: string): RepoRefreshTarget | undefined {
-  const repo = snapshot?.repoDetails[repoId] ?? snapshot?.repos.find(item => item.id === repoId);
-  // Rule: 渐进启动扫描拥有 checking 项目，轮询不得用并发旧结果覆盖它。
-  if (!repo || repo.status === 'checking') return undefined;
+function readRepoRefreshTarget(config: RepoStatusPollingConfig, repoId: string): RepoRefreshTarget | undefined {
+  const repo = config.snapshot?.repoDetails[repoId] ?? config.snapshot?.repos.find(item => item.id === repoId);
+  // Rule: 渐进启动扫描拥有 checking 项目；扫描结束后轮询不得继续跳过它们。
+  if (!repo || (repo.status === 'checking' && config.startupScanActive)) return undefined;
   return { path: repo.path, category: repo.category };
 }

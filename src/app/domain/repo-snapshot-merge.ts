@@ -2,6 +2,11 @@ import type { AppSnapshot, FileChange, Repo, RepoDetail, RepoSnapshotUpdate } fr
 
 export type RepoUpdateMode = 'interaction' | 'background';
 
+export type SnapshotApplyContext = {
+  /** 完整快照 fetch 开始时的交互版本；版本更高的仓库以本地交互结果为准，避免旧快照回退前台操作。 */
+  preserveInteractionsSince: number;
+};
+
 export function mergeRepoSnapshotUpdate(
   snapshot: AppSnapshot,
   update: RepoSnapshotUpdate,
@@ -18,7 +23,7 @@ export function mergeRepoSnapshotUpdate(
 
   return {
     ...snapshot,
-    scannedAt: update.scannedAt,
+    // Rule: 单仓更新不改变工作区扫描时间，避免轮询把“上次扫描”刷新成当前时间。
     repos,
     repoDetails,
     selectedRepoId: snapshot.selectedRepoId || nextRepo.id,
@@ -31,6 +36,39 @@ export function mergeRepoSnapshotUpdate(
 
 export function replaceRepoInList<T extends Repo>(repos: T[], nextRepo: T) {
   return repos.map(repo => (repo.id === nextRepo.id ? nextRepo : repo));
+}
+
+// Flow: 完整快照作为列表组成的权威来源（新增/移除仓库生效），但 fetch 期间发生交互更新的仓库保留本地版本。
+// Guarantee: 不存在的仓库一律以快照为准删除；scannedAt 只取完整快照时间。
+export function mergeSnapshotPreservingInteractions(
+  next: AppSnapshot,
+  current: AppSnapshot | null,
+  interactionVersions: ReadonlyMap<string, number>,
+  preserveInteractionsSince: number,
+): AppSnapshot {
+  if (!current || interactionVersions.size === 0) return next;
+  const preserved = new Map<string, RepoDetail>();
+  for (const repo of next.repos) {
+    const version = interactionVersions.get(repo.id);
+    const detail = current.repoDetails[repo.id];
+    if (version !== undefined && version > preserveInteractionsSince && detail) {
+      preserved.set(repo.id, detail);
+    }
+  }
+  if (preserved.size === 0) return next;
+
+  const repos = next.repos.map(repo => {
+    const detail = preserved.get(repo.id);
+    return detail ? toRepoSummary(detail) : repo;
+  });
+  const repoDetails = { ...next.repoDetails };
+  const commitCandidates = { ...next.commitCandidates };
+  for (const [repoId, detail] of preserved) {
+    repoDetails[repoId] = detail;
+    const candidates = current.commitCandidates[repoId];
+    if (candidates) commitCandidates[repoId] = candidates;
+  }
+  return { ...next, repos, repoDetails, commitCandidates };
 }
 
 export function toRepoSummary(repo: Repo): Repo {

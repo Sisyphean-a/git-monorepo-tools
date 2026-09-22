@@ -75,7 +75,7 @@ function WorkspaceLayout({
         scannedAt={sidebar.scannedAt}
         settings={workspace.settings}
         batchAction={batch.activeAction}
-        isRefreshing={workspace.sidebar.sidebarRefreshing}
+        isRefreshing={workspace.refreshing}
         recentError={workspace.visibleError}
         selectedRepoId={workspace.selectedRepoId}
         onSelectRepo={workspace.setSelectedRepoId}

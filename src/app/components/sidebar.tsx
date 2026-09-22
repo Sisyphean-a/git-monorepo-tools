@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRepoTerminalStatuses } from '../features/terminal/terminal-workspace';
 import { C } from '../theme';
 import type { AppSettings, Repo } from '../domain/types';
 import { SidebarFooter } from './sidebar-footer';
 import { SidebarHeader } from './sidebar-header';
-import { SidebarRepoList } from './sidebar-repo-list';
+import { SidebarRepoList, matchesRepoSearch } from './sidebar-repo-list';
 
 interface SidebarProps {
   repos: Repo[];
@@ -26,9 +26,14 @@ interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const [search, setSearch] = useState('');
   const terminalStates = useRepoTerminalStatuses();
+  const query = search.trim().toLowerCase();
+  const matchedCount = useMemo(
+    () => query ? props.repos.filter(repo => matchesRepoSearch(repo, query)).length : props.repos.length,
+    [props.repos, query],
+  );
   return (
     <div style={sidebarStyle}>
-      <SidebarHeader repos={props.repos} search={search} onSearch={setSearch} onOpenAddMenu={props.onOpenAddMenu} />
+      <SidebarHeader repos={props.repos} matchedCount={matchedCount} search={search} onSearch={setSearch} onOpenAddMenu={props.onOpenAddMenu} />
       <SidebarRepoList
         repos={props.repos}
         categories={props.categories}

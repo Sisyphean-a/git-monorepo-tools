@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createSnapshotCoordinator } from './snapshot-coordinator';
+import type { SnapshotApplyContext } from '../domain/repo-snapshot-merge';
 import type { AppSettings, AppSnapshot } from '../domain/types';
-import type { WorkspaceBackend } from './ports';
+import type { SnapshotFetchOptions, WorkspaceBackend } from './ports';
 
 interface SnapshotRefreshConfig {
   settings: AppSettings;
-  applySnapshot: (snapshot: AppSnapshot) => void;
+  applySnapshot: (snapshot: AppSnapshot, context?: SnapshotApplyContext) => void;
   reportError: (message: string | null) => void;
   fetchSnapshot: WorkspaceBackend['fetchSnapshot'];
   skipInitialRefresh?: boolean;
@@ -16,8 +17,10 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
   const settingsRef = useRef(settings);
   const applySnapshotRef = useRef(applySnapshot);
   const reportErrorRef = useRef(reportError);
+  const refreshCountRef = useRef(0);
+  const [refreshing, setRefreshing] = useState(false);
   const coordinatorRef = useRef(createSnapshotCoordinator({
-    applySnapshot: snapshot => applySnapshotRef.current(snapshot),
+    applySnapshot: (snapshot, context) => applySnapshotRef.current(snapshot, context),
     fetchSnapshot,
     reportError: message => reportErrorRef.current(message),
   }));
@@ -31,13 +34,33 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
     reportErrorRef.current = reportError;
   }, [applySnapshot, reportError]);
 
+  // Flow: 所有完整刷新统一计数，界面据此显示“扫描中”，不再只反映手动扫描按钮。
+  const trackRefresh = <T,>(promise: Promise<T>) => {
+    refreshCountRef.current += 1;
+    setRefreshing(true);
+    const settle = () => {
+      refreshCountRef.current = Math.max(0, refreshCountRef.current - 1);
+      if (refreshCountRef.current === 0) setRefreshing(false);
+    };
+    promise.then(settle, settle);
+    return promise;
+  };
+
+  const requestRefresh = (nextSettings: AppSettings, fetchOptions?: SnapshotFetchOptions) =>
+    trackRefresh(coordinatorRef.current.requestRefresh(nextSettings, fetchOptions));
+
+  const refreshSnapshot = (
+    nextSettings: AppSettings = settingsRef.current,
+    fetchOptions: SnapshotFetchOptions = { refreshRemotes: true },
+  ) => requestRefresh(nextSettings, fetchOptions);
+
   useEffect(() => {
     if (skipInitialRefresh) return;
     let cancelled = false;
-    void coordinatorRef.current.requestRefresh(settingsRef.current, { refreshRemotes: false })
+    void requestRefresh(settingsRef.current, { refreshRemotes: false })
       .then(() => {
         if (cancelled) return;
-        void coordinatorRef.current.requestRefresh(settingsRef.current, { refreshRemotes: true })
+        void requestRefresh(settingsRef.current, { refreshRemotes: true })
           .catch(error => reportErrorRef.current(formatRefreshError(error)));
       })
       .catch(error => reportErrorRef.current(formatRefreshError(error)));
@@ -53,7 +76,7 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
 
     const schedule = () => {
       timer = window.setTimeout(async () => {
-        await coordinatorRef.current.requestRefresh(settingsRef.current, { refreshRemotes: true })
+        await requestRefresh(settingsRef.current, { refreshRemotes: true })
           .catch(error => reportErrorRef.current(formatRefreshError(error)));
         if (!cancelled) schedule();
       }, settings.gitBehavior.autoScanIntervalSeconds * 1000);
@@ -67,23 +90,17 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
   }, [settings.gitBehavior.autoScanEnabled, settings.gitBehavior.autoScanIntervalSeconds]);
 
   return {
+    refreshing,
     beginProgressiveScan() {
       return coordinatorRef.current.beginProgressiveScan();
     },
-    requestRefresh(nextSettings: AppSettings, fetchOptions?: Parameters<typeof fetchSnapshot>[1]) {
-      return coordinatorRef.current.requestRefresh(nextSettings, fetchOptions);
-    },
-    refreshSnapshot(nextSettings = settingsRef.current) {
-      return coordinatorRef.current.requestRefresh(nextSettings, { refreshRemotes: true });
-    },
+    requestRefresh,
+    refreshSnapshot,
     runQueuedTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
       return coordinatorRef.current.runTask(task, onSuccess);
     },
     runBackgroundTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
       return coordinatorRef.current.runBackgroundTask(task, onSuccess);
-    },
-    runSnapshotTask<T>(task: () => Promise<T>, readSnapshot: (result: T) => AppSnapshot | null | undefined) {
-      return coordinatorRef.current.runSnapshotTask(task, readSnapshot);
     },
   };
 }

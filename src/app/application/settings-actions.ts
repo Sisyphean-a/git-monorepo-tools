@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppSettings, AppSnapshot } from '../domain/types.js';
-import type { SettingsStore, WorkspaceBackend } from './ports.js';
+import type { SettingsStore, SnapshotFetchOptions, WorkspaceBackend } from './ports.js';
 
 interface SettingsActionContext {
   backend: Pick<WorkspaceBackend, 'pickFolder'>;
@@ -8,7 +8,7 @@ interface SettingsActionContext {
   settings: AppSettings;
   setSettings: Dispatch<SetStateAction<AppSettings>>;
   snapshot: AppSnapshot | null;
-  refreshSnapshot: (settings: AppSettings) => Promise<void>;
+  refreshSnapshot: (settings: AppSettings, options?: SnapshotFetchOptions) => Promise<void>;
   reportError: (error: unknown, fallback: string) => void;
 }
 
@@ -37,7 +37,7 @@ function persistSettings(context: SettingsActionContext, value: unknown) {
 
 function saveSettings(context: SettingsActionContext, value: AppSettings) {
   const next = persistSettings(context, value);
-  void context.refreshSnapshot(next).catch(error => context.reportError(error, '刷新设置失败'));
+  void context.refreshSnapshot(next, { refreshRemotes: false }).catch(error => context.reportError(error, '刷新设置失败'));
 }
 
 function toggleAutoScan(context: SettingsActionContext) {
@@ -51,20 +51,26 @@ function toggleAutoScan(context: SettingsActionContext) {
 }
 
 async function addScanRoot(context: SettingsActionContext) {
+  let folder: string | null;
   try {
-    const folder = await context.backend.pickFolder();
-    if (!folder || hasScanRoot(context.settings, folder)) return null;
-    const rootName = folder.split('/').at(-1) ?? '自定义工作区';
-    const next = persistSettings(context, {
-      ...context.settings,
-      scanRoots: [...context.settings.scanRoots, { path: folder, category: `${rootName} 工作区` }],
-    });
-    await context.refreshSnapshot(next);
-    return next;
+    folder = await context.backend.pickFolder();
   } catch (error) {
-    context.reportError(error, '添加目录失败');
+    context.reportError(error, '打开目录选择器失败');
     return null;
   }
+  if (!folder || hasScanRoot(context.settings, folder)) return null;
+  const rootName = folder.split(/[\\/]/).filter(Boolean).at(-1) ?? '自定义工作区';
+  const next = persistSettings(context, {
+    ...context.settings,
+    scanRoots: [...context.settings.scanRoots, { path: folder, category: `${rootName} 工作区` }],
+  });
+  // Guarantee: 目录一旦持久化就返回 next，即使刷新失败也让设置弹窗草稿同步，避免后续保存覆盖新目录。
+  try {
+    await context.refreshSnapshot(next, { refreshRemotes: false });
+  } catch (error) {
+    context.reportError(error, '目录已添加，但刷新失败');
+  }
+  return next;
 }
 
 function addCategory(context: SettingsActionContext, name: string) {
@@ -81,7 +87,7 @@ function removeScanRoot(context: SettingsActionContext, path: string) {
     ...context.settings,
     scanRoots: context.settings.scanRoots.filter(item => item.path !== path),
   });
-  void context.refreshSnapshot(next).catch(error => context.reportError(error, '移除目录后刷新失败'));
+  void context.refreshSnapshot(next, { refreshRemotes: false }).catch(error => context.reportError(error, '移除目录后刷新失败'));
   return next;
 }
 
@@ -90,7 +96,7 @@ function ignoreRepo(context: SettingsActionContext, path: string) {
     ...context.settings,
     ignoredRepoPaths: [...context.settings.ignoredRepoPaths, path],
   });
-  void context.refreshSnapshot(next).catch(error => context.reportError(error, '忽略项目后刷新失败'));
+  void context.refreshSnapshot(next, { refreshRemotes: false }).catch(error => context.reportError(error, '忽略项目后刷新失败'));
   return next;
 }
 
@@ -99,7 +105,7 @@ function unignoreRepo(context: SettingsActionContext, path: string) {
     ...context.settings,
     ignoredRepoPaths: context.settings.ignoredRepoPaths.filter(item => item.toLowerCase() !== path.toLowerCase()),
   });
-  void context.refreshSnapshot(next).catch(error => context.reportError(error, '恢复项目监控后刷新失败'));
+  void context.refreshSnapshot(next, { refreshRemotes: false }).catch(error => context.reportError(error, '恢复项目监控后刷新失败'));
   return next;
 }
 

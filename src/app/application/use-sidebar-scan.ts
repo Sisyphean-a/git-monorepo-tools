@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { buildSidebarSnapshot, mergeSidebarRepoUpdate, type SidebarSnapshot } from '../domain/sidebar-snapshot.js';
 import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types.js';
+import type { SnapshotFetchOptions } from './ports.js';
 
 interface SidebarScanConfig {
   settings: AppSettings;
   reportError: (message: string | null) => void;
-  refreshSnapshot: (settings: AppSettings) => Promise<void>;
+  refreshSnapshot: (settings: AppSettings, options?: SnapshotFetchOptions) => Promise<void>;
 }
 
 export function useSidebarScan(config: SidebarScanConfig) {
@@ -14,7 +15,6 @@ export function useSidebarScan(config: SidebarScanConfig) {
   const reportErrorRef = useRef(reportError);
   const refreshSnapshotRef = useRef(refreshSnapshot);
   const [sidebarSnapshot, setSidebarSnapshot] = useState<SidebarSnapshot | null>(null);
-  const [sidebarRefreshing, setSidebarRefreshing] = useState(false);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -33,21 +33,17 @@ export function useSidebarScan(config: SidebarScanConfig) {
     setSidebarSnapshot(current => current ? mergeSidebarRepoUpdate(current, update) : current);
   };
 
+  // Flow: 手动扫描只负责发起完整刷新；进行中状态由 useSnapshotRefresh 统一暴露，重复点击由刷新队列合并。
   const refreshSidebar = async () => {
-    if (sidebarRefreshing) return;
-    setSidebarRefreshing(true);
     reportErrorRef.current(null);
     try {
-      await refreshSnapshotRef.current(settingsRef.current);
+      await refreshSnapshotRef.current(settingsRef.current, { refreshRemotes: true });
     } catch (error) {
       reportErrorRef.current(error instanceof Error ? error.message : '侧边栏扫描失败');
-    } finally {
-      setSidebarRefreshing(false);
     }
   };
 
   return {
-    sidebarRefreshing,
     sidebarSnapshot,
     syncSidebarSnapshot,
     applySidebarRepoUpdate,

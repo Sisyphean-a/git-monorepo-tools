@@ -39,6 +39,7 @@ export function useProgressiveStartupScan(config: ProgressiveStartupScanConfig) 
   const coordinatorRef = useRef(coordinator);
   const backendRef = useRef(backend);
   const [attempt, setAttempt] = useState(0);
+  const [startupScanActive, setStartupScanActive] = useState(false);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -63,6 +64,8 @@ export function useProgressiveStartupScan(config: ProgressiveStartupScanConfig) 
     let active = true;
     const lease = coordinatorRef.current.beginProgressiveScan();
     reportErrorRef.current(null);
+    // Rule: 启动扫描运行期间由它拥有 checking 项目；扫描结束或被中断后轮询必须接管。
+    setStartupScanActive(true);
 
     void loadProgressiveStartupScan({
       settings: settingsRef.current,
@@ -84,6 +87,8 @@ export function useProgressiveStartupScan(config: ProgressiveStartupScanConfig) 
     }).catch(error => {
       if (!active) return;
       lease.reportError(error instanceof Error ? error.message : '启动扫描失败');
+    }).finally(() => {
+      if (active) setStartupScanActive(false);
     });
 
     return () => {
@@ -92,6 +97,7 @@ export function useProgressiveStartupScan(config: ProgressiveStartupScanConfig) 
   }, [attempt]);
 
   return {
+    startupScanActive,
     retryStartupScan() {
       setAttempt(value => value + 1);
     },

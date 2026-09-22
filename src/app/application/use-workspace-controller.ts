@@ -39,6 +39,7 @@ export function useWorkspaceController({ backend, settingsStore }: WorkspaceCont
     repoLog: repoActions.repoLog,
     closeRepoLog: repoActions.closeRepoLog,
     sidebar: workspace.sidebar,
+    refreshing: workspace.refreshing,
     retryStartupScan: workspace.retryStartupScan,
     runQueuedTask: workspace.refresh.runQueuedTask,
     applyRepoUpdate: workspace.applyRepoUpdate,

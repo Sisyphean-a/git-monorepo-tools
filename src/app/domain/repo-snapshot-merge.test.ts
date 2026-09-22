@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeRepoSnapshotUpdate } from './repo-snapshot-merge.js';
+import { mergeRepoSnapshotUpdate, mergeSnapshotPreservingInteractions } from './repo-snapshot-merge.js';
 import { mergeSidebarRepoUpdate } from './sidebar-snapshot.js';
 import type { AppSnapshot, RepoDetail, RepoSnapshotUpdate } from './types.js';
 
@@ -64,7 +64,7 @@ test('mergeRepoSnapshotUpdate replaces only target repo fields and candidates', 
   assert.ok(repoB);
   assert.ok(repoBCandidates);
 
-  assert.equal(next.scannedAt, 'merged-scan');
+  assert.equal(next.scannedAt, 'old-scan');
   assert.equal(repoB.modified, 3);
   assert.equal(repoA.modified, 0);
   assert.equal(repoBCandidates[0]?.id, 'new');
@@ -203,11 +203,89 @@ test('mergeSidebarRepoUpdate updates only sidebar summary fields', () => {
     repos: [repo('repo-a', 0), repo('repo-b', 1)],
   }, update);
 
-  assert.equal(next.scannedAt, 'sidebar-scan');
+  assert.equal(next.scannedAt, 'old-scan');
   assert.equal(next.repos[1]?.id, 'repo-b');
   assert.equal(next.repos[1]?.modified, 4);
   assert.equal('files' in next.repos[1]!, false);
   assert.deepEqual(next.categories, ['测试']);
+});
+
+test('mergeSnapshotPreservingInteractions keeps interaction-updated repos while applying list changes', () => {
+  const currentRepoA = repo('repo-a', 5);
+  currentRepoA.files = [{ id: 'a', status: 'M', path: 'a.txt', additions: 3, deletions: 0, size: '2 KB', staged: true }];
+  const current: AppSnapshot = {
+    scannedAt: 'old-scan',
+    categories: ['测试'],
+    repos: [currentRepoA, repo('repo-old', 1)],
+    repoDetails: { 'repo-a': currentRepoA, 'repo-old': repo('repo-old', 1) },
+    selectedRepoId: 'repo-a',
+    pullResults: [],
+    commitCandidates: { 'repo-a': [{ id: 'interaction-only', style: '', icon: '', title: '', body: '', full: '' }] },
+  };
+  const snapshotRepoA = repo('repo-a', 0);
+  const next: AppSnapshot = {
+    scannedAt: 'full-scan',
+    categories: ['测试', '新分类'],
+    repos: [snapshotRepoA, repo('repo-b', 0)],
+    repoDetails: { 'repo-a': snapshotRepoA, 'repo-b': repo('repo-b', 0) },
+    selectedRepoId: 'repo-a',
+    pullResults: [],
+    commitCandidates: { 'repo-a': [], 'repo-b': [] },
+  };
+  const versions = new Map([['repo-a', 7], ['repo-old', 8]]);
+
+  const merged = mergeSnapshotPreservingInteractions(next, current, versions, 3);
+
+  assert.equal(merged.scannedAt, 'full-scan');
+  assert.deepEqual(merged.repos.map(item => item.id), ['repo-a', 'repo-b']);
+  assert.equal(merged.repoDetails['repo-a']?.modified, 5);
+  assert.equal(merged.repoDetails['repo-a']?.files[0]?.id, 'a');
+  assert.equal(merged.commitCandidates['repo-a']?.[0]?.id, 'interaction-only');
+  assert.equal(merged.repoDetails['repo-b']?.modified, 0);
+  assert.equal('repo-old' in merged.repoDetails, false);
+});
+
+test('mergeSnapshotPreservingInteractions ignores interactions that predate the snapshot fetch', () => {
+  const current = repo('repo-a', 9);
+  const currentSnapshot: AppSnapshot = {
+    scannedAt: 'old-scan',
+    categories: ['测试'],
+    repos: [current],
+    repoDetails: { 'repo-a': current },
+    selectedRepoId: 'repo-a',
+    pullResults: [],
+    commitCandidates: { 'repo-a': [] },
+  };
+  const nextRepo = repo('repo-a', 0);
+  const next: AppSnapshot = {
+    scannedAt: 'full-scan',
+    categories: ['测试'],
+    repos: [nextRepo],
+    repoDetails: { 'repo-a': nextRepo },
+    selectedRepoId: 'repo-a',
+    pullResults: [],
+    commitCandidates: { 'repo-a': [] },
+  };
+
+  const merged = mergeSnapshotPreservingInteractions(next, currentSnapshot, new Map([['repo-a', 2]]), 5);
+
+  assert.equal(merged, next);
+  assert.equal(merged.repoDetails['repo-a']?.modified, 0);
+});
+
+test('mergeSnapshotPreservingInteractions returns the snapshot when no current state exists', () => {
+  const nextRepo = repo('repo-a', 0);
+  const next: AppSnapshot = {
+    scannedAt: 'full-scan',
+    categories: [],
+    repos: [nextRepo],
+    repoDetails: { 'repo-a': nextRepo },
+    selectedRepoId: 'repo-a',
+    pullResults: [],
+    commitCandidates: { 'repo-a': [] },
+  };
+
+  assert.equal(mergeSnapshotPreservingInteractions(next, null, new Map([['repo-a', 7]]), 1), next);
 });
 
 test('mergeRepoSnapshotUpdate keeps sidebar order stable when repo status changes', () => {

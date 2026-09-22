@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RepoTerminalState } from '../features/terminal/terminal-workspace';
 import { C } from '../theme';
 import { favoriteRepos, nonFavoriteRepos } from '../domain/favorite-repos';
@@ -19,7 +19,7 @@ interface SidebarRepoListProps {
 
 export function SidebarRepoList(props: SidebarRepoListProps) {
   const query = props.search.toLowerCase();
-  const filtered = query ? props.repos.filter(repo => matchesSearch(repo, query)) : props.repos;
+  const filtered = query ? props.repos.filter(repo => matchesRepoSearch(repo, query)) : props.repos;
   const favorites = query ? [] : favoriteRepos(filtered, props.favoriteRepoIds);
   const grouped = query ? null : groupReposByCategory(nonFavoriteRepos(filtered, props.favoriteRepoIds));
   return (
@@ -43,6 +43,12 @@ function SearchResults(props: SidebarRepoListProps) {
 
 function CategoryGroup(props: SidebarRepoListProps & { name: string }) {
   const [open, setOpen] = useState(true);
+  const previousCountRef = useRef(props.repos.length);
+  useEffect(() => {
+    // Rule: 分类内仓库数量增加（例如新添加目录）时自动展开，避免列表更新被折叠状态掩盖。
+    if (props.repos.length > previousCountRef.current) setOpen(true);
+    previousCountRef.current = props.repos.length;
+  }, [props.repos.length]);
   return (
     <div style={groupStyle}>
       <button className="sidebar-category-button" onClick={() => setOpen(value => !value)} style={groupButtonStyle}>
@@ -71,7 +77,7 @@ function itemProps(props: SidebarRepoListProps, repo: Repo) {
   return { selected: repo.id === props.selectedRepoId, terminalState: props.terminalStates[repo.id], onClick: () => props.onSelectRepo(repo.id) };
 }
 
-function matchesSearch(repo: Repo, query: string) {
+export function matchesRepoSearch(repo: Repo, query: string) {
   return repo.name.toLowerCase().includes(query) || repo.branch.toLowerCase().includes(query) || repo.path.toLowerCase().includes(query);
 }
 

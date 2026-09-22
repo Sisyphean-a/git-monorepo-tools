@@ -58,6 +58,29 @@ test('addScanRoot returns the persisted settings for an open settings draft', as
   assert.deepEqual(next?.scanRoots, [{ path: 'D:/repos', category: 'repos 工作区' }]);
 });
 
+test('addScanRoot returns the persisted settings even when the refresh fails', async () => {
+  const settings: AppSettings = { ...DEFAULT_SETTINGS, scanRoots: [] };
+  const errors: string[] = [];
+  const actions = createSettingsActions({
+    backend: { pickFolder: async () => 'D:/repos' },
+    settingsStore: {
+      loadSettings: () => settings,
+      saveSettings: () => undefined,
+      sanitizeSettings: value => value as AppSettings,
+    },
+    settings,
+    setSettings: () => undefined,
+    snapshot: null,
+    refreshSnapshot: async () => { throw new Error('boom'); },
+    reportError: (_error, fallback) => errors.push(fallback),
+  });
+
+  const next = await actions.addScanRoot();
+
+  assert.deepEqual(next?.scanRoots, [{ path: 'D:/repos', category: 'repos 工作区' }]);
+  assert.deepEqual(errors, ['目录已添加，但刷新失败']);
+});
+
 test('addCategory returns the persisted settings for an open settings draft', () => {
   const settings: AppSettings = { ...DEFAULT_SETTINGS, customCategories: [] };
   const actions = createSettingsActions({

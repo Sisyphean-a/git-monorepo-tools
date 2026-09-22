@@ -1,4 +1,5 @@
 import type { AppSettings, AppSnapshot } from '../domain/types.js';
+import type { SnapshotApplyContext } from '../domain/repo-snapshot-merge.js';
 import type { SnapshotFetchOptions } from './ports.js';
 
 type ErrorReporter = (message: string | null) => void;
@@ -11,7 +12,7 @@ type RefreshEntry = {
 };
 
 type SnapshotCoordinatorOptions = {
-  applySnapshot: (snapshot: AppSnapshot) => void;
+  applySnapshot: (snapshot: AppSnapshot, context?: SnapshotApplyContext) => void;
   fetchSnapshot: (settings: AppSettings, options?: SnapshotFetchOptions) => Promise<AppSnapshot>;
   reportError?: ErrorReporter;
 };
@@ -77,15 +78,6 @@ export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
       invalidateProgressiveScan();
       return enqueueRefresh(refreshQueue, settings, fetchOptions, processRefreshQueue);
     },
-    runSnapshotTask<T>(task: () => Promise<T>, readSnapshot: (result: T) => AppSnapshot | null | undefined) {
-      beginInteraction();
-      const queued = enqueueForegroundTask(task, (result, nextOptions) => {
-        const snapshot = readSnapshot(result);
-        if (snapshot) nextOptions.applySnapshot(snapshot);
-      }, options, finishInteraction, foregroundTail);
-      foregroundTail = queued.settled;
-      return queued.promise;
-    },
     runTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
       beginInteraction();
       const queued = enqueueForegroundTask(task, result => onSuccess?.(result), options, finishInteraction, foregroundTail);
@@ -120,8 +112,9 @@ async function runRefreshQueue(
     while (queue.length > 0) {
       const entry = queue.shift();
       if (!entry) continue;
+      // Rule: 交互版本在 fetch 开始时捕获，交给 applySnapshot 合并；交互不阻止列表级快照生效。
       const revision = currentInteractionRevision();
-      await runRefreshEntry(entry, options, () => revision === currentInteractionRevision());
+      await runRefreshEntry(entry, options, revision);
     }
   } finally {
     onDone();
@@ -171,17 +164,16 @@ function enqueueForegroundTask<T>(
 async function runRefreshEntry(
   entry: RefreshEntry,
   options: SnapshotCoordinatorOptions,
-  isCurrent: () => boolean,
+  interactionRevision: number,
 ) {
   try {
     const snapshot = await options.fetchSnapshot(entry.settings, entry.fetchOptions);
-    if (isCurrent()) {
-      options.applySnapshot(snapshot);
-      options.reportError?.(null);
-    }
+    // Guarantee: 完整快照承载仓库列表组成，必须应用；跨越交互的部分由调用方按交互版本合并回写。
+    options.applySnapshot(snapshot, { preserveInteractionsSince: interactionRevision });
+    options.reportError?.(null);
     entry.waiters.forEach(waiter => waiter.resolve());
   } catch (error) {
-    if (isCurrent()) options.reportError?.(formatError(error));
+    options.reportError?.(formatError(error));
     entry.waiters.forEach(waiter => waiter.reject(error));
   }
 }

@@ -4,12 +4,13 @@ import type { Repo } from '../domain/types';
 
 interface SidebarHeaderProps {
   repos: Repo[];
+  matchedCount: number;
   search: string;
   onSearch: (value: string) => void;
   onOpenAddMenu: () => void;
 }
 
-export function SidebarHeader({ repos, search, onSearch, onOpenAddMenu }: SidebarHeaderProps) {
+export function SidebarHeader({ repos, matchedCount, search, onSearch, onOpenAddMenu }: SidebarHeaderProps) {
   return (
     <div style={headerStyle}>
       <div style={titleRowStyle}>
@@ -21,7 +22,7 @@ export function SidebarHeader({ repos, search, onSearch, onOpenAddMenu }: Sideba
           <FolderPlus size={13} />
         </button>
       </div>
-      <div style={countStyle}>{repos.length} 个仓库</div>
+      <div style={countStyle}>{matchedCount === repos.length ? `${repos.length} 个仓库` : `${matchedCount} / ${repos.length} 个仓库`}</div>
       <div style={{ position: 'relative' }}>
         <Search size={12} color={C.textWeak} style={searchIconStyle} />
         <input value={search} onChange={event => onSearch(event.target.value)} placeholder="搜索仓库 / 分支 / 路径" style={inputStyle} />

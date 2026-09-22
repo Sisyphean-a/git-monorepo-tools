@@ -181,7 +181,7 @@ export function SettingsModal({
               fontSize: 12,
             }}
           >
-            取消
+            关闭
           </button>
           <button
             onClick={() => onSave(draft)}
