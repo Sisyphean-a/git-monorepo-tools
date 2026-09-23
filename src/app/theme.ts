@@ -1,5 +1,5 @@
 export const C = {
-  appBg: '#0b1118',
+  appBg: '#0b1220',
   panel1: '#101824',
   panel2: '#141f2d',
   panel3: '#1a2537',

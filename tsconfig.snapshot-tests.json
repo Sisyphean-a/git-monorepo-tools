@@ -56,6 +56,8 @@
     "src/app/features/diff/diff-viewer-state.test.ts",
     "src/app/features/files/file-preview-kind.ts",
     "src/app/features/files/file-preview-kind.test.ts",
+    "src/app/features/files/file-search.ts",
+    "src/app/features/files/file-search.test.ts",
     "src/app/features/files/markdown-links.ts",
     "src/app/features/files/markdown-links.test.ts",
     "src/app/features/files/markdown.ts",
