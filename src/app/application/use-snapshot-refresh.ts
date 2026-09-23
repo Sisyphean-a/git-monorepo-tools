@@ -9,11 +9,12 @@ interface SnapshotRefreshConfig {
   applySnapshot: (snapshot: AppSnapshot, context?: SnapshotApplyContext) => void;
   reportError: (message: string | null) => void;
   fetchSnapshot: WorkspaceBackend['fetchSnapshot'];
+  readRepoUpdateRevision: () => number;
   skipInitialRefresh?: boolean;
 }
 
 export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
-  const { settings, applySnapshot, reportError, fetchSnapshot, skipInitialRefresh = false } = config;
+  const { settings, applySnapshot, reportError, fetchSnapshot, readRepoUpdateRevision, skipInitialRefresh = false } = config;
   const settingsRef = useRef(settings);
   const applySnapshotRef = useRef(applySnapshot);
   const reportErrorRef = useRef(reportError);
@@ -22,6 +23,7 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
   const coordinatorRef = useRef(createSnapshotCoordinator({
     applySnapshot: (snapshot, context) => applySnapshotRef.current(snapshot, context),
     fetchSnapshot,
+    readRepoUpdateRevision,
     reportError: message => reportErrorRef.current(message),
   }));
 

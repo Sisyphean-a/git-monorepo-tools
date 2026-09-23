@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSnapshotCoordinator } from './snapshot-coordinator.js';
-import type { AppSettings, AppSnapshot } from '../domain/types.js';
+import { mergeRepoSnapshotUpdate, mergeSnapshotPreservingInteractions } from '../domain/repo-snapshot-merge.js';
+import type { AppSettings, AppSnapshot, RepoDetail } from '../domain/types.js';
 
 const settings = (concurrency: number): AppSettings => ({
   scanRoots: [],
@@ -53,6 +54,7 @@ test('coalesces queued refreshes and keeps latest settings', async () => {
   const gate = deferred<void>();
   const coordinator = createSnapshotCoordinator({
     applySnapshot: next => applied.push(next.scannedAt),
+    readRepoUpdateRevision: () => 0,
     fetchSnapshot: async (nextSettings, options) => {
       calls.push({
         concurrency: nextSettings.gitBehavior.concurrency,
@@ -82,6 +84,7 @@ test('serializes foreground tasks independently from refreshes', async () => {
   const gate = deferred<void>();
   const coordinator = createSnapshotCoordinator({
     applySnapshot: next => order.push(next.scannedAt),
+    readRepoUpdateRevision: () => 0,
     fetchSnapshot: async nextSettings => snapshot(`refresh-${nextSettings.gitBehavior.concurrency}`),
   });
 
@@ -115,6 +118,7 @@ test('applies a refresh that crossed an interaction and preserves interaction ve
       scannedAt: next.scannedAt,
       since: context?.preserveInteractionsSince,
     }),
+    readRepoUpdateRevision: () => 1,
     fetchSnapshot: async () => {
       await refreshGate.promise;
       return snapshot('full-refresh');
@@ -135,11 +139,55 @@ test('applies a refresh that crossed an interaction and preserves interaction ve
   assert.deepEqual(applied, [{ scannedAt: 'full-refresh', since: 1 }]);
 });
 
+test('keeps a repo interaction completed during a full refresh after an earlier interaction', async () => {
+  const repo = (modified: number): RepoDetail => ({
+    id: 'repo-a', name: 'repo-a', branch: 'main', path: '/repo-a', remote: '', category: 'test',
+    modified, ahead: 0, behind: 0, conflicts: 0, status: modified ? 'changed' : 'clean',
+    lastScan: 'now', files: [], stagedCount: 0, unstagedCount: modified, scannedAt: 'now',
+    history: [], historyTotal: 0, historyHasMore: false,
+  });
+  let current: AppSnapshot = {
+    ...snapshot('initial'), repos: [repo(0)], repoDetails: { 'repo-a': repo(0) }, selectedRepoId: 'repo-a',
+  };
+  const incoming: AppSnapshot = {
+    ...snapshot('full-refresh'), repos: [repo(0)], repoDetails: { 'repo-a': repo(0) }, selectedRepoId: 'repo-a',
+  };
+  const versions = new Map<string, number>();
+  let repoUpdateRevision = 0;
+  const refreshGate = deferred<void>();
+  const coordinator = createSnapshotCoordinator({
+    applySnapshot: (next, context) => {
+      current = mergeSnapshotPreservingInteractions(next, current, versions, context!.preserveInteractionsSince);
+    },
+    readRepoUpdateRevision: () => repoUpdateRevision,
+    fetchSnapshot: async () => {
+      await refreshGate.promise;
+      return incoming;
+    },
+  });
+  const updateRepo = (modified: number) => {
+    versions.set('repo-a', ++repoUpdateRevision);
+    current = mergeRepoSnapshotUpdate(current, {
+      repo: repo(modified), commitCandidates: [], scannedAt: 'now',
+    }, 'interaction', `interaction-${repoUpdateRevision}`);
+  };
+
+  await coordinator.runTask(async () => 1, updateRepo);
+  const refresh = coordinator.requestRefresh(settings(1));
+  await coordinator.runTask(async () => 2, updateRepo);
+  refreshGate.resolve();
+  await refresh;
+
+  assert.equal(current.scannedAt, 'full-refresh');
+  assert.equal(current.repoDetails['repo-a']?.modified, 2);
+});
+
 test('applies background tasks only when no interaction superseded them', async () => {
   const applied: string[] = [];
   const staleGate = deferred<void>();
   const coordinator = createSnapshotCoordinator({
     applySnapshot: () => undefined,
+    readRepoUpdateRevision: () => 0,
     fetchSnapshot: async () => snapshot('unused'),
   });
 
@@ -161,6 +209,7 @@ test('continues after refresh failure and reports error visibility', async () =>
   let attempts = 0;
   const coordinator = createSnapshotCoordinator({
     applySnapshot: next => applied.push(next.scannedAt),
+    readRepoUpdateRevision: () => 0,
     fetchSnapshot: async () => {
       attempts += 1;
       if (attempts === 1) throw new Error('boom');
@@ -182,6 +231,7 @@ test('continues after foreground task failure and reports error visibility', asy
   const coordinator = createSnapshotCoordinator({
     applySnapshot: next => applied.push(next.scannedAt),
     fetchSnapshot: async nextSettings => snapshot(`refresh-${nextSettings.gitBehavior.concurrency}`),
+    readRepoUpdateRevision: () => 0,
     reportError: message => messages.push(message),
   });
 
@@ -204,6 +254,7 @@ test('invalidates progressive scan writes as soon as normal refresh is queued', 
   const coordinator = createSnapshotCoordinator({
     applySnapshot: next => applied.push(next.scannedAt),
     fetchSnapshot: async () => snapshot('manual-refresh'),
+    readRepoUpdateRevision: () => 0,
     reportError: message => errors.push(message),
   });
 

@@ -14,6 +14,7 @@ type RefreshEntry = {
 type SnapshotCoordinatorOptions = {
   applySnapshot: (snapshot: AppSnapshot, context?: SnapshotApplyContext) => void;
   fetchSnapshot: (settings: AppSettings, options?: SnapshotFetchOptions) => Promise<AppSnapshot>;
+  readRepoUpdateRevision: () => number;
   reportError?: ErrorReporter;
 };
 
@@ -50,7 +51,7 @@ export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
 
   const processRefreshQueue = () => {
     if (activeRefresh) return activeRefresh;
-    activeRefresh = runRefreshQueue(refreshQueue, options, () => interactionRevision, () => {
+    activeRefresh = runRefreshQueue(refreshQueue, options, () => {
       activeRefresh = null;
       if (refreshQueue.length > 0) void processRefreshQueue();
     });
@@ -105,15 +106,14 @@ export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
 async function runRefreshQueue(
   queue: RefreshEntry[],
   options: SnapshotCoordinatorOptions,
-  currentInteractionRevision: () => number,
   onDone: () => void,
 ) {
   try {
     while (queue.length > 0) {
       const entry = queue.shift();
       if (!entry) continue;
-      // Rule: 交互版本在 fetch 开始时捕获，交给 applySnapshot 合并；交互不阻止列表级快照生效。
-      const revision = currentInteractionRevision();
+      // Rule: 只用单仓回写版本判断快照是否过期；协调器的任务版本只用于丢弃旧后台结果。
+      const revision = options.readRepoUpdateRevision();
       await runRefreshEntry(entry, options, revision);
     }
   } finally {

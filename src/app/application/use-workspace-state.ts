@@ -59,6 +59,7 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     applySnapshot,
     reportError: setRefreshError,
     fetchSnapshot: backend.fetchSnapshot,
+    readRepoUpdateRevision: () => interactionRevisionRef.current,
     skipInitialRefresh: true,
   });
   const sidebar = useSidebarScan({
