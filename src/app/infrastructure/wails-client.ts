@@ -72,6 +72,7 @@ type WailsBindings = {
   GetCommitDetail: (repoId: string, request: SnapshotRequest, hash: string) => Promise<CommitDetail>;
   ListRepoDirectory?: (repoId: string, request: SnapshotRequest, path: string) => Promise<RepoTreeEntry[]>;
   ReadRepoFile?: (repoId: string, request: SnapshotRequest, path: string) => Promise<RepoFileContent>;
+  ReadRepoFileIfChanged?: (repoId: string, request: SnapshotRequest, path: string, revision: string) => Promise<RepoFileContent | null>;
   GetWorkingDiffFiles?: (repoId: string, request: SnapshotRequest) => Promise<FileChange[]>;
   GetFileDiff: (request: WailsFileDiffRequest) => Promise<FileDiff>;
   RunRepoCommand: (request: WailsRepoCommandRequest) => Promise<RepoCommandResult>;
@@ -221,6 +222,14 @@ export async function readRepoFile({ repoId, path, settings, target }: RepoFileR
   return binding(repoId, buildSnapshotRequest(settings, undefined, target), path);
 }
 
+export async function readRepoFileIfChanged({ repoId, path, settings, target }: RepoFileRequest, revision: string) {
+  const binding = getWailsBindings().ReadRepoFileIfChanged;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 仓库文件版本绑定不可用');
+  }
+  return binding(repoId, buildSnapshotRequest(settings, undefined, target), path, revision);
+}
+
 export async function fetchWorkingDiffFiles({ repoId, settings, target }: WorkingDiffFilesRequest) {
   const binding = getWailsBindings().GetWorkingDiffFiles;
   if (typeof binding !== 'function') {
@@ -341,6 +350,7 @@ export const wailsClient: WorkspaceBackend & RepoInteractionBackend = {
   fetchCommitDetail,
   listRepoDirectory,
   readRepoFile,
+  readRepoFileIfChanged,
   fetchWorkingDiffFiles,
   fetchFileDiff,
   runRepoCommand,

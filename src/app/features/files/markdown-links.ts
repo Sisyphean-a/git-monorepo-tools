@@ -2,7 +2,7 @@ export type MarkdownLinkClass = 'external' | 'repo' | 'ignored';
 
 export type MarkdownLinkTarget =
   | { kind: 'external'; url: string }
-  | { kind: 'repo-file'; path: string }
+  | { kind: 'repo-file'; path: string; fragment?: string }
   | { kind: 'ignored' };
 
 const externalProtocols = new Set(['http', 'https', 'mailto']);
@@ -10,7 +10,7 @@ const externalProtocols = new Set(['http', 'https', 'mailto']);
 // Rule: 只有白名单协议可点击；javascript:、data: 等一律按不可用链接处理，且不写入渲染结果。
 export function classifyMarkdownHref(href: string): MarkdownLinkClass {
   const raw = href.trim();
-  if (!raw || raw.startsWith('#')) return 'ignored';
+  if (!raw || raw === '#') return 'ignored';
   const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(raw)?.[1]?.toLowerCase();
   if (!scheme) return 'repo';
   return externalProtocols.has(scheme) ? 'external' : 'ignored';
@@ -23,12 +23,14 @@ export function resolveMarkdownLink(currentPath: string, href: string): Markdown
   if (hrefClass === 'external') return { kind: 'external', url: raw };
   if (hrefClass === 'ignored') return { kind: 'ignored' };
 
-  const pathPart = raw.split('#')[0]?.split('?')[0] ?? '';
-  if (!pathPart) return { kind: 'ignored' };
+  const hashIndex = raw.indexOf('#');
+  const pathPart = (hashIndex < 0 ? raw : raw.slice(0, hashIndex)).split('?')[0] ?? '';
+  const fragment = hashIndex < 0 ? '' : decodePath(raw.slice(hashIndex + 1));
+  if (!pathPart && !fragment) return { kind: 'ignored' };
   const decoded = decodePath(pathPart);
-  const relative = decoded.startsWith('/') ? decoded.slice(1) : `${dirnameOf(currentPath)}/${decoded}`;
+  const relative = !decoded ? currentPath : decoded.startsWith('/') ? decoded.slice(1) : `${dirnameOf(currentPath)}/${decoded}`;
   const normalized = normalizeRepoPath(relative);
-  return normalized ? { kind: 'repo-file', path: normalized } : { kind: 'ignored' };
+  return normalized ? { kind: 'repo-file', path: normalized, ...(fragment ? { fragment } : {}) } : { kind: 'ignored' };
 }
 
 function normalizeRepoPath(candidate: string): string | null {

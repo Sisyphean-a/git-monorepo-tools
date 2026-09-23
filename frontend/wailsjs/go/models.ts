@@ -645,6 +645,7 @@ export namespace snapshot {
 	    path: string;
 	    content: string;
 	    size: number;
+	    revision: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RepoFileContent(source);
@@ -655,6 +656,7 @@ export namespace snapshot {
 	        this.path = source["path"];
 	        this.content = source["content"];
 	        this.size = source["size"];
+	        this.revision = source["revision"];
 	    }
 	}
 	export class RepoHistoryPage {

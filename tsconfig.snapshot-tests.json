@@ -54,6 +54,8 @@
     "src/app/features/diff/side-by-side.test.ts",
     "src/app/features/diff/diff-viewer-state.ts",
     "src/app/features/diff/diff-viewer-state.test.ts",
+    "src/app/features/files/file-icon-kind.ts",
+    "src/app/features/files/file-icon-kind.test.ts",
     "src/app/features/files/file-preview-kind.ts",
     "src/app/features/files/file-preview-kind.test.ts",
     "src/app/features/files/file-search.ts",

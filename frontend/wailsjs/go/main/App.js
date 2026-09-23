@@ -86,6 +86,10 @@ export function ReadRepoFile(arg1, arg2, arg3) {
   return window['go']['main']['App']['ReadRepoFile'](arg1, arg2, arg3);
 }
 
+export function ReadRepoFileIfChanged(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ReadRepoFileIfChanged'](arg1, arg2, arg3, arg4);
+}
+
 export function RefreshRepo(arg1, arg2) {
   return window['go']['main']['App']['RefreshRepo'](arg1, arg2);
 }

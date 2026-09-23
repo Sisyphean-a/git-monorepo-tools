@@ -16,7 +16,7 @@ test('relative links resolve against the current file directory', () => {
 
 test('root-relative links, query strings and encoding are normalized', () => {
   assert.deepEqual(resolveMarkdownLink('docs/a.md', '/src/main.tsx'), { kind: 'repo-file', path: 'src/main.tsx' });
-  assert.deepEqual(resolveMarkdownLink('docs/a.md', './my%20file.md#section'), { kind: 'repo-file', path: 'docs/my file.md' });
+  assert.deepEqual(resolveMarkdownLink('docs/a.md', './my%20file.md#section'), { kind: 'repo-file', path: 'docs/my file.md', fragment: 'section' });
   assert.deepEqual(resolveMarkdownLink('docs/a.md', './a.md?plain=1'), { kind: 'repo-file', path: 'docs/a.md' });
   assert.deepEqual(resolveMarkdownLink('docs\\win.md', '.\\sibling.md'), { kind: 'repo-file', path: 'docs/sibling.md' });
 });
@@ -26,6 +26,8 @@ test('links leaving the repository or using unsafe protocols are ignored', () =>
   assert.deepEqual(resolveMarkdownLink('README.md', 'javascript:alert(1)'), { kind: 'ignored' });
   assert.deepEqual(resolveMarkdownLink('README.md', 'data:text/html,<script>alert(1)</script>'), { kind: 'ignored' });
   assert.deepEqual(resolveMarkdownLink('README.md', 'C:\\Windows\\win.ini'), { kind: 'ignored' });
-  assert.deepEqual(resolveMarkdownLink('README.md', '#section'), { kind: 'ignored' });
+  assert.deepEqual(resolveMarkdownLink('README.md', '#section'), { kind: 'repo-file', path: 'README.md', fragment: 'section' });
+  assert.deepEqual(resolveMarkdownLink('README.md', '#%E4%BD%BF%E7%94%A8'), { kind: 'repo-file', path: 'README.md', fragment: '使用' });
+  assert.deepEqual(resolveMarkdownLink('README.md', '#'), { kind: 'ignored' });
   assert.deepEqual(resolveMarkdownLink('README.md', '   '), { kind: 'ignored' });
 });

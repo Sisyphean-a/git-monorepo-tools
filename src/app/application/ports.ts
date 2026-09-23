@@ -114,6 +114,7 @@ export interface RepoInteractionBackend {
   fetchCommitDetail(request: CommitDetailRequest): Promise<CommitDetail>;
   listRepoDirectory(request: RepoFileRequest): Promise<RepoTreeEntry[]>;
   readRepoFile(request: RepoFileRequest): Promise<RepoFileContent>;
+  readRepoFileIfChanged(request: RepoFileRequest, revision: string): Promise<RepoFileContent | null>;
   fetchWorkingDiffFiles(request: WorkingDiffFilesRequest): Promise<FileChange[]>;
   fetchFileDiff(request: FileDiffRequest): Promise<FileDiff>;
   generateCommitMessage(repoId: string, settings: AppSettings): Promise<string>;

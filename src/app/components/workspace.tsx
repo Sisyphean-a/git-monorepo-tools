@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { C } from '../theme';
 import { AiCommitPanel } from './ai-commit-panel';
@@ -12,6 +12,7 @@ import {
   type WorkspaceMainTab,
 } from '../features/terminal/terminal-workspace';
 import { createFileDiffLoader } from '../features/diff/file-diff-loader';
+import type { RepoFilePosition } from './repo-files-tab';
 import type {
   AppSettings,
   DiffViewerRequest,
@@ -126,10 +127,17 @@ export function Workspace({
     closeIndependentTerminal,
   } = terminalTabs;
   const [filesEnabled, setFilesEnabled] = useState(false);
+  // Effect: 每仓库只保留轻量阅读位置，切换后释放正文和目录缓存。
+  const filePositions = useRef(new Map<string, RepoFilePosition>());
 
   useEffect(() => {
     if (mainTab === 'files') setFilesEnabled(true);
   }, [mainTab]);
+  useEffect(() => {
+    for (const id of filePositions.current.keys()) {
+      if (!repoDetails[id]) filePositions.current.delete(id);
+    }
+  }, [repoDetails]);
 
   if (!repo) {
     return (
@@ -324,7 +332,7 @@ export function Workspace({
             >
               {filesEnabled && (
                 <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>正在加载文件浏览器…</div>}>
-                  <RepoFilesTab key={repo.id} repo={repo} settings={settings} active={mainTab === 'files'} />
+                  <RepoFilesTab key={repo.id} repo={repo} settings={settings} active={mainTab === 'files'} position={filePositions.current.get(repo.id)} onPositionChange={next => { filePositions.current.set(repo.id, next); }} />
                 </Suspense>
               )}
             </div>

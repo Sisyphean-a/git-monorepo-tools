@@ -52,6 +52,7 @@ export interface RepoFileContent {
   path: string;
   content: string;
   size: number;
+  revision: string;
 }
 
 export type DiffViewerRequest =

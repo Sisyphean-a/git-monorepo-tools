@@ -8,7 +8,16 @@ export interface MarkdownRenderOptions {
 
 // Guarantee: 渲染结果只由本模块产出的标签构成，仓库内容里的 HTML 与不安全协议不会进入输出。
 export function renderMarkdown(content: string, options: MarkdownRenderOptions = {}): string {
+  const headingCounts = new Map<string, number>();
   const renderer: RendererObject = {
+    heading({ text, depth, tokens }) {
+      const label = this.parser.parseInline(tokens);
+      const slug = text.toLowerCase().trim().replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N} _-]/gu, '').replace(/ /g, '-');
+      const count = headingCounts.get(slug) ?? 0;
+      headingCounts.set(slug, count + 1);
+      const id = count ? `${slug}-${count}` : slug;
+      return `<h${depth} id="${escapeHtml(id)}">${label}</h${depth}>`;
+    },
     html({ text }: Tokens.HTML | Tokens.Tag) {
       return escapeHtml(text);
     },

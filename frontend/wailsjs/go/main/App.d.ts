@@ -45,6 +45,8 @@ export function ReadClipboardText():Promise<string>;
 
 export function ReadRepoFile(arg1:string,arg2:snapshot.Request,arg3:string):Promise<snapshot.RepoFileContent>;
 
+export function ReadRepoFileIfChanged(arg1:string,arg2:snapshot.Request,arg3:string,arg4:string):Promise<snapshot.RepoFileContent>;
+
 export function RefreshRepo(arg1:string,arg2:snapshot.Request):Promise<snapshot.RepoSnapshotUpdate>;
 
 export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;

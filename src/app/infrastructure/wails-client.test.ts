@@ -16,6 +16,7 @@ import {
   openLocalPath,
   mutateRepo,
   readRepoFile,
+  readRepoFileIfChanged,
   refreshRepo,
   readClipboardImagePath,
   readClipboardText,
@@ -953,7 +954,11 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
     },
     ReadRepoFile: async (repoId: string, request: { repoPath?: string; repoCategory?: string }, path: string) => {
       calls.push(`ReadRepoFile:${repoId}:${request.repoPath}:${request.repoCategory}:${path}`);
-      return { path, content: 'export {};\n', size: 11 };
+      return { path, content: 'export {};\n', size: 11, revision: '11:100' };
+    },
+    ReadRepoFileIfChanged: async (repoId: string, request: { repoPath?: string; repoCategory?: string }, path: string, revision: string) => {
+      calls.push(`ReadRepoFileIfChanged:${repoId}:${request.repoPath}:${request.repoCategory}:${path}:${revision}`);
+      return null;
     },
     GetWorkingDiffFiles: async (repoId: string, request: { repoPath?: string; repoCategory?: string }) => {
       calls.push(`GetWorkingDiffFiles:${repoId}:${request.repoPath}:${request.repoCategory}`);
@@ -1034,6 +1039,7 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
       target: { path: '/repo/a', category: '测试' },
     });
     assert.equal(file.content, 'export {};\n');
+    assert.equal(await readRepoFileIfChanged({ repoId: 'repo-1', path: 'src/app.ts', target: { path: '/repo/a', category: '测试' } }, file.revision), null);
     const workingFiles = await fetchWorkingDiffFiles({
       repoId: 'repo-1',
       settings: undefined,
@@ -1073,6 +1079,7 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
     'GetCommitDetail:repo-1:abc',
     'ListRepoDirectory:repo-1:/repo/a:测试:.',
     'ReadRepoFile:repo-1:/repo/a:测试:src/app.ts',
+    'ReadRepoFileIfChanged:repo-1:/repo/a:测试:src/app.ts:11:100',
     'GetWorkingDiffFiles:repo-1:/repo/a:测试',
     'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:-:working:-',
     'GetFileDiff:repo-1:src/app/api.ts:false:/repo/a:src/app/old-api.ts:abc:parent-commit',

@@ -75,6 +75,34 @@ textarea::placeholder {
   background: #2e3d52;
 }
 
+.repo-file-preview-scroll,
+.file-preview-markdown pre.file-preview-code-block {
+  scrollbar-color: #607b98 #182434;
+}
+
+.repo-file-preview-scroll::-webkit-scrollbar,
+.file-preview-markdown pre.file-preview-code-block::-webkit-scrollbar {
+  width: 10px;
+  height: 12px;
+}
+
+.repo-file-preview-scroll::-webkit-scrollbar-track,
+.file-preview-markdown pre.file-preview-code-block::-webkit-scrollbar-track {
+  background: #182434;
+}
+
+.repo-file-preview-scroll::-webkit-scrollbar-thumb,
+.file-preview-markdown pre.file-preview-code-block::-webkit-scrollbar-thumb {
+  background: #607b98;
+  border: 2px solid #182434;
+  border-radius: 7px;
+}
+
+.repo-file-preview-scroll::-webkit-scrollbar-thumb:hover,
+.file-preview-markdown pre.file-preview-code-block::-webkit-scrollbar-thumb:hover {
+  background: #8fa6bf;
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);

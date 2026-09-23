@@ -18,6 +18,14 @@ test('external links keep their target and repository links defer to the compone
   assert.ok(html.includes('危险'));
 });
 
+test('document headings and safe fragment links support in-file and cross-file navigation', () => {
+  const html = renderMarkdown('[跳转](#使用方法) [下一页](./next.md#install)\n\n## 使用方法\n\n## 使用方法');
+  assert.ok(html.includes('data-md-href="#使用方法"'));
+  assert.ok(html.includes('data-md-href="./next.md#install"'));
+  assert.ok(html.includes('id="使用方法"'));
+  assert.ok(html.includes('id="使用方法-1"'));
+});
+
 test('fenced code uses the injected highlighter and keeps the language', () => {
   const html = renderMarkdown('```ts title=app.ts\nconst a = 1;\n```', {
     highlight: (code, language) => `<i>${language}:${code}</i>`,

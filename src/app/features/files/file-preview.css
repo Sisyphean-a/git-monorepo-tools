@@ -104,6 +104,15 @@
   white-space: pre;
 }
 
+.file-preview-markdown[data-wrap='true'] pre.file-preview-code-block {
+  overflow-x: hidden;
+}
+
+.file-preview-markdown[data-wrap='true'] pre.file-preview-code-block code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .file-preview-markdown blockquote {
   padding: 2px 0 2px 12px;
   border-left: 3px solid #2e3d52;

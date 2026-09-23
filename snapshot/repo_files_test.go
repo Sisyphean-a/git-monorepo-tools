@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestListRepoDirectoryLoadsOnlyRequestedLevel(t *testing.T) {
@@ -158,6 +159,41 @@ func TestReadRepoFileReturnsTextAndRejectsUnsafeContent(t *testing.T) {
 	}
 	if _, err := service.ReadRepoFile(repoIDForPath(repoPath), request, "large.txt"); err == nil || !strings.Contains(err.Error(), "1 MiB") {
 		t.Fatalf("large file error = %v", err)
+	}
+}
+
+func TestReadRepoFileIfChangedOnlyLoadsChangedContent(t *testing.T) {
+	repoPath := t.TempDir()
+	mustWriteRepoFile(t, repoPath, "notes.txt", "before")
+	service := NewService(repoPath)
+	request := repoFileRequest(repoPath)
+	repoID := repoIDForPath(repoPath)
+	first, err := service.ReadRepoFile(repoID, request, "notes.txt")
+	if err != nil || first.Revision == "" {
+		t.Fatalf("first read = %#v, %v", first, err)
+	}
+	unchanged, err := service.ReadRepoFileIfChanged(repoID, request, "notes.txt", first.Revision)
+	if err != nil || unchanged != nil {
+		t.Fatalf("unchanged = %#v, %v", unchanged, err)
+	}
+	mustWriteRepoFile(t, repoPath, "notes.txt", "after!")
+	filePath := filepath.Join(repoPath, "notes.txt")
+	modifiedAt := time.Now().Add(time.Second)
+	if err := os.Chtimes(filePath, modifiedAt, modifiedAt); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := service.ReadRepoFileIfChanged(repoID, request, "notes.txt", first.Revision)
+	if err != nil || changed == nil || changed.Content != "after!" || changed.Revision == first.Revision {
+		t.Fatalf("changed = %#v, %v", changed, err)
+	}
+	if _, err := service.ReadRepoFileIfChanged(repoID, request, "../outside.txt", first.Revision); err == nil {
+		t.Fatal("conditional read accepted a path outside the repository")
+	}
+	if err := os.Remove(filepath.Join(repoPath, "notes.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReadRepoFileIfChanged(repoID, request, "notes.txt", changed.Revision); err == nil {
+		t.Fatal("conditional read concealed a deleted file")
 	}
 }
 

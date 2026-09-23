@@ -22,6 +22,7 @@ type workspaceService interface {
 	GetCommitDetail(string, snapshot.Request, string) (snapshot.CommitDetail, error)
 	ListRepoDirectory(string, snapshot.Request, string) ([]snapshot.RepoTreeEntry, error)
 	ReadRepoFile(string, snapshot.Request, string) (snapshot.RepoFileContent, error)
+	ReadRepoFileIfChanged(string, snapshot.Request, string, string) (*snapshot.RepoFileContent, error)
 	CloseRepoFileBrowser()
 	GetWorkingDiffFiles(string, snapshot.Request) ([]snapshot.FileChange, error)
 	GetFileDiff(snapshot.FileDiffRequest) (snapshot.FileDiff, error)
@@ -122,6 +123,10 @@ func (a *App) ListRepoDirectory(repoID string, request snapshot.Request, relativ
 
 func (a *App) ReadRepoFile(repoID string, request snapshot.Request, relativePath string) (snapshot.RepoFileContent, error) {
 	return a.workspace.ReadRepoFile(repoID, request, relativePath)
+}
+
+func (a *App) ReadRepoFileIfChanged(repoID string, request snapshot.Request, relativePath, revision string) (*snapshot.RepoFileContent, error) {
+	return a.workspace.ReadRepoFileIfChanged(repoID, request, relativePath, revision)
 }
 
 func (a *App) GetWorkingDiffFiles(repoID string, request snapshot.Request) ([]snapshot.FileChange, error) {

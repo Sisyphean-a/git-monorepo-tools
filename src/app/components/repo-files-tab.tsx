@@ -1,17 +1,29 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen, LoaderCircle, Search, X } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type UIEvent } from 'react';
+import { Archive, ArrowDown, ArrowUp, Bot, ChevronDown, ChevronRight, File, FileImage, FileText, Folder, FolderOpen, GitBranch, LoaderCircle, Search, X } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
 import type { AppSettings, RepoDetail, RepoFileContent, RepoTreeEntry } from '../domain/types';
 import { detectPreviewKind, maxPreviewRenderBytes } from '../features/files/file-preview-kind';
+import { fileIconKind, folderIconColor } from '../features/files/file-icon-kind';
 import { findFileMatches, type FileSearchMatch, type FileSearchOptions } from '../features/files/file-search';
 import { resolveMarkdownLink } from '../features/files/markdown-links';
 import { C } from '../theme';
 import type { FilePreviewRenderer } from '../features/files/file-renderer';
 
+export interface RepoFilePosition {
+  selectedPath: string;
+  expandedPaths: string[];
+  treeScrollTop: number;
+  previewScrollTop: number;
+  markdownView: 'preview' | 'raw';
+  wrapLines: boolean;
+}
+
 interface RepoFilesTabProps {
   repo: RepoDetail;
   settings: AppSettings;
   active: boolean;
+  position?: RepoFilePosition;
+  onPositionChange: (position: RepoFilePosition) => void;
 }
 
 type DirectoryState =
@@ -40,19 +52,36 @@ function loadFilePreviewRenderer() {
   return rendererPromise;
 }
 
-export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
+export function RepoFilesTab({ repo, settings, active, position, onPositionChange }: RepoFilesTabProps) {
   const backend = useAppBackend();
+  const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true });
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
-  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set(['']));
-  const [selectedPath, setSelectedPath] = useState('');
+  const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set(positionRef.current.expandedPaths));
+  const [selectedPath, setSelectedPath] = useState(positionRef.current.selectedPath);
   const [fileState, setFileState] = useState<FileState>({ status: 'idle' });
   const [renderedFile, setRenderedFile] = useState<RenderedFile | null>(null);
   const [renderNotice, setRenderNotice] = useState<string | null>(null);
-  const [markdownView, setMarkdownView] = useState<MarkdownView>('preview');
+  const [markdownView, setMarkdownView] = useState<MarkdownView>(positionRef.current.markdownView);
+  const [wrapLines, setWrapLines] = useState(positionRef.current.wrapLines);
+  const [anchorTarget, setAnchorTarget] = useState<{ path: string; fragment: string; id: number } | null>(null);
+  const anchorSequence = useRef(0);
+  const treeRef = useRef<HTMLDivElement | null>(null);
+  const restoringTree = useRef(positionRef.current.treeScrollTop > 0);
+  const expandedPathsRef = useRef(expandedPaths);
+  const selectedPathRef = useRef(selectedPath);
+  expandedPathsRef.current = expandedPaths;
+  selectedPathRef.current = selectedPath;
   const directoryRequestSequence = useRef(0);
   const activeDirectoryRequests = useRef(new Map<string, number>());
   const fileRequestSequence = useRef(0);
+  const currentFile = useRef<RepoFileContent | null>(null);
+  const revisionRef = useRef<string | null>(null);
+  const activeFileRequest = useRef<{ path: string; sequence: number } | null>(null);
   const target = { path: repo.path, category: repo.category };
+  const rememberPosition = (next: Partial<RepoFilePosition>) => {
+    positionRef.current = { ...positionRef.current, ...next };
+    onPositionChange(positionRef.current);
+  };
 
   const loadDirectory = useCallback(async (path: string) => {
     if (activeDirectoryRequests.current.has(path)) return;
@@ -85,11 +114,88 @@ export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
     }
   }, [backend, repo.id, settings, target.category, target.path]);
 
-  useEffect(() => {
-    if (active && expandedPaths.has('') && !directories['']) {
-      void loadDirectory('');
+  const loadFile = useCallback(async (path: string, freshSelection = false, checkRevision = false) => {
+    if (activeFileRequest.current?.path === path) return;
+    const sequence = ++fileRequestSequence.current;
+    activeFileRequest.current = { path, sequence };
+    if (freshSelection || (!currentFile.current && !checkRevision)) {
+      if (freshSelection) {
+        currentFile.current = null;
+        revisionRef.current = null;
+      }
+      setFileState({ status: 'loading', path });
+      setRenderedFile(null);
+      setRenderNotice(null);
     }
-  }, [active, directories, expandedPaths, loadDirectory]);
+    try {
+      const request = { repoId: repo.id, path, settings, target };
+      const file = checkRevision && revisionRef.current
+        ? await backend.readRepoFileIfChanged(request, revisionRef.current)
+        : await backend.readRepoFile(request);
+      if (sequence !== fileRequestSequence.current || !file) return;
+      revisionRef.current = file.revision;
+      if (currentFile.current?.path === path && currentFile.current.content === file.content && currentFile.current.size === file.size) return;
+      const kind = detectPreviewKind(file.path);
+      let nextRendered: RenderedFile | null = null;
+      let nextNotice: string | null = null;
+      if (kind !== 'text') {
+        if (file.size > maxPreviewRenderBytes) {
+          nextNotice = '文件较大，已关闭高亮与预览渲染';
+        } else {
+          try {
+            const renderer = await loadFilePreviewRenderer();
+            nextRendered = { path: file.path, kind, html: renderer.renderFilePreviewHtml({ path: file.path, content: file.content, kind }) };
+          } catch (error) {
+            // Failure: 渲染失败不丢正文；重新进入仍可重读文件。
+            nextNotice = `预览渲染失败，已按纯文本显示：${readErrorMessage(error, '未知错误')}`;
+          }
+        }
+      }
+      if (sequence !== fileRequestSequence.current) return;
+      currentFile.current = file;
+      setRenderedFile(nextRendered);
+      setRenderNotice(nextNotice);
+      setFileState({ status: 'loaded', file });
+    } catch (error) {
+      if (sequence === fileRequestSequence.current) {
+        currentFile.current = null;
+        revisionRef.current = null;
+        setRenderedFile(null);
+        setRenderNotice(null);
+        setFileState({ status: 'error', path, message: readErrorMessage(error, '文件读取失败') });
+      }
+    } finally {
+      if (activeFileRequest.current?.sequence === sequence) activeFileRequest.current = null;
+    }
+  }, [backend, repo.id, settings, target.category, target.path]);
+
+  // Flow: 重新进入或重获焦点时更新已展开目录，并按版本检查当前文件；正文只在版本变化时重读。
+  const refreshView = useCallback(() => {
+    for (const path of expandedPathsRef.current) void loadDirectory(path);
+    if (selectedPathRef.current) void loadFile(selectedPathRef.current, false, true);
+  }, [loadDirectory, loadFile]);
+
+  useEffect(() => {
+    if (!active) return;
+    refreshView();
+    window.addEventListener('focus', refreshView);
+    return () => window.removeEventListener('focus', refreshView);
+  }, [active, refreshView]);
+
+  useEffect(() => {
+    if (!active || !selectedPath) return;
+    // Rule: 只检查当前文件元数据；未变化时不传输正文、不重新渲染，后台或失焦时停止检查。
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && document.hasFocus()) void loadFile(selectedPath, false, true);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [active, selectedPath, loadFile]);
+
+  useLayoutEffect(() => {
+    if (!restoringTree.current || !treeRef.current) return;
+    treeRef.current.scrollTop = positionRef.current.treeScrollTop;
+    if ([...expandedPaths].every(path => directories[path] && directories[path].status !== 'loading')) restoringTree.current = false;
+  }, [directories, expandedPaths]);
 
   useEffect(() => () => {
     activeDirectoryRequests.current.clear();
@@ -98,13 +204,12 @@ export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
 
   const toggleDirectory = (path: string) => {
     if (expandedPaths.has(path)) {
-      setExpandedPaths(current => {
-        const next = new Set(current);
-        for (const expandedPath of current) {
-          if (isPathWithin(expandedPath, path)) next.delete(expandedPath);
-        }
-        return next;
-      });
+      const next = new Set(expandedPaths);
+      for (const expandedPath of expandedPaths) {
+        if (isPathWithin(expandedPath, path)) next.delete(expandedPath);
+      }
+      setExpandedPaths(next);
+      rememberPosition({ expandedPaths: [...next] });
       for (const requestedPath of activeDirectoryRequests.current.keys()) {
         if (isPathWithin(requestedPath, path)) activeDirectoryRequests.current.delete(requestedPath);
       }
@@ -114,64 +219,49 @@ export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
       ));
       return;
     }
-    setExpandedPaths(current => new Set(current).add(path));
+    const next = new Set(expandedPaths).add(path);
+    setExpandedPaths(next);
+    rememberPosition({ expandedPaths: [...next] });
     void loadDirectory(path);
   };
 
-  const selectFile = async (path: string) => {
-    const sequence = ++fileRequestSequence.current;
+  const selectFile = (path: string) => {
     setSelectedPath(path);
-    setFileState({ status: 'loading', path });
-    setRenderedFile(null);
-    setRenderNotice(null);
+    setAnchorTarget(null);
     setMarkdownView('preview');
-    try {
-      const file = await backend.readRepoFile({ repoId: repo.id, path, settings, target });
-      if (sequence !== fileRequestSequence.current) return;
-      setFileState({ status: 'loaded', file });
-      const kind = detectPreviewKind(file.path);
-      if (kind === 'text') return;
-      if (file.size > maxPreviewRenderBytes) {
-        setRenderNotice('文件较大，已关闭高亮与预览渲染');
-        return;
-      }
-      try {
-        const renderer = await loadFilePreviewRenderer();
-        if (sequence !== fileRequestSequence.current) return;
-        setRenderedFile({ path: file.path, kind, html: renderer.renderFilePreviewHtml({ path: file.path, content: file.content, kind }) });
-      } catch (error) {
-        // Failure 降级：高亮或渲染失败只影响展示形式，已读到的正文仍以纯文本保留。
-        if (sequence === fileRequestSequence.current) setRenderNotice(`预览渲染失败，已按纯文本显示：${readErrorMessage(error, '未知错误')}`);
-      }
-    } catch (error) {
-      if (sequence === fileRequestSequence.current) {
-        setFileState({ status: 'error', path, message: readErrorMessage(error, '文件读取失败') });
-      }
-    }
+    rememberPosition({ selectedPath: path, previewScrollTop: 0, markdownView: 'preview' });
+    void loadFile(path, true);
   };
 
   // Flow: 打开 Markdown 内部链接时先展开目标的祖先目录，使文件树定位到同一文件。
-  const openLinkedFile = async (path: string) => {
+  const openLinkedFile = (path: string, fragment?: string) => {
+    if (fragment) setAnchorTarget({ path, fragment, id: ++anchorSequence.current });
+    if (path === selectedPath && fileState.status === 'loaded') return;
     const ancestors = path.split('/').slice(0, -1).reduce<string[]>(
       (accumulator, segment) => [...accumulator, accumulator.length ? `${accumulator[accumulator.length - 1]}/${segment}` : segment],
       [],
     );
     if (ancestors.length > 0) {
-      setExpandedPaths(current => new Set([...current, ...ancestors]));
+      const next = new Set([...expandedPaths, ...ancestors]);
+      setExpandedPaths(next);
+      rememberPosition({ expandedPaths: [...next] });
       for (const ancestor of ancestors) void loadDirectory(ancestor);
     }
-    await selectFile(path);
+    setSelectedPath(path);
+    setMarkdownView('preview');
+    rememberPosition({ selectedPath: path, previewScrollTop: 0, markdownView: 'preview' });
+    void loadFile(path, true);
   };
 
   const handlePreviewClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    // Rule: 预览区内的链接一律不走 WebView 默认导航，只由这里分流到外部浏览器或应用内文件。
-    event.preventDefault();
     const anchor = (event.target as HTMLElement).closest('a');
     const href = anchor?.getAttribute('data-md-href');
     if (!href || !renderedFile) return;
-    const target = resolveMarkdownLink(renderedFile.path, href);
-    if (target.kind === 'external') backend.openExternalURL(target.url);
-    else if (target.kind === 'repo-file') void openLinkedFile(target.path);
+    // Rule: 仓库内容不得让 WebView 自行导航；外链与安全的仓库内锚点在应用内分流。
+    event.preventDefault();
+    const link = resolveMarkdownLink(renderedFile.path, href);
+    if (link.kind === 'external') void backend.openExternalURL(link.url);
+    else if (link.kind === 'repo-file') openLinkedFile(link.path, link.fragment);
   };
 
   return (
@@ -180,7 +270,7 @@ export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
         <div style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', color: C.textWeak, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>
           资源管理器
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '5px 0 10px' }}>
+        <div ref={treeRef} onScroll={event => { if (!restoringTree.current) rememberPosition({ treeScrollTop: event.currentTarget.scrollTop }); }} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '5px 0 10px' }}>
           <TreeChildren
             parentPath=""
             depth={0}
@@ -204,7 +294,13 @@ export function RepoFilesTab({ repo, settings, active }: RepoFilesTabProps) {
           renderedFile={renderedFile}
           notice={renderNotice}
           markdownView={markdownView}
-          onMarkdownViewChange={setMarkdownView}
+          onMarkdownViewChange={view => { setMarkdownView(view); rememberPosition({ markdownView: view }); }}
+          wrapLines={wrapLines}
+          onWrapLinesChange={value => { setWrapLines(value); rememberPosition({ wrapLines: value }); }}
+          getScrollTop={() => positionRef.current.previewScrollTop}
+          onScrollTopChange={value => rememberPosition({ previewScrollTop: value })}
+          anchorTarget={anchorTarget}
+          onAnchorHandled={() => setAnchorTarget(null)}
           onPreviewClick={handlePreviewClick}
         />
       </div>
@@ -297,6 +393,8 @@ function TreeRow({
   selected: boolean;
   onClick: () => void;
 }) {
+  const icon = directory ? null : fileIconKind(name);
+  const iconColor = directory ? folderIconColor(name) : icon!.color;
   return (
     <button
       type="button"
@@ -322,8 +420,14 @@ function TreeRow({
       <span style={{ width: 14, height: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, flexShrink: 0 }}>
         {directory ? (expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
       </span>
-      <span style={{ display: 'inline-flex', color: directory ? C.needPull : C.textWeak, flexShrink: 0 }}>
-        {directory ? (expanded ? <FolderOpen size={15} /> : <Folder size={15} />) : <File size={14} />}
+      <span style={{ width: 17, height: 17, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: iconColor, flexShrink: 0 }}>
+        {directory ? (expanded ? <FolderOpen size={16} fill={iconColor} fillOpacity={0.3} /> : <Folder size={16} fill={iconColor} fillOpacity={0.3} />)
+          : icon?.kind === 'badge' ? <span style={{ width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2, background: icon.background, color: icon.color, fontSize: icon.label.length > 2 ? 8 : 9, fontWeight: 800, lineHeight: 1 }}>{icon.label}</span>
+            : icon?.kind === 'git' ? <GitBranch size={16} />
+              : icon?.kind === 'markdown' ? <FileText size={16} />
+                : icon?.kind === 'robot' ? <Bot size={16} />
+                  : icon?.kind === 'image' ? <FileImage size={16} />
+                  : icon?.kind === 'archive' ? <Archive size={16} /> : <File size={15} />}
       </span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
     </button>
@@ -351,6 +455,12 @@ function FilePreview({
   notice,
   markdownView,
   onMarkdownViewChange,
+  wrapLines,
+  onWrapLinesChange,
+  getScrollTop,
+  onScrollTopChange,
+  anchorTarget,
+  onAnchorHandled,
   onPreviewClick,
 }: {
   active: boolean;
@@ -359,6 +469,12 @@ function FilePreview({
   notice: string | null;
   markdownView: MarkdownView;
   onMarkdownViewChange: (view: MarkdownView) => void;
+  wrapLines: boolean;
+  onWrapLinesChange: (value: boolean) => void;
+  getScrollTop: () => number;
+  onScrollTopChange: (value: number) => void;
+  anchorTarget: { path: string; fragment: string; id: number } | null;
+  onAnchorHandled: () => void;
   onPreviewClick: (event: ReactMouseEvent<HTMLDivElement>) => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -367,6 +483,9 @@ function FilePreview({
   const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const activeMatchRef = useRef<HTMLElement | null>(null);
+  const bodyRef = useRef<HTMLElement | null>(null);
+  const restoringPreview = useRef(getScrollTop() > 0);
+  const [anchorNotice, setAnchorNotice] = useState('');
   const file = state.status === 'loaded' ? state.file : null;
   const searchResult = useMemo(
     () => findFileMatches(file?.content ?? '', searchQuery, searchOptions),
@@ -418,6 +537,35 @@ function FilePreview({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [active, file, searchOpen]);
 
+  const path = state.status === 'loaded' ? state.file.path : state.status === 'idle' ? '' : state.path;
+  const kind = file ? detectPreviewKind(file.path) : 'text';
+  const activeHtml = file && renderedFile && renderedFile.path === file.path ? renderedFile.html : null;
+  const showSearchText = Boolean(file && searchOpen && searchQuery && !searchResult.error);
+  const showMarkdownPreview = !showSearchText && kind === 'markdown' && activeHtml !== null && markdownView === 'preview';
+  const showHighlightedCode = !showSearchText && kind === 'code' && activeHtml !== null;
+
+  useLayoutEffect(() => {
+    if (!bodyRef.current) return;
+    bodyRef.current.scrollTop = getScrollTop();
+    if (file && (kind === 'text' || activeHtml !== null || notice)) restoringPreview.current = false;
+  }, [file?.path, state.status, activeHtml, markdownView, showSearchText, wrapLines, notice]);
+
+  useLayoutEffect(() => { setAnchorNotice(''); }, [file?.path]);
+
+  useLayoutEffect(() => {
+    if (!anchorTarget || file?.path !== anchorTarget.path || !showMarkdownPreview || !bodyRef.current) return;
+    const body = bodyRef.current;
+    const heading = Array.from(body.querySelectorAll('[id]')).find(element => element.id === anchorTarget.fragment);
+    if (heading) {
+      body.scrollTop += heading.getBoundingClientRect().top - body.getBoundingClientRect().top - 12;
+      onScrollTopChange(body.scrollTop);
+      setAnchorNotice('');
+    } else {
+      setAnchorNotice(`未找到章节：${anchorTarget.fragment}`);
+    }
+    onAnchorHandled();
+  }, [anchorTarget, file?.path, showMarkdownPreview, activeHtml]);
+
   if (state.status === 'idle') {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10, color: C.textWeak }}>
@@ -427,25 +575,25 @@ function FilePreview({
     );
   }
 
-  const path = state.status === 'loaded' ? state.file.path : state.path;
-  const kind = file ? detectPreviewKind(file.path) : 'text';
-  const activeHtml = file && renderedFile && renderedFile.path === file.path ? renderedFile.html : null;
-  const showSearchText = Boolean(file && searchOpen && searchQuery && !searchResult.error);
-  const showMarkdownPreview = !showSearchText && kind === 'markdown' && activeHtml !== null && markdownView === 'preview';
-  const showHighlightedCode = !showSearchText && kind === 'code' && activeHtml !== null;
+  const handleBodyScroll = (event: UIEvent<HTMLElement>) => {
+    if (!restoringPreview.current) onScrollTopChange(event.currentTarget.scrollTop);
+  };
+  const setBodyRef = (element: HTMLElement | null) => { bodyRef.current = element; };
+  const textStyle = { ...previewBodyStyle, whiteSpace: wrapLines ? 'pre-wrap' : 'pre', overflowWrap: wrapLines ? 'anywhere' : 'normal' } as const;
 
   return (
     <>
       <div style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${C.border}`, background: C.panel1, color: C.textSecondary, flexShrink: 0 }}>
         <File size={13} color={C.textWeak} />
         <span title={path} style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>{path}</span>
-        {notice && <span title={notice} style={{ color: C.textWeak, fontSize: 10, flexShrink: 0, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notice}</span>}
-        {kind === 'markdown' && activeHtml !== null && (
-          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+        {(notice || anchorNotice) && <span title={notice || anchorNotice} style={{ color: C.textWeak, fontSize: 10, flexShrink: 0, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notice || anchorNotice}</span>}
+        {file && <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+          {kind === 'markdown' && activeHtml !== null && <>
             <ViewModeButton active={markdownView === 'preview'} label="预览" onClick={() => onMarkdownViewChange('preview')} />
             <ViewModeButton active={markdownView === 'raw'} label="原文" onClick={() => onMarkdownViewChange('raw')} />
-          </div>
-        )}
+          </>}
+          <ViewModeButton active={wrapLines} label="自动换行" onClick={() => onWrapLinesChange(!wrapLines)} />
+        </div>}
         {file && <span style={{ color: C.textWeak, fontSize: 10, flexShrink: 0 }}>{formatBytes(file.size)}</span>}
         <FindIconButton label="在当前文件中查找 (Ctrl+F)" disabled={!file} onClick={openSearch}>
           <Search size={13} />
@@ -538,21 +686,24 @@ function FilePreview({
           content={file.content}
           matches={searchResult.matches}
           activeIndex={normalizedMatchIndex}
+          wrapLines={wrapLines}
+          onScroll={handleBodyScroll}
+          onBodyRef={setBodyRef}
           onActiveMatch={element => { activeMatchRef.current = element; }}
         />
       )}
       {file && showMarkdownPreview && (
-        <div style={previewBodyStyle}>
-          <div className="file-preview-markdown" onClick={onPreviewClick} dangerouslySetInnerHTML={{ __html: activeHtml ?? '' }} />
+        <div ref={setBodyRef} onScroll={handleBodyScroll} className="repo-file-preview-scroll" style={previewBodyStyle}>
+          <div className="file-preview-markdown" data-wrap={wrapLines} onClick={onPreviewClick} dangerouslySetInnerHTML={{ __html: activeHtml ?? '' }} />
         </div>
       )}
       {file && !showMarkdownPreview && showHighlightedCode && (
-        <pre style={previewBodyStyle}>
-          <code className="hljs" style={codeTextStyle} dangerouslySetInnerHTML={{ __html: activeHtml ?? '' }} />
+        <pre ref={setBodyRef} onScroll={handleBodyScroll} className="repo-file-preview-scroll" style={textStyle}>
+          <code className="hljs" style={{ ...codeTextStyle, whiteSpace: wrapLines ? 'pre-wrap' : 'pre', overflowWrap: wrapLines ? 'anywhere' : 'normal' }} dangerouslySetInnerHTML={{ __html: activeHtml ?? '' }} />
         </pre>
       )}
       {file && !showSearchText && !showMarkdownPreview && !showHighlightedCode && (
-        <pre style={previewBodyStyle}>
+        <pre ref={setBodyRef} onScroll={handleBodyScroll} className="repo-file-preview-scroll" style={textStyle}>
           {file.content}
         </pre>
       )}
@@ -566,11 +717,17 @@ function SearchableFileText({
   content,
   matches,
   activeIndex,
+  wrapLines,
+  onScroll,
+  onBodyRef,
   onActiveMatch,
 }: {
   content: string;
   matches: FileSearchMatch[];
   activeIndex: number;
+  wrapLines: boolean;
+  onScroll: (event: UIEvent<HTMLElement>) => void;
+  onBodyRef: (element: HTMLElement | null) => void;
   onActiveMatch: (element: HTMLElement | null) => void;
 }) {
   const activeMatch = matches[activeIndex];
@@ -604,7 +761,7 @@ function SearchableFileText({
   });
   if (cursor < content.length) nodes.push(content.slice(cursor));
 
-  return <pre style={{ ...previewBodyStyle, ...codeTextStyle }}>{nodes}</pre>;
+  return <pre ref={onBodyRef} onScroll={onScroll} className="repo-file-preview-scroll" style={{ ...previewBodyStyle, ...codeTextStyle, whiteSpace: wrapLines ? 'pre-wrap' : 'pre', overflowWrap: wrapLines ? 'anywhere' : 'normal' }}>{nodes}</pre>;
 }
 
 function FindOptionButton({
@@ -692,6 +849,7 @@ function ViewModeButton({ active, label, onClick }: { active: boolean; label: st
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       style={{
         border: `1px solid ${active ? C.borderLight : 'transparent'}`,
         borderRadius: 6,

@@ -209,9 +209,10 @@ type RepoTreeEntry struct {
 }
 
 type RepoFileContent struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-	Size    int64  `json:"size"`
+	Path     string `json:"path"`
+	Content  string `json:"content"`
+	Size     int64  `json:"size"`
+	Revision string `json:"revision"`
 }
 
 type BatchResult struct {

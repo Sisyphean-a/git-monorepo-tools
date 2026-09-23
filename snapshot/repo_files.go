@@ -75,6 +75,34 @@ func (s *Service) ListRepoDirectory(repoID string, request Request, relativePath
 	return result, nil
 }
 
+// Rule: 未变更时只检查文件元数据；版本变化后才读取正文。
+func (s *Service) ReadRepoFileIfChanged(repoID string, request Request, relativePath, revision string) (*RepoFileContent, error) {
+	entry, err := s.resolveRepoEntry(repoID, request)
+	if err != nil {
+		return nil, err
+	}
+	filePath, _, err := resolveRepoFilePath(entry.repoPath, relativePath)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || repoFileRevision(info) != revision {
+		content, err := s.ReadRepoFile(repoID, request, relativePath)
+		if err != nil {
+			return nil, err
+		}
+		return &content, nil
+	}
+	return nil, nil
+}
+
+func repoFileRevision(info os.FileInfo) string {
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+}
+
 func (s *Service) ReadRepoFile(repoID string, request Request, relativePath string) (RepoFileContent, error) {
 	entry, err := s.resolveRepoEntry(repoID, request)
 	if err != nil {
@@ -110,7 +138,7 @@ func (s *Service) ReadRepoFile(repoID string, request Request, relativePath stri
 	if bytes.IndexByte(content, 0) >= 0 || !utf8.Valid(content) {
 		return RepoFileContent{}, fmt.Errorf("二进制文件暂不支持预览：%s", displayRepoPath(normalizedPath))
 	}
-	return RepoFileContent{Path: normalizedPath, Content: string(content), Size: info.Size()}, nil
+	return RepoFileContent{Path: normalizedPath, Content: string(content), Size: info.Size(), Revision: repoFileRevision(info)}, nil
 }
 
 func repoTreeEntryKind(repoPath, parentPath string, entry os.DirEntry) (bool, bool) {
