@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type UIEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type UIEvent } from 'react';
 import { Archive, ArrowDown, ArrowUp, Bot, ChevronDown, ChevronRight, File, FileImage, FileText, Folder, FolderOpen, GitBranch, LoaderCircle, Search, X } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
 import type { AppSettings, RepoDetail, RepoFileContent, RepoTreeEntry } from '../domain/types';
 import { detectPreviewKind, maxPreviewRenderBytes } from '../features/files/file-preview-kind';
 import { fileIconKind, folderIconColor } from '../features/files/file-icon-kind';
 import { findFileMatches, type FileSearchMatch, type FileSearchOptions } from '../features/files/file-search';
+import { clampTreeWidth, treeResizerWidth, treeWidthDefault, treeWidthMax, treeWidthMin, treeWidthStep } from '../features/files/tree-width';
 import { resolveMarkdownLink } from '../features/files/markdown-links';
 import { C } from '../theme';
 import type { FilePreviewRenderer } from '../features/files/file-renderer';
@@ -16,6 +17,7 @@ export interface RepoFilePosition {
   previewScrollTop: number;
   markdownView: 'preview' | 'raw';
   wrapLines: boolean;
+  treeWidth: number;
 }
 
 interface RepoFilesTabProps {
@@ -54,7 +56,7 @@ function loadFilePreviewRenderer() {
 
 export function RepoFilesTab({ repo, settings, active, position, onPositionChange }: RepoFilesTabProps) {
   const backend = useAppBackend();
-  const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true });
+  const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true, treeWidth: treeWidthDefault });
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set(positionRef.current.expandedPaths));
   const [selectedPath, setSelectedPath] = useState(positionRef.current.selectedPath);
@@ -81,6 +83,69 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   const rememberPosition = (next: Partial<RepoFilePosition>) => {
     positionRef.current = { ...positionRef.current, ...next };
     onPositionChange(positionRef.current);
+  };
+
+  const filesLayoutRef = useRef<HTMLDivElement | null>(null);
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+  // Rule: 同一开发会话内可能同时存在带与不带宽度的位置记录，缺省回到默认宽度而不是把布局算成 NaN。
+  const [treeWidth, setTreeWidth] = useState(positionRef.current.treeWidth ?? treeWidthDefault);
+  const [layoutWidth, setLayoutWidth] = useState(0);
+  const [resizingTree, setResizingTree] = useState(false);
+  const treeResize = useRef<{ pointerId: number; startX: number; startWidth: number; lastWidth: number } | null>(null);
+  const effectiveTreeWidth = clampTreeWidth(treeWidth, layoutWidth);
+  const treeWidthUpperBound = treeWidthMax(layoutWidth);
+
+  useLayoutEffect(() => {
+    const element = filesLayoutRef.current;
+    if (!element) return;
+    setLayoutWidth(element.clientWidth);
+    const observer = new ResizeObserver(() => setLayoutWidth(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!resizingTree) return;
+    // Flow: 拖动期间指针会离开分割条，游标与文本选择由 body 类统一压制。
+    document.body.classList.add('repo-files-resizing');
+    return () => document.body.classList.remove('repo-files-resizing');
+  }, [resizingTree]);
+
+  const handleTreeResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    treeResize.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: effectiveTreeWidth, lastWidth: effectiveTreeWidth };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizingTree(true);
+  };
+
+  const handleTreeResizeMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = treeResize.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    // Rule: 拖动中直接写侧栏 DOM 宽度，不让大文件树在每次指针移动时整体重渲染；React 只在 style 值变化时覆盖 DOM，其他重渲染不会把宽度打回。
+    const width = clampTreeWidth(drag.startWidth + event.clientX - drag.startX, layoutWidth);
+    drag.lastWidth = width;
+    if (sidebarRef.current) sidebarRef.current.style.width = `${width}px`;
+  };
+
+  const handleTreeResizeEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = treeResize.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    treeResize.current = null;
+    setResizingTree(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setTreeWidth(drag.lastWidth);
+    rememberPosition({ treeWidth: drag.lastWidth });
+  };
+
+  const handleTreeResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.key === 'ArrowLeft' ? -treeWidthStep : event.key === 'ArrowRight' ? treeWidthStep : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = clampTreeWidth(effectiveTreeWidth + step, layoutWidth);
+    if (next === effectiveTreeWidth) return;
+    setTreeWidth(next);
+    rememberPosition({ treeWidth: next });
   };
 
   const loadDirectory = useCallback(async (path: string) => {
@@ -265,8 +330,8 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   };
 
   return (
-    <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', background: C.appBg }}>
-      <div style={{ width: 300, minWidth: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.border}`, background: C.panel1 }}>
+    <div ref={filesLayoutRef} style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', background: C.appBg }}>
+      <div ref={sidebarRef} style={{ width: effectiveTreeWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.border}`, background: C.panel1 }}>
         <div style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', color: C.textWeak, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>
           资源管理器
         </div>
@@ -286,6 +351,24 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
           {repo.path}
         </div>
       </div>
+
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-orientation="vertical"
+        aria-label="调整文件树宽度"
+        aria-valuemin={treeWidthMin}
+        aria-valuemax={Number.isFinite(treeWidthUpperBound) ? Math.round(treeWidthUpperBound) : undefined}
+        aria-valuenow={Math.round(effectiveTreeWidth)}
+        data-dragging={resizingTree ? 'true' : 'false'}
+        className="repo-files-resizer"
+        onPointerDown={handleTreeResizeStart}
+        onPointerMove={handleTreeResizeMove}
+        onPointerUp={handleTreeResizeEnd}
+        onPointerCancel={handleTreeResizeEnd}
+        onKeyDown={handleTreeResizeKeyDown}
+        style={{ width: treeResizerWidth, flexShrink: 0, cursor: 'col-resize', touchAction: 'none' }}
+      />
 
       <div style={{ position: 'relative', flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: C.appBg }}>
         <FilePreview

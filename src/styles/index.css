@@ -52,6 +52,18 @@ button {
   overflow-x: hidden !important;
 }
 
+.repo-files-resizer:hover,
+.repo-files-resizer:focus-visible,
+.repo-files-resizer[data-dragging='true'] {
+  background: #2e3d52;
+}
+
+body.repo-files-resizing,
+body.repo-files-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 input::placeholder,
 textarea::placeholder {
   color: #5f7084;
