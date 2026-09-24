@@ -36,6 +36,9 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
   const [historyScrollTop, setHistoryScrollTop] = useState(0);
   const [historyViewportHeight, setHistoryViewportHeight] = useState(HISTORY_VIEWPORT_HEIGHT);
   const loadedRepoId = useRef(initialCommits.length > 0 ? repoId : '');
+  // Rule: 设置对象换新（如文件树宽度落盘）不得重读提交详情；详情只在选中的提交变化时重新读取。
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   useEffect(() => {
     if (!active || loadedRepoId.current === repoId) return;
@@ -72,7 +75,7 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
     let cancelled = false;
     setDetailLoading(true);
     setDetailError(null);
-    void backend.fetchCommitDetail({ repoId, hash: selectedHash, settings })
+    void backend.fetchCommitDetail({ repoId, hash: selectedHash, settings: settingsRef.current })
       .then(next => {
         if (cancelled) return;
         setDetail(next);
@@ -89,7 +92,7 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
     return () => {
       cancelled = true;
     };
-  }, [backend, repoId, selectedHash, settings]);
+  }, [backend, repoId, selectedHash]);
 
   useEffect(() => {
     if (initialLoading || commits.length === 0) return;

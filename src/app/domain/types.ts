@@ -134,6 +134,8 @@ export interface AppSettings {
   ignoredRepoPaths: string[];
   customCategories: string[];
   favoriteRepoIds: string[];
+  // Rule: 文件树宽度属于按项目保存的界面偏好，仓库 ID 与 `createRepoID` 一致。
+  fileTreeWidths: Record<string, number>;
   aiCommit: AICommitSettings;
   gitBehavior: GitBehaviorSettings;
   commandCenter: CommandCenterSettings;

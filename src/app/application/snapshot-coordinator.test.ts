@@ -9,6 +9,7 @@ const settings = (concurrency: number): AppSettings => ({
   ignoredRepoPaths: [],
   customCategories: [],
   favoriteRepoIds: [],
+  fileTreeWidths: {},
   aiCommit: {
     apiKey: '',
     baseUrl: '',

@@ -1,4 +1,5 @@
 import { cloneDefaultCommandCatalog, sanitizeCommandCatalog } from '../features/commands/command-catalog.js';
+import { clampTreeWidth } from '../features/files/tree-width.js';
 import type { AppSettings, ScanRootSetting } from '../domain/types.js';
 import type { SettingsStore } from '../application/ports.js';
 
@@ -9,6 +10,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ignoredRepoPaths: [],
   customCategories: [],
   favoriteRepoIds: [],
+  fileTreeWidths: {},
   aiCommit: {
     apiKey: '',
     baseUrl: 'https://api.deepseek.com',
@@ -87,6 +89,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   draft.ignoredRepoPaths = sanitizePaths(source.ignoredRepoPaths);
   draft.customCategories = sanitizeCategories(source.customCategories);
   draft.favoriteRepoIds = sanitizeRepoIDs(source.favoriteRepoIds);
+  draft.fileTreeWidths = sanitizeFileTreeWidths(source.fileTreeWidths);
   draft.aiCommit.apiKey = typeof aiCommit.apiKey === 'string' ? aiCommit.apiKey : draft.aiCommit.apiKey;
   draft.aiCommit.baseUrl = sanitizeText(aiCommit.baseUrl, draft.aiCommit.baseUrl);
   draft.aiCommit.model = sanitizeText(aiCommit.model, draft.aiCommit.model);
@@ -159,6 +162,18 @@ export function loadSettings() {
 export function saveSettings(settings: AppSettings) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizeSettings(settings)));
+}
+
+// Guarantee: 只保留可解析的仓库 ID 与 220px 以上的有限宽度；容器上限在渲染时按实际宽度再夹一次。
+function sanitizeFileTreeWidths(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {} as Record<string, number>;
+  const widths: Record<string, number> = {};
+  for (const [repoId, width] of Object.entries(value)) {
+    const id = sanitizeText(repoId, '');
+    if (!id || typeof width !== 'number' || !Number.isFinite(width)) continue;
+    widths[id] = clampTreeWidth(width, 0);
+  }
+  return widths;
 }
 
 export function formatAutoScanLabel(settings: AppSettings) {

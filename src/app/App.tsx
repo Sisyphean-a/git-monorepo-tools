@@ -97,6 +97,7 @@ function WorkspaceLayout({
         onOpenCommands={dialogs.openCommands}
         onOpenDiffViewer={dialogs.openDiffViewer}
         onViewLog={workspace.openRepoLog}
+        onFileTreeWidthChange={workspace.setFileTreeWidth}
         onError={workspace.reportActionError}
       />
     </div>

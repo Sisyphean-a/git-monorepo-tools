@@ -17,7 +17,6 @@ export interface RepoFilePosition {
   previewScrollTop: number;
   markdownView: 'preview' | 'raw';
   wrapLines: boolean;
-  treeWidth: number;
 }
 
 interface RepoFilesTabProps {
@@ -26,6 +25,7 @@ interface RepoFilesTabProps {
   active: boolean;
   position?: RepoFilePosition;
   onPositionChange: (position: RepoFilePosition) => void;
+  onFileTreeWidthChange: (width: number) => void;
 }
 
 type DirectoryState =
@@ -54,9 +54,9 @@ function loadFilePreviewRenderer() {
   return rendererPromise;
 }
 
-export function RepoFilesTab({ repo, settings, active, position, onPositionChange }: RepoFilesTabProps) {
+export function RepoFilesTab({ repo, settings, active, position, onPositionChange, onFileTreeWidthChange }: RepoFilesTabProps) {
   const backend = useAppBackend();
-  const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true, treeWidth: treeWidthDefault });
+  const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true });
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set(positionRef.current.expandedPaths));
   const [selectedPath, setSelectedPath] = useState(positionRef.current.selectedPath);
@@ -71,8 +71,11 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   const restoringTree = useRef(positionRef.current.treeScrollTop > 0);
   const expandedPathsRef = useRef(expandedPaths);
   const selectedPathRef = useRef(selectedPath);
+  // Rule: 后端读取始终取最新设置，但设置对象换新不得重建读取回调，否则每次保存设置都会重读已展开目录与当前文件。
+  const settingsRef = useRef(settings);
   expandedPathsRef.current = expandedPaths;
   selectedPathRef.current = selectedPath;
+  settingsRef.current = settings;
   const directoryRequestSequence = useRef(0);
   const activeDirectoryRequests = useRef(new Map<string, number>());
   const fileRequestSequence = useRef(0);
@@ -87,8 +90,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
 
   const filesLayoutRef = useRef<HTMLDivElement | null>(null);
   const sidebarRef = useRef<HTMLDivElement | null>(null);
-  // Rule: 同一开发会话内可能同时存在带与不带宽度的位置记录，缺省回到默认宽度而不是把布局算成 NaN。
-  const [treeWidth, setTreeWidth] = useState(positionRef.current.treeWidth ?? treeWidthDefault);
+  const [treeWidth, setTreeWidth] = useState(settings.fileTreeWidths[repo.id] ?? treeWidthDefault);
   const [layoutWidth, setLayoutWidth] = useState(0);
   const [resizingTree, setResizingTree] = useState(false);
   const treeResize = useRef<{ pointerId: number; startX: number; startWidth: number; lastWidth: number } | null>(null);
@@ -135,7 +137,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
     setResizingTree(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setTreeWidth(drag.lastWidth);
-    rememberPosition({ treeWidth: drag.lastWidth });
+    onFileTreeWidthChange(drag.lastWidth);
   };
 
   const handleTreeResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -145,7 +147,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
     const next = clampTreeWidth(effectiveTreeWidth + step, layoutWidth);
     if (next === effectiveTreeWidth) return;
     setTreeWidth(next);
-    rememberPosition({ treeWidth: next });
+    onFileTreeWidthChange(next);
   };
 
   const loadDirectory = useCallback(async (path: string) => {
@@ -157,7 +159,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
       [path]: { status: 'loading', entries: current[path]?.entries ?? [] },
     }));
     try {
-      const entries = await backend.listRepoDirectory({ repoId: repo.id, path, settings, target });
+      const entries = await backend.listRepoDirectory({ repoId: repo.id, path, settings: settingsRef.current, target });
       if (activeDirectoryRequests.current.get(path) === sequence) {
         setDirectories(current => ({ ...current, [path]: { status: 'loaded', entries } }));
       }
@@ -177,7 +179,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
         activeDirectoryRequests.current.delete(path);
       }
     }
-  }, [backend, repo.id, settings, target.category, target.path]);
+  }, [backend, repo.id, target.category, target.path]);
 
   const loadFile = useCallback(async (path: string, freshSelection = false, checkRevision = false) => {
     if (activeFileRequest.current?.path === path) return;
@@ -193,7 +195,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
       setRenderNotice(null);
     }
     try {
-      const request = { repoId: repo.id, path, settings, target };
+      const request = { repoId: repo.id, path, settings: settingsRef.current, target };
       const file = checkRevision && revisionRef.current
         ? await backend.readRepoFileIfChanged(request, revisionRef.current)
         : await backend.readRepoFile(request);
@@ -232,7 +234,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
     } finally {
       if (activeFileRequest.current?.sequence === sequence) activeFileRequest.current = null;
     }
-  }, [backend, repo.id, settings, target.category, target.path]);
+  }, [backend, repo.id, target.category, target.path]);
 
   // Flow: 重新进入或重获焦点时更新已展开目录，并按版本检查当前文件；正文只在版本变化时重读。
   const refreshView = useCallback(() => {

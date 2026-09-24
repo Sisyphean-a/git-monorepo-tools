@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_SETTINGS, sanitizeSettings } from './settings-store.js';
+import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from './settings-store.js';
 
 test('default settings include manual git proxy defaults', () => {
   assert.deepEqual(DEFAULT_SETTINGS.gitBehavior.proxy, {
@@ -80,4 +80,49 @@ test('sanitizeSettings accepts settings saved before project commands existed', 
 
   assert.deepEqual(settings.commandCenter.projectCommands, {});
   assert.deepEqual(settings.commandCenter.customCommands, [{ id: 'global', label: '全局', command: 'npm test' }]);
+});
+
+test('sanitizeSettings keeps per-repository file tree widths within the readable range', () => {
+  const settings = sanitizeSettings({
+    fileTreeWidths: {
+      ' repo-a ': 420,
+      'repo-b': 10,
+      'repo-c': Number.NaN,
+      'repo-d': '520',
+      ' ': 360,
+    },
+  });
+
+  assert.deepEqual(settings.fileTreeWidths, { 'repo-a': 420, 'repo-b': 220 });
+});
+
+test('sanitizeSettings accepts settings saved before file tree widths existed', () => {
+  const settings = sanitizeSettings({ favoriteRepoIds: ['repo-a'] });
+
+  assert.deepEqual(settings.fileTreeWidths, {});
+});
+
+test('saveSettings persists per-repository file tree widths for the next load', () => {
+  const originalWindow = globalThis.window;
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => { storage.set(key, value); },
+      },
+    },
+  });
+
+  try {
+    saveSettings({ ...DEFAULT_SETTINGS, fileTreeWidths: { 'repo-a': 420, 'repo-b': 220 } });
+
+    assert.deepEqual(loadSettings().fileTreeWidths, { 'repo-a': 420, 'repo-b': 220 });
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
 });

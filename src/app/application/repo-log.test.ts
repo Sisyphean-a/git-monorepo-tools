@@ -8,6 +8,7 @@ const settings: AppSettings = {
   ignoredRepoPaths: [],
   customCategories: [],
   favoriteRepoIds: [],
+  fileTreeWidths: {},
   aiCommit: {
     apiKey: '',
     baseUrl: '',

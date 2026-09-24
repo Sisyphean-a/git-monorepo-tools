@@ -39,6 +39,7 @@ interface WorkspaceProps {
   onOpenCommands: () => void;
   onOpenDiffViewer: (request: DiffViewerRequest) => void;
   onViewLog: (repoId: string) => Promise<void>;
+  onFileTreeWidthChange: (repoId: string, width: number) => void;
   onError: (error: unknown, fallback: string) => void;
 }
 
@@ -111,6 +112,7 @@ export function Workspace({
   onOpenCommands,
   onOpenDiffViewer,
   onViewLog,
+  onFileTreeWidthChange,
   onError,
 }: WorkspaceProps) {
   const backend = useAppBackend();
@@ -332,7 +334,7 @@ export function Workspace({
             >
               {filesEnabled && (
                 <Suspense fallback={<div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>正在加载文件浏览器…</div>}>
-                  <RepoFilesTab key={repo.id} repo={repo} settings={settings} active={mainTab === 'files'} position={filePositions.current.get(repo.id)} onPositionChange={next => { filePositions.current.set(repo.id, next); }} />
+                  <RepoFilesTab key={repo.id} repo={repo} settings={settings} active={mainTab === 'files'} position={filePositions.current.get(repo.id)} onPositionChange={next => { filePositions.current.set(repo.id, next); }} onFileTreeWidthChange={width => onFileTreeWidthChange(repo.id, width)} />
                 </Suspense>
               )}
             </div>

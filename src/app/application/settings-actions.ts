@@ -15,6 +15,7 @@ interface SettingsActionContext {
 export function createSettingsActions(context: SettingsActionContext) {
   return {
     saveSettings: (value: AppSettings) => saveSettings(context, value),
+    setFileTreeWidth: (repoId: string, width: number) => setFileTreeWidth(context, repoId, width),
     toggleAutoScan: () => toggleAutoScan(context),
     addScanRoot: () => addScanRoot(context),
     addCategory: (name: string) => addCategory(context, name),
@@ -38,6 +39,14 @@ function persistSettings(context: SettingsActionContext, value: unknown) {
 function saveSettings(context: SettingsActionContext, value: AppSettings) {
   const next = persistSettings(context, value);
   void context.refreshSnapshot(next, { refreshRemotes: false }).catch(error => context.reportError(error, '刷新设置失败'));
+}
+
+function setFileTreeWidth(context: SettingsActionContext, repoId: string, width: number) {
+  // Rule: 纯界面偏好只更新本地设置，不触发仓库重新扫描或远端刷新。
+  return persistSettings(context, {
+    ...context.settings,
+    fileTreeWidths: { ...context.settings.fileTreeWidths, [repoId]: width },
+  });
 }
 
 function toggleAutoScan(context: SettingsActionContext) {

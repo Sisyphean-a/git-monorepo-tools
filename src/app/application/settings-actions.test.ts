@@ -175,3 +175,29 @@ test('withScanRoots preserves other unsaved draft settings', () => {
   assert.equal(next.aiCommit.model, 'unsaved-model');
   assert.notEqual(next, draft);
 });
+
+test('setFileTreeWidth persists only that repository width and skips the refresh', () => {
+  const events: string[] = [];
+  const settings: AppSettings = { ...DEFAULT_SETTINGS, fileTreeWidths: { 'repo-a': 420 } };
+  const actions = createSettingsActions({
+    backend: { pickFolder: async () => null },
+    settingsStore: {
+      loadSettings: () => settings,
+      saveSettings: value => events.push(`save:${JSON.stringify(value.fileTreeWidths)}`),
+      sanitizeSettings: value => value as AppSettings,
+    },
+    settings,
+    setSettings: value => {
+      const next = typeof value === 'function' ? value(settings) : value;
+      events.push(`state:${JSON.stringify(next.fileTreeWidths)}`);
+    },
+    snapshot: null,
+    refreshSnapshot: async () => { events.push('refresh'); },
+    reportError: () => undefined,
+  });
+
+  const next = actions.setFileTreeWidth('repo-b', 520);
+
+  assert.deepEqual(next.fileTreeWidths, { 'repo-a': 420, 'repo-b': 520 });
+  assert.deepEqual(events, ['state:{"repo-a":420,"repo-b":520}', 'save:{"repo-a":420,"repo-b":520}']);
+});
