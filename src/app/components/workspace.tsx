@@ -340,10 +340,10 @@ export function Workspace({
             </div>
             {terminalEnabled && (
               <Suspense fallback={null}>
-                <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={mainTab === 'terminal'} />
+                <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={mainTab === 'terminal'} rightClickCopyPaste={settings.terminalOperations.rightClickCopyPaste} />
                 {independentTerminals.map(tab => {
                   const terminalRepo = repoDetails[tab.repoId];
-                  return terminalRepo ? <IndependentTerminalTab key={tab.id} repo={terminalRepo} visible={tab.repoId === repo.id && mainTab === tab.id} /> : null;
+                  return terminalRepo ? <IndependentTerminalTab key={tab.id} repo={terminalRepo} visible={tab.repoId === repo.id && mainTab === tab.id} rightClickCopyPaste={settings.terminalOperations.rightClickCopyPaste} /> : null;
                 })}
               </Suspense>
             )}

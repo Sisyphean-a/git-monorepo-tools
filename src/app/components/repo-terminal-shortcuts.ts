@@ -5,6 +5,11 @@ export type RepoTerminalShortcutAction =
   | { readonly type: 'pass-through' };
 export type TerminalClipboardPasteSource = 'keyboard' | 'context-menu';
 
+export function getTerminalContextMenuAction(enabled: boolean, hasSelection: boolean) {
+  if (!enabled) return 'pass-through';
+  return hasSelection ? 'copy-selection' : 'paste-clipboard';
+}
+
 export const ctrlJInput = '\x0a';
 export const ctrlWInput = '\x17';
 // Pi handles a raw line feed as its cross-terminal newline action.

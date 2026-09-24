@@ -129,6 +129,10 @@ export interface CommandCenterSettings {
   projectCommands: Record<string, CustomCommandButton[]>;
 }
 
+export interface TerminalOperationsSettings {
+  rightClickCopyPaste: boolean;
+}
+
 export interface AppSettings {
   scanRoots: ScanRootSetting[];
   ignoredRepoPaths: string[];
@@ -138,6 +142,7 @@ export interface AppSettings {
   fileTreeWidths: Record<string, number>;
   aiCommit: AICommitSettings;
   gitBehavior: GitBehaviorSettings;
+  terminalOperations: TerminalOperationsSettings;
   commandCenter: CommandCenterSettings;
 }
 
@@ -256,4 +261,4 @@ export interface AppSnapshot {
   commitCandidates: Record<string, CommitCandidate[]>;
 }
 
-export type SettingsTab = 'repositories' | 'ai-commit' | 'git-behavior';
+export type SettingsTab = 'repositories' | 'ai-commit' | 'git-behavior' | 'terminal-operations';

@@ -8,20 +8,22 @@ interface RepoTerminalTabProps {
   repoDetails: Record<string, RepoDetail>;
   activeRepoId: string;
   visible: boolean;
+  rightClickCopyPaste: boolean;
 }
 
 interface IndependentTerminalTabProps {
   repo: RepoDetail;
   visible: boolean;
+  rightClickCopyPaste: boolean;
 }
 
 const EMPTY_INACTIVE_TERMINAL_CLOSE_DELAY_MS = 60_000;
 
-export function IndependentTerminalTab({ repo, visible }: IndependentTerminalTabProps) {
-  return <RepoTerminalSurface repo={repo} active={visible} createIndependentSession />;
+export function IndependentTerminalTab({ repo, visible, rightClickCopyPaste }: IndependentTerminalTabProps) {
+  return <RepoTerminalSurface repo={repo} active={visible} rightClickCopyPaste={rightClickCopyPaste} createIndependentSession />;
 }
 
-export function RepoTerminalTab({ repoDetails, activeRepoId, visible }: RepoTerminalTabProps) {
+export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClickCopyPaste }: RepoTerminalTabProps) {
   const [openedRepoIds, setOpenedRepoIds] = useState<string[]>([]);
   const [contentfulRepoIds, setContentfulRepoIds] = useState<ReadonlySet<string>>(() => new Set());
   const [autoClosingRepoIds, setAutoClosingRepoIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -117,6 +119,7 @@ export function RepoTerminalTab({ repoDetails, activeRepoId, visible }: RepoTerm
           key={repo.id}
           repo={repo}
           active={visible && repo.id === activeRepoId}
+          rightClickCopyPaste={rightClickCopyPaste}
           closeRequested={autoClosingRepoIds.has(repo.id)}
           onContentChange={hasContent => handleContentChange(repo.id, hasContent)}
           onClosed={() => handleTerminalClosed(repo.id)}

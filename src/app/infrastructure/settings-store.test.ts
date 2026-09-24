@@ -2,6 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from './settings-store.js';
 
+test('terminal right-click action is opt-in and survives settings reload', () => {
+  assert.equal(sanitizeSettings({}).terminalOperations.rightClickCopyPaste, false);
+  assert.equal(sanitizeSettings({ terminalOperations: { rightClickCopyPaste: 'true' } }).terminalOperations.rightClickCopyPaste, false);
+  assert.equal(sanitizeSettings({ terminalOperations: { rightClickCopyPaste: true } }).terminalOperations.rightClickCopyPaste, true);
+
+  const originalWindow = globalThis.window;
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => { storage.set(key, value); },
+      },
+    },
+  });
+  try {
+    saveSettings({ ...DEFAULT_SETTINGS, terminalOperations: { rightClickCopyPaste: true } });
+    assert.equal(loadSettings().terminalOperations.rightClickCopyPaste, true);
+  } finally {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
+  }
+});
+
 test('default settings include manual git proxy defaults', () => {
   assert.deepEqual(DEFAULT_SETTINGS.gitBehavior.proxy, {
     enabled: false,

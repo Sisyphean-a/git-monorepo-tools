@@ -407,6 +407,7 @@ test('generateCommitMessage uses dedicated binding', async () => {
           port: 7897,
         },
       },
+      terminalOperations: { rightClickCopyPaste: false },
       commandCenter: {
         combos: [],
         customCommands: [],

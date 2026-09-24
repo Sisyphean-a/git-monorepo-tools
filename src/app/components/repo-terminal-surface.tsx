@@ -3,6 +3,7 @@ import { Keyboard, RotateCcw } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { getTerminalContextMenuAction } from './repo-terminal-shortcuts';
 import { useTerminalWorkspace } from '../features/terminal/terminal-workspace';
 import { useAppBackend } from '../application/backend-context';
 import { TerminalOutputWriter } from '../features/terminal/terminal-output-writer';
@@ -40,6 +41,7 @@ type TerminalToast = { id: number; text: string } | null;
 interface RepoTerminalSurfaceProps {
   repo: RepoDetail;
   active: boolean;
+  rightClickCopyPaste: boolean;
   createIndependentSession?: boolean;
   closeRequested?: boolean;
   onContentChange?: (hasContent: boolean) => void;
@@ -49,6 +51,7 @@ interface RepoTerminalSurfaceProps {
 export function RepoTerminalSurface({
   repo,
   active,
+  rightClickCopyPaste,
   createIndependentSession = false,
   closeRequested = false,
   onContentChange,
@@ -73,6 +76,11 @@ export function RepoTerminalSurface({
   const commandTrackerRef = useRef(new TerminalCommandTracker());
   const hasContentRef = useRef(false);
   const closeRequestedRef = useRef(false);
+  const rightClickCopyPasteRef = useRef(rightClickCopyPaste);
+
+  useEffect(() => {
+    rightClickCopyPasteRef.current = rightClickCopyPaste;
+  }, [rightClickCopyPaste]);
 
   const [status, setStatus] = useState<TerminalStatus>('idle');
   const [shellLabel, setShellLabel] = useState('终端');
@@ -489,8 +497,10 @@ export function RepoTerminalSurface({
     const xtermViewport = viewportRef.current.querySelector('.xterm-viewport');
 
     const contextMenuHandler = (event: MouseEvent) => {
+      const action = getTerminalContextMenuAction(rightClickCopyPasteRef.current, terminal.hasSelection());
+      if (action === 'pass-through') return;
       event.preventDefault();
-      if (terminal.hasSelection()) {
+      if (action === 'copy-selection') {
         void copySelection(terminal)
           .then(copied => {
             if (copied) {

@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
       port: 7897,
     },
   },
+  terminalOperations: { rightClickCopyPaste: false },
   commandCenter: cloneDefaultCommandCatalog(),
 };
 
@@ -84,6 +85,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   const aiCommit: Partial<AppSettings['aiCommit']> = source.aiCommit ?? {};
   const gitBehavior: Partial<AppSettings['gitBehavior']> = source.gitBehavior ?? {};
   const proxy: Partial<AppSettings['gitBehavior']['proxy']> = gitBehavior.proxy ?? {};
+  const terminalOperations: Partial<AppSettings['terminalOperations']> = source.terminalOperations ?? {};
 
   draft.scanRoots = sanitizeScanRoots(source.scanRoots);
   draft.ignoredRepoPaths = sanitizePaths(source.ignoredRepoPaths);
@@ -111,6 +113,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   draft.gitBehavior.proxy.enabled = sanitizeBoolean(proxy.enabled, draft.gitBehavior.proxy.enabled);
   draft.gitBehavior.proxy.host = sanitizeText(proxy.host, draft.gitBehavior.proxy.host);
   draft.gitBehavior.proxy.port = sanitizePort(proxy.port, draft.gitBehavior.proxy.port);
+  draft.terminalOperations.rightClickCopyPaste = sanitizeBoolean(terminalOperations.rightClickCopyPaste, draft.terminalOperations.rightClickCopyPaste);
   draft.commandCenter = sanitizeCommandCatalog(source.commandCenter);
   return draft;
 }

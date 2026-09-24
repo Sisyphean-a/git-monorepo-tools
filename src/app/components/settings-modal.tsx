@@ -6,6 +6,7 @@ import { AICommitSettingsTab } from './ai-commit-settings-tab';
 import { GitBehaviorSettingsTab } from './git-behavior-settings-tab';
 import { RepositoriesSettingsTab } from './repositories-settings-tab';
 import { withScanRoots } from '../application/settings-actions';
+import { FormRow, Toggle } from './settings-modal-shared';
 
 interface SettingsModalProps {
   repos: Repo[];
@@ -91,6 +92,7 @@ export function SettingsModal({
     { key: 'repositories', label: '仓库' },
     { key: 'ai-commit', label: 'AI 提交' },
     { key: 'git-behavior', label: 'Git 行为' },
+    { key: 'terminal-operations', label: '终端操作' },
   ];
 
   return (
@@ -165,6 +167,17 @@ export function SettingsModal({
             )}
             {tab === 'ai-commit' && <AICommitSettingsTab draft={draft} setDraft={setDraft} />}
             {tab === 'git-behavior' && <GitBehaviorSettingsTab draft={draft} setDraft={setDraft} />}
+            {tab === 'terminal-operations' && (
+              <FormRow label="终端右键操作">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ color: '#8fa6bf', fontSize: 12, fontWeight: 500 }}>右键复制/粘贴</div>
+                    <div style={{ color: '#5f7084', fontSize: 11 }}>开启后，有选区时右键复制；无选区时右键粘贴。关闭后使用默认右键行为。</div>
+                  </div>
+                  <Toggle checked={draft.terminalOperations.rightClickCopyPaste} onChange={() => setDraft(current => ({ ...current, terminalOperations: { ...current.terminalOperations, rightClickCopyPaste: !current.terminalOperations.rightClickCopyPaste } }))} />
+                </div>
+              </FormRow>
+            )}
           </div>
         </div>
 

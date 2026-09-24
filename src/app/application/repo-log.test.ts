@@ -31,6 +31,7 @@ const settings: AppSettings = {
       port: 7897,
     },
   },
+  terminalOperations: { rightClickCopyPaste: false },
   commandCenter: {
     combos: [],
     customCommands: [],

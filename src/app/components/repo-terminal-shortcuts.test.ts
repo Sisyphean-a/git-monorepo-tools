@@ -3,12 +3,20 @@ import assert from 'node:assert/strict';
 import {
   ctrlJInput,
   ctrlWInput,
+  getTerminalContextMenuAction,
   getWindowsTerminalShortcutAction,
   handleWindowsTerminalShortcutEvent,
   pasteTerminalClipboard,
   queueTerminalInput,
   shiftEnterInput,
 } from './repo-terminal-shortcuts.js';
+
+test('terminal right-click copies only a selection when enabled, otherwise pastes', () => {
+  assert.equal(getTerminalContextMenuAction(true, true), 'copy-selection');
+  assert.equal(getTerminalContextMenuAction(true, false), 'paste-clipboard');
+  assert.equal(getTerminalContextMenuAction(false, true), 'pass-through');
+  assert.equal(getTerminalContextMenuAction(false, false), 'pass-through');
+});
 
 test('windows ctrl+c copies selection without blocking browser fallback', () => {
   let copyCalls = 0;
