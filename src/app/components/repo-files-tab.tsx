@@ -7,6 +7,7 @@ import { fileIconKind, folderIconColor } from '../features/files/file-icon-kind'
 import { findFileMatches, type FileSearchMatch, type FileSearchOptions } from '../features/files/file-search';
 import { clampTreeWidth, treeResizerWidth, treeWidthDefault, treeWidthMax, treeWidthMin, treeWidthStep } from '../features/files/tree-width';
 import { resolveMarkdownLink } from '../features/files/markdown-links';
+import { treeEntryCopyValues } from '../features/files/tree-context-actions';
 import { C } from '../theme';
 import type { FilePreviewRenderer } from '../features/files/file-renderer';
 
@@ -26,6 +27,8 @@ interface RepoFilesTabProps {
   position?: RepoFilePosition;
   onPositionChange: (position: RepoFilePosition) => void;
   onFileTreeWidthChange: (width: number) => void;
+  onOpenFolder: () => void;
+  onError: (error: unknown, fallback: string) => void;
 }
 
 type DirectoryState =
@@ -54,7 +57,7 @@ function loadFilePreviewRenderer() {
   return rendererPromise;
 }
 
-export function RepoFilesTab({ repo, settings, active, position, onPositionChange, onFileTreeWidthChange }: RepoFilesTabProps) {
+export function RepoFilesTab({ repo, settings, active, position, onPositionChange, onFileTreeWidthChange, onOpenFolder, onError }: RepoFilesTabProps) {
   const backend = useAppBackend();
   const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true });
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
@@ -93,6 +96,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   const [treeWidth, setTreeWidth] = useState(settings.fileTreeWidths[repo.id] ?? treeWidthDefault);
   const [layoutWidth, setLayoutWidth] = useState(0);
   const [resizingTree, setResizingTree] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ entry: RepoTreeEntry; x: number; y: number } | null>(null);
   const treeResize = useRef<{ pointerId: number; startX: number; startWidth: number; lastWidth: number } | null>(null);
   const effectiveTreeWidth = clampTreeWidth(treeWidth, layoutWidth);
   const treeWidthUpperBound = treeWidthMax(layoutWidth);
@@ -320,6 +324,37 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
     void loadFile(path, true);
   };
 
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') close(); };
+    document.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('blur', close);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('blur', close);
+    };
+  }, [contextMenu]);
+
+  useEffect(() => { if (!active) setContextMenu(null); }, [active]);
+
+  const handleTreeContextMenu = (event: ReactMouseEvent<HTMLButtonElement>, entry: RepoTreeEntry) => {
+    event.preventDefault();
+    setContextMenu({ entry, x: Math.max(0, Math.min(event.clientX, window.innerWidth - 208)), y: Math.max(0, Math.min(event.clientY, window.innerHeight - 156)) });
+  };
+
+  const copyTreeEntry = (value: string) => {
+    try {
+      void navigator.clipboard.writeText(value).catch(error => onError(error, '复制失败'));
+    } catch (error) {
+      onError(error, '复制失败');
+    }
+  };
+
+  const contextValues = contextMenu ? treeEntryCopyValues(repo.path, contextMenu.entry) : null;
+
   const handlePreviewClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     const anchor = (event.target as HTMLElement).closest('a');
     const href = anchor?.getAttribute('data-md-href');
@@ -347,12 +382,28 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
             onToggleDirectory={toggleDirectory}
             onSelectFile={entry => void selectFile(entry.path)}
             onRetryDirectory={path => void loadDirectory(path)}
+            onContextMenu={handleTreeContextMenu}
           />
         </div>
         <div title={repo.path} style={{ padding: '7px 10px', borderTop: `1px solid ${C.border}`, color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {repo.path}
         </div>
       </div>
+
+      {contextMenu && contextValues && active && (
+        <div role="menu" aria-label={`${contextMenu.entry.name} 操作`} onPointerDown={event => event.stopPropagation()} style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: 40, width: 208, padding: '4px 0', background: C.panel2, border: `1px solid ${C.borderLight}`, borderRadius: 8, boxShadow: '0 12px 30px rgba(0,0,0,0.4)' }}>
+          {[
+            { label: '在资源管理器中打开', action: onOpenFolder },
+            { label: '复制文件名称', action: () => copyTreeEntry(contextValues.name) },
+            { label: '复制文件相对路径', action: () => copyTreeEntry(contextValues.relativePath) },
+            { label: '复制文件绝对路径', action: () => copyTreeEntry(contextValues.absolutePath) },
+          ].map(({ label, action }) => (
+            <button key={label} className="repo-file-context-action" type="button" role="menuitem" onClick={() => { setContextMenu(null); action(); }} style={{ display: 'block', width: '100%', padding: '7px 12px', border: 0, background: 'transparent', color: C.textPrimary, textAlign: 'left', fontSize: 12, cursor: 'pointer' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div
         role="separator"
@@ -402,6 +453,7 @@ function TreeChildren({
   onToggleDirectory,
   onSelectFile,
   onRetryDirectory,
+  onContextMenu,
 }: {
   parentPath: string;
   depth: number;
@@ -411,6 +463,7 @@ function TreeChildren({
   onToggleDirectory: (path: string) => void;
   onSelectFile: (entry: RepoTreeEntry) => void;
   onRetryDirectory: (path: string) => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>, entry: RepoTreeEntry) => void;
 }) {
   const directory = directories[parentPath];
   if (!directory) return null;
@@ -438,6 +491,7 @@ function TreeChildren({
               expanded={expanded}
               selected={!entry.isDir && selectedPath === entry.path}
               onClick={() => entry.isDir ? onToggleDirectory(entry.path) : onSelectFile(entry)}
+              onContextMenu={event => onContextMenu(event, entry)}
             />
             {expanded && (
               <TreeChildren
@@ -449,6 +503,7 @@ function TreeChildren({
                 onToggleDirectory={onToggleDirectory}
                 onSelectFile={onSelectFile}
                 onRetryDirectory={onRetryDirectory}
+                onContextMenu={onContextMenu}
               />
             )}
           </div>
@@ -469,6 +524,7 @@ function TreeRow({
   expanded,
   selected,
   onClick,
+  onContextMenu,
 }: {
   name: string;
   path: string;
@@ -477,6 +533,7 @@ function TreeRow({
   expanded: boolean;
   selected: boolean;
   onClick: () => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
   const icon = directory ? null : fileIconKind(name);
   const iconColor = directory ? folderIconColor(name) : icon!.color;
@@ -487,6 +544,7 @@ function TreeRow({
       data-selected={selected}
       title={path || name}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       style={{
         width: '100%',
         height: 25,

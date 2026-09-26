@@ -48,6 +48,11 @@ button {
   border-color: rgba(37, 50, 68, 0.33) !important;
 }
 
+.repo-file-context-action:hover,
+.repo-file-context-action:focus-visible {
+  background: rgba(221, 235, 255, 0.08) !important;
+}
+
 .repo-terminal-viewport .xterm-viewport {
   overflow-x: hidden !important;
 }
