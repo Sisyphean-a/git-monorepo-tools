@@ -14,8 +14,9 @@ const (
 )
 
 type gitExecutor struct {
-	proxy   GitProxySettings
-	timeout time.Duration
+	proxy     GitProxySettings
+	timeout   time.Duration
+	fileStats *untrackedStatsCache
 }
 
 func newGitExecutor(request Request) gitExecutor {

@@ -16,13 +16,17 @@ import (
 
 // Rule: 同一时刻只保留当前仓库的一个 check-ignore 会话，目录展开不重复启动 Git 进程。
 type repoFileBrowser struct {
-	mu             sync.Mutex
-	session        *gitIgnoreSession
-	sessionStarted time.Time
-	watched        map[string]string
+	mu              sync.Mutex
+	session         *gitIgnoreSession
+	sessionStarted  time.Time
+	watched         map[string]string
+	activityManaged bool
+	activeRepoID    string
+	closed          bool
 }
 
 type gitIgnoreSession struct {
+	repoID  string
 	repoKey string
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
@@ -40,6 +44,13 @@ type gitIgnoreCheckResult struct {
 func (browser *repoFileBrowser) ignoredPaths(executor gitExecutor, repoPath, relativePath string, entries []RepoTreeEntry) (map[string]struct{}, error) {
 	browser.mu.Lock()
 	defer browser.mu.Unlock()
+	if browser.closed {
+		return nil, fmt.Errorf("应用已关闭，不能继续浏览仓库文件")
+	}
+	// Guarantee: 失焦后才到达的旧请求仍能完成，但不留下持久 Git 会话。
+	if browser.activityManaged && browser.activeRepoID != repoIDForPath(repoPath) {
+		defer browser.closeSessionLocked()
+	}
 	candidates := gitIgnoreStatePaths(repoPath, relativePath)
 	if len(entries) == 0 {
 		if browser.session != nil && browser.session.repoKey != normalizedRepoPathKey(repoPath) {
@@ -150,6 +161,29 @@ func gitIgnoreStateOf(candidate string) (string, time.Time) {
 	return fmt.Sprintf("%d|%d", info.ModTime().UnixNano(), info.Size()), info.ModTime()
 }
 
+func (browser *repoFileBrowser) setActivity(repoID string, active bool) {
+	browser.mu.Lock()
+	defer browser.mu.Unlock()
+	if browser.closed {
+		return
+	}
+	browser.activityManaged = true
+	browser.activeRepoID = ""
+	if active {
+		browser.activeRepoID = repoID
+	}
+	if browser.session != nil && (!active || browser.session.repoID != repoID) {
+		browser.closeSessionLocked()
+	}
+}
+
+func (browser *repoFileBrowser) shutdown() {
+	browser.mu.Lock()
+	defer browser.mu.Unlock()
+	browser.closed = true
+	browser.closeSessionLocked()
+}
+
 func (browser *repoFileBrowser) close() {
 	browser.mu.Lock()
 	defer browser.mu.Unlock()
@@ -180,6 +214,7 @@ func startGitIgnoreSession(executor gitExecutor, repoPath, repoKey string) (*git
 		return nil, err
 	}
 	session := &gitIgnoreSession{
+		repoID:  repoIDForPath(repoPath),
 		repoKey: repoKey,
 		cmd:     cmd,
 		stdin:   stdin,

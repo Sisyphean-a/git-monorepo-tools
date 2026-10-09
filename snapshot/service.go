@@ -20,6 +20,7 @@ type Service struct {
 	projectRoot string
 	commands    *commandRegistry
 	repoFiles   repoFileBrowser
+	fileStats   untrackedStatsCache
 }
 
 type repoEntry struct {
@@ -64,13 +65,13 @@ func (s *Service) BuildRepoSnapshot(repoID string, request Request, refreshRemot
 	if err != nil {
 		return RepoSnapshotUpdate{}, err
 	}
-	return newGitExecutor(request).buildRepoUpdate(repoID, entry.repoPath, entry.category, refreshRemotes)
+	return s.gitExecutor(request).buildRepoUpdate(repoID, entry.repoPath, entry.category, refreshRemotes)
 }
 
 func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppSnapshot, error) {
 	scanTime := time.Now()
 	repoEntries := s.discoverRepos(request)
-	snapshots := newGitExecutor(request).buildSnapshots(repoEntries, snapshotBuildOptions{
+	snapshots := s.gitExecutor(request).buildSnapshots(repoEntries, snapshotBuildOptions{
 		scanTime:       scanTime,
 		concurrency:    request.Concurrency,
 		refreshRemotes: request.RefreshRemotes,

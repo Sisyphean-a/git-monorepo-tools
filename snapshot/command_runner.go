@@ -158,7 +158,7 @@ type shellCommand struct {
 	captureOutput bool
 }
 
-// Rule: 自定义命令跑到自然结束；调用方不设超时，只能由用户通过 streamId 主动终止。
+// Rule: 自定义命令不设超时，除用户主动终止或应用关闭外跑到自然结束。
 func runShellCommand(proxy GitProxySettings, registry *commandRegistry, command shellCommand) (string, int, error) {
 	cmd := buildShellCommand(command.repoPath, command.commandText)
 	applyBackgroundProcessAttrs(cmd)
@@ -167,15 +167,23 @@ func runShellCommand(proxy GitProxySettings, registry *commandRegistry, command 
 	if err != nil {
 		return "", -1, err
 	}
+	defer stdout.Close()
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return "", -1, err
 	}
+	defer stderr.Close()
 	if err := cmd.Start(); err != nil {
 		return "", -1, err
 	}
-	registry.register(command.streamID, cmd)
-	defer registry.unregister(command.streamID)
+	if err := registry.register(command.streamID, cmd); err != nil {
+		killErr := terminateCommandTree(cmd)
+		if killErr == nil {
+			_ = cmd.Wait()
+		}
+		return "", -1, errors.Join(err, killErr)
+	}
+	defer registry.unregister(command.streamID, cmd)
 
 	var builder *cappedStringBuilder
 	if command.captureOutput {
@@ -339,28 +347,61 @@ func resolveWindowsCommandShell(lookPath func(string) (string, error)) string {
 type commandRegistry struct {
 	mu      sync.Mutex
 	running map[string]*exec.Cmd
+	all     map[*exec.Cmd]struct{}
+	closed  bool
 }
 
 func newCommandRegistry() *commandRegistry {
-	return &commandRegistry{running: map[string]*exec.Cmd{}}
+	return &commandRegistry{running: map[string]*exec.Cmd{}, all: map[*exec.Cmd]struct{}{}}
 }
 
-func (r *commandRegistry) register(streamID string, cmd *exec.Cmd) {
-	if streamID == "" {
-		return
-	}
+func (r *commandRegistry) register(streamID string, cmd *exec.Cmd) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.running[streamID] = cmd
+	if r.closed {
+		return errors.New("应用已关闭，不能继续启动命令")
+	}
+	r.all[cmd] = struct{}{}
+	if streamID != "" {
+		r.running[streamID] = cmd
+	}
+	return nil
 }
 
-func (r *commandRegistry) unregister(streamID string) {
-	if streamID == "" {
-		return
-	}
+func (r *commandRegistry) unregister(streamID string, cmd *exec.Cmd) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.running, streamID)
+	delete(r.all, cmd)
+	if r.running[streamID] == cmd {
+		delete(r.running, streamID)
+	}
+}
+
+// Effect: 仅应用关闭时终止自身启动的全部命令；切换项目、失焦和周期清理绝不调用此路径。
+func (r *commandRegistry) close() error {
+	r.mu.Lock()
+	r.closed = true
+	commands := make([]*exec.Cmd, 0, len(r.all))
+	for cmd := range r.all {
+		commands = append(commands, cmd)
+	}
+	r.mu.Unlock()
+	var failures []error
+	for _, cmd := range commands {
+		if err := terminateCommandTree(cmd); err != nil {
+			failures = append(failures, fmt.Errorf("关闭应用时终止命令失败：%w", err))
+			continue
+		}
+		r.mu.Lock()
+		delete(r.all, cmd)
+		for streamID, running := range r.running {
+			if running == cmd {
+				delete(r.running, streamID)
+			}
+		}
+		r.mu.Unlock()
+	}
+	return errors.Join(failures...)
 }
 
 // Flow: 取到命令后释放锁再杀进程树，避免 taskkill 阻塞其他登记操作。

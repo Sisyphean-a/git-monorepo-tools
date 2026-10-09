@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Service) resolveRepoForAction(repoID, action string, request Request, body RepoActionRequest) (RepoDetail, error) {
-	executor := newGitExecutor(request)
+	executor := s.gitExecutor(request)
 	return resolveRepoForActionWithLoad(
 		repoID,
 		action,
@@ -22,7 +22,7 @@ func (s *Service) resolveRepoForAction(repoID, action string, request Request, b
 }
 
 func (s *Service) resolveRepo(repoID string, request Request) (RepoDetail, error) {
-	executor := newGitExecutor(request)
+	executor := s.gitExecutor(request)
 	return resolveRepoFromEntries(repoID, s.discoverRepos(request), time.Now(), executor.buildRepoSnapshot)
 }
 

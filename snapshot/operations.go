@@ -13,7 +13,7 @@ func (s *Service) MutateRepo(repoID, action string, request Request, body RepoAc
 	if err != nil {
 		return RepoSnapshotUpdate{}, err
 	}
-	executor := newGitExecutor(request)
+	executor := s.gitExecutor(request)
 	if err := executor.mutateRepo(repo, action, request, body); err != nil {
 		return RepoSnapshotUpdate{}, err
 	}
@@ -29,7 +29,7 @@ func (s *Service) RunBatch(operation string, request Request) (BatchResult, erro
 	if err != nil {
 		return BatchResult{}, err
 	}
-	executor := newGitExecutor(request)
+	executor := s.gitExecutor(request)
 	results, err := executor.runBatch(states, operation, request)
 	if err != nil {
 		return BatchResult{}, err

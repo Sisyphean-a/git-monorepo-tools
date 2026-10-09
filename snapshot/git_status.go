@@ -156,11 +156,12 @@ func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) 
 
 	changes := buildTrackedChanges(repoPath, staged.stats, stagedPreviousSizes, stagedPreviousSizeBytes, true)
 	changes = append(changes, buildTrackedChanges(repoPath, unstaged.stats, unstagedPreviousSizes, unstagedPreviousSizeBytes, false)...)
-	changes = append(changes, buildUntrackedChanges(repoPath, entries, changes)...)
+	untracked, untrackedErr := executor.buildUntrackedChanges(repoPath, entries, changes)
+	changes = append(changes, untracked...)
 	slices.SortFunc(changes, compareFileChanges)
 	return changes, firstGitError(
 		staged.statsErr, staged.statusErr, unstaged.statsErr, unstaged.statusErr,
-		staged.parseErr, unstaged.parseErr, staged.baseErr, unstaged.baseErr, objectSizeErr,
+		staged.parseErr, unstaged.parseErr, staged.baseErr, unstaged.baseErr, objectSizeErr, untrackedErr,
 	)
 }
 
@@ -400,12 +401,20 @@ func buildTrackedChanges(repoPath string, stats map[string]FileChange, previousS
 	return changes
 }
 
-func buildUntrackedChanges(repoPath string, entries []string, existing []FileChange) []FileChange {
+func (executor gitExecutor) buildUntrackedChanges(repoPath string, entries []string, existing []FileChange) ([]FileChange, error) {
+	cached := executor.fileStats.repo(repoIDForPath(repoPath))
+	if cached != nil {
+		cached.mu.Lock()
+		defer cached.mu.Unlock()
+	}
+	next := make(map[string]untrackedFileStats)
+	now := time.Now()
 	seen := map[string]bool{}
 	for _, item := range existing {
 		seen[item.ID] = true
 	}
 	changes := []FileChange{}
+	var readError error
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry, "?? ") {
 			continue
@@ -417,13 +426,37 @@ func buildUntrackedChanges(repoPath string, entries []string, existing []FileCha
 		}
 		seen[id] = true
 		absolute := filepath.Join(repoPath, filepath.FromSlash(filePath))
-		sizeBytes := resolveSize(absolute)
+		info, _ := os.Stat(absolute)
+		sizeBytes := int64(0)
+		if info != nil && !info.IsDir() {
+			sizeBytes = info.Size()
+		}
+		stats := untrackedFileStats{}
+		if cached != nil {
+			stats = cached.files[filePath]
+		}
+		if !stats.matches(info, now) {
+			lines, readInfo, err := executor.fileStats.readFile(absolute)
+			stats = untrackedFileStats{lines: lines}
+			if err != nil && readError == nil {
+				readError = fmt.Errorf("读取未跟踪文件 %s 失败：%w", filePath, err)
+			}
+			if err == nil && readInfo.Mode().IsRegular() {
+				stats.size, stats.modified, stats.mode, stats.cachedAt = readInfo.Size(), readInfo.ModTime(), readInfo.Mode(), now
+			}
+		}
+		if cached != nil && stats.matches(info, now) {
+			next[filePath] = stats
+		}
 		changes = append(changes, FileChange{
-			ID: id, Status: "A", Path: filePath, Additions: countFileLines(absolute),
+			ID: id, Status: "A", Path: filePath, Additions: stats.lines,
 			Deletions: 0, Size: formatSize(sizeBytes), SizeBytes: sizeBytes, Staged: false, Untracked: true,
 		})
 	}
-	return changes
+	if cached != nil {
+		cached.files = next
+	}
+	return changes, readError
 }
 
 func extractBranch(line string) string {
@@ -498,10 +531,10 @@ func resolveSize(filePath string) int64 {
 	return info.Size()
 }
 
-func countFileLines(filePath string) int {
+func readFileLineCount(filePath string) (int, os.FileInfo, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return 0
+		return 0, nil, err
 	}
 	defer file.Close()
 
@@ -518,13 +551,17 @@ func countFileLines(filePath string) int {
 			break
 		}
 		if readErr != nil {
-			return 0
+			return 0, nil, readErr
 		}
 	}
-	if !hasContent {
-		return 0
+	info, err := file.Stat()
+	if err != nil {
+		return 0, nil, err
 	}
-	return lineBreaks + 1
+	if !hasContent {
+		return 0, info, nil
+	}
+	return lineBreaks + 1, info, nil
 }
 
 func repoStatus(scanError string, conflicts, modified int) string {

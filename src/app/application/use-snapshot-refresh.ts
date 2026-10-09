@@ -11,6 +11,7 @@ interface SnapshotRefreshConfig {
   fetchSnapshot: WorkspaceBackend['fetchSnapshot'];
   readRepoUpdateRevision: () => number;
   skipInitialRefresh?: boolean;
+  windowActive: boolean;
 }
 
 export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
@@ -72,7 +73,7 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
   }, [skipInitialRefresh]);
 
   useEffect(() => {
-    if (!settings.gitBehavior.autoScanEnabled) return;
+    if (!settings.gitBehavior.autoScanEnabled || !config.windowActive) return;
     let cancelled = false;
     let timer = 0;
 
@@ -89,7 +90,7 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [settings.gitBehavior.autoScanEnabled, settings.gitBehavior.autoScanIntervalSeconds]);
+  }, [settings.gitBehavior.autoScanEnabled, settings.gitBehavior.autoScanIntervalSeconds, config.windowActive]);
 
   return {
     refreshing,

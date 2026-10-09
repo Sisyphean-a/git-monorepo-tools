@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
+	"time"
 
 	"git-monorepo-tools/internal/desktop"
 	"git-monorepo-tools/internal/terminal"
@@ -23,7 +25,9 @@ type workspaceService interface {
 	ListRepoDirectory(string, snapshot.Request, string) ([]snapshot.RepoTreeEntry, error)
 	ReadRepoFile(string, snapshot.Request, string) (snapshot.RepoFileContent, error)
 	ReadRepoFileIfChanged(string, snapshot.Request, string, string) (*snapshot.RepoFileContent, error)
-	CloseRepoFileBrowser()
+	SetReadActivity(string, bool)
+	CleanupReadResources()
+	Close() error
 	GetWorkingDiffFiles(string, snapshot.Request) ([]snapshot.FileChange, error)
 	GetFileDiff(snapshot.FileDiffRequest) (snapshot.FileDiff, error)
 	GenerateCommitMessage(string, snapshot.Request, snapshot.AICommitSettings) (string, error)
@@ -53,10 +57,12 @@ type terminalGateway interface {
 }
 
 type App struct {
-	ctx       context.Context
-	workspace workspaceService
-	desktop   desktopGateway
-	terminals terminalGateway
+	ctx               context.Context
+	workspace         workspaceService
+	desktop           desktopGateway
+	terminals         terminalGateway
+	maintenanceCancel context.CancelFunc
+	maintenanceDone   chan struct{}
 }
 
 func NewApp() (*App, error) {
@@ -76,13 +82,39 @@ func (a *App) startup(ctx context.Context) {
 	a.terminals = terminal.NewManager(func(name string, payload any) {
 		wruntime.EventsEmit(ctx, name, payload)
 	})
+	maintenanceCtx, cancel := context.WithCancel(ctx)
+	a.maintenanceCancel = cancel
+	a.maintenanceDone = make(chan struct{})
+	go func() {
+		defer close(a.maintenanceDone)
+		ticker := time.NewTicker(snapshot.ReadResourceCleanupInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-maintenanceCtx.Done():
+				return
+			case <-ticker.C:
+				a.workspace.CleanupReadResources()
+			}
+		}
+	}()
 }
 
 func (a *App) shutdown(context.Context) {
-	a.workspace.CloseRepoFileBrowser()
+	if a.maintenanceCancel != nil {
+		a.maintenanceCancel()
+		<-a.maintenanceDone
+	}
+	if err := a.workspace.Close(); err != nil {
+		log.Printf("关闭工作区资源失败：%v", err)
+	}
 	if a.terminals != nil {
 		a.terminals.CloseAll()
 	}
+}
+
+func (a *App) SetReadActivity(repoID string, fileBrowserActive bool) {
+	a.workspace.SetReadActivity(repoID, fileBrowserActive)
 }
 
 func (a *App) GetSnapshot(request snapshot.Request) (snapshot.AppSnapshot, error) {

@@ -10,6 +10,7 @@ import { resolveMarkdownLink } from '../features/files/markdown-links';
 import { treeEntryCopyValues } from '../features/files/tree-context-actions';
 import { C } from '../theme';
 import type { FilePreviewRenderer } from '../features/files/file-renderer';
+import { useWindowActivity } from '../application/use-window-activity';
 
 export interface RepoFilePosition {
   selectedPath: string;
@@ -59,6 +60,7 @@ function loadFilePreviewRenderer() {
 
 export function RepoFilesTab({ repo, settings, active, position, onPositionChange, onFileTreeWidthChange, onOpenFolder, onError }: RepoFilesTabProps) {
   const backend = useAppBackend();
+  const windowActive = useWindowActivity();
   const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true });
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set(positionRef.current.expandedPaths));
@@ -189,7 +191,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
     if (activeFileRequest.current?.path === path) return;
     const sequence = ++fileRequestSequence.current;
     activeFileRequest.current = { path, sequence };
-    if (freshSelection || (!currentFile.current && !checkRevision)) {
+    if (freshSelection || !currentFile.current) {
       if (freshSelection) {
         currentFile.current = null;
         revisionRef.current = null;
@@ -247,26 +249,38 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   }, [loadDirectory, loadFile]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !windowActive) {
+      // Effect: 只保留阅读位置，失焦即释放正文、渲染结果和目录缓存，并禁止旧请求回填。
+      activeDirectoryRequests.current.clear();
+      fileRequestSequence.current += 1;
+      activeFileRequest.current = null;
+      currentFile.current = null;
+      revisionRef.current = null;
+      restoringTree.current = true;
+      setDirectories({});
+      setFileState({ status: 'idle' });
+      setRenderedFile(null);
+      setRenderNotice(null);
+      setContextMenu(null);
+      return;
+    }
     refreshView();
-    window.addEventListener('focus', refreshView);
-    return () => window.removeEventListener('focus', refreshView);
-  }, [active, refreshView]);
+  }, [active, windowActive, refreshView]);
 
   useEffect(() => {
-    if (!active || !selectedPath) return;
+    if (!active || !windowActive || !selectedPath) return;
     // Rule: 只检查当前文件元数据；未变化时不传输正文、不重新渲染，后台或失焦时停止检查。
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible' && document.hasFocus()) void loadFile(selectedPath, false, true);
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [active, selectedPath, loadFile]);
+  }, [active, windowActive, selectedPath, loadFile]);
 
   useLayoutEffect(() => {
-    if (!restoringTree.current || !treeRef.current) return;
+    if (!active || !windowActive || !restoringTree.current || !treeRef.current) return;
     treeRef.current.scrollTop = positionRef.current.treeScrollTop;
     if ([...expandedPaths].every(path => directories[path] && directories[path].status !== 'loading')) restoringTree.current = false;
-  }, [directories, expandedPaths]);
+  }, [directories, expandedPaths, active, windowActive]);
 
   useEffect(() => () => {
     activeDirectoryRequests.current.clear();
@@ -372,7 +386,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
         <div style={{ height: 34, padding: '0 12px', display: 'flex', alignItems: 'center', color: C.textWeak, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>
           资源管理器
         </div>
-        <div ref={treeRef} onScroll={event => { if (!restoringTree.current) rememberPosition({ treeScrollTop: event.currentTarget.scrollTop }); }} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '5px 0 10px' }}>
+        <div ref={treeRef} onScroll={event => { if (active && windowActive && !restoringTree.current) rememberPosition({ treeScrollTop: event.currentTarget.scrollTop }); }} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '5px 0 10px' }}>
           <TreeChildren
             parentPath=""
             depth={0}
@@ -434,7 +448,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
           wrapLines={wrapLines}
           onWrapLinesChange={value => { setWrapLines(value); rememberPosition({ wrapLines: value }); }}
           getScrollTop={() => positionRef.current.previewScrollTop}
-          onScrollTopChange={value => rememberPosition({ previewScrollTop: value })}
+          onScrollTopChange={value => { if (active && windowActive) rememberPosition({ previewScrollTop: value }); }}
           anchorTarget={anchorTarget}
           onAnchorHandled={() => setAnchorTarget(null)}
           onPreviewClick={handlePreviewClick}

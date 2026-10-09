@@ -110,6 +110,10 @@ export function RunRepoCommand(arg1) {
   return window['go']['main']['App']['RunRepoCommand'](arg1);
 }
 
+export function SetReadActivity(arg1, arg2) {
+  return window['go']['main']['App']['SetReadActivity'](arg1, arg2);
+}
+
 export function StopRepoCommand(arg1) {
   return window['go']['main']['App']['StopRepoCommand'](arg1);
 }

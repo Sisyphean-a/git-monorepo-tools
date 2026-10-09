@@ -23,6 +23,7 @@ import {
   resizeTerminal,
   restartTerminalSession,
   runRepoCommand,
+  setReadActivity,
   stopRepoCommand,
   writeTerminalInput,
 } from './wails-client.js';
@@ -880,6 +881,7 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
   const originalWindow = globalThis.window;
 
   const bindings = {
+    SetReadActivity: async (repoId: string, active: boolean) => { calls.push(`SetReadActivity:${repoId}:${active}`); },
     GetWorkspaceBootstrap: async () => {
       throw new Error('unused');
     },
@@ -1022,6 +1024,9 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
   });
 
   try {
+    await setReadActivity('repo-1', true);
+    await setReadActivity('repo-1', false);
+    await setReadActivity('', false);
     const history = await fetchRepoHistory({ repoId: 'repo-1', offset: 50, limit: 50 });
     assert.equal(history.total, 51);
     assert.equal(history.commits[0]?.hash, 'abc');
@@ -1069,6 +1074,10 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
       target: { path: '/repo/a', category: '测试' },
     });
     assert.equal(commitDiff.content, '@@ -1 +1 @@\n-old\n+new');
+    Object.defineProperty(bindings, 'SetReadActivity', { configurable: true, value: undefined });
+    await assert.rejects(setReadActivity('', false), /读取资源生命周期绑定不可用/);
+    Object.defineProperty(bindings, 'SetReadActivity', { value: async () => { throw new Error('release failed'); } });
+    await assert.rejects(setReadActivity('', false), /release failed/);
   } finally {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -1077,6 +1086,9 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
   }
 
   assert.deepEqual(calls, [
+    'SetReadActivity:repo-1:true',
+    'SetReadActivity:repo-1:false',
+    'SetReadActivity::false',
     'GetRepoHistory:repo-1:50:50',
     'GetCommitDetail:repo-1:abc',
     'ListRepoDirectory:repo-1:/repo/a:测试:.',

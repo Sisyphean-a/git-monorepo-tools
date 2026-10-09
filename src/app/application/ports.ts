@@ -33,6 +33,7 @@ export interface BatchResponse {
 }
 
 export interface WorkspaceBackend {
+  setReadActivity(repoId: string, fileBrowserActive: boolean): Promise<void>;
   fetchWorkspaceBootstrap(settings?: AppSettings): Promise<WorkspaceBootstrap>;
   fetchSnapshot(settings?: AppSettings, options?: SnapshotFetchOptions): Promise<AppSnapshot>;
   refreshRepo(

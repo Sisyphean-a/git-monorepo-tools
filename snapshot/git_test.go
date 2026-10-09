@@ -110,7 +110,7 @@ func TestParseStatusPreservesWhitespaceInPaths(t *testing.T) {
 	}
 }
 
-func TestCountFileLinesPreservesNewlineSemantics(t *testing.T) {
+func TestReadFileLineCountPreservesNewlineSemantics(t *testing.T) {
 	cases := []struct {
 		name    string
 		content string
@@ -128,8 +128,9 @@ func TestCountFileLinesPreservesNewlineSemantics(t *testing.T) {
 			if err := os.WriteFile(filePath, []byte(testCase.content), 0o644); err != nil {
 				t.Fatalf("write test file: %v", err)
 			}
-			if got := countFileLines(filePath); got != testCase.want {
-				t.Fatalf("expected %d lines, got %d", testCase.want, got)
+			got, _, err := readFileLineCount(filePath)
+			if err != nil || got != testCase.want {
+				t.Fatalf("expected %d lines, got %d, error: %v", testCase.want, got, err)
 			}
 		})
 	}

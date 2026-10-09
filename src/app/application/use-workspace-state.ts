@@ -6,6 +6,7 @@ import { useProgressiveStartupScan } from './use-progressive-startup-scan';
 import { useRepoStatusPolling } from './use-repo-status-polling';
 import { useSidebarScan } from './use-sidebar-scan';
 import { useSnapshotRefresh } from './use-snapshot-refresh';
+import { useWindowActivity } from './use-window-activity';
 
 interface WorkspaceStateConfig {
   backend: WorkspaceBackend;
@@ -13,6 +14,7 @@ interface WorkspaceStateConfig {
 }
 
 export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
+  const windowActive = useWindowActivity();
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [selectedRepoId, setSelectedRepoId] = useState('');
   const interactionRevisionRef = useRef(0);
@@ -61,6 +63,7 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     fetchSnapshot: backend.fetchSnapshot,
     readRepoUpdateRevision: () => interactionRevisionRef.current,
     skipInitialRefresh: true,
+    windowActive,
   });
   const sidebar = useSidebarScan({
     settings,
@@ -84,6 +87,7 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     applyRepoUpdate: applyBackgroundRepoUpdate,
     runBackgroundTask: refresh.runBackgroundTask,
     startupScanActive: startup.startupScanActive,
+    windowActive,
   });
 
   return {

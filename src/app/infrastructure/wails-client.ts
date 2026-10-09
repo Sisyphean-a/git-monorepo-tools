@@ -62,6 +62,7 @@ type WailsFileDiffRequest = {
 };
 
 type WailsBindings = {
+  SetReadActivity?: (repoId: string, fileBrowserActive: boolean) => Promise<void>;
   GetWorkspaceBootstrap: WailsBootstrapBinding;
   GetSnapshot: WailsSnapshotBinding;
   RefreshRepo: (repoId: string, request: SnapshotRequest) => Promise<RepoSnapshotUpdate>;
@@ -163,6 +164,14 @@ function getWailsBindings(): WailsBindings {
     throw new Error('Wails 绑定不完整');
   }
   return binding as WailsBindings;
+}
+
+export async function setReadActivity(repoId: string, fileBrowserActive: boolean) {
+  const binding = getWailsBindings().SetReadActivity;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 读取资源生命周期绑定不可用');
+  }
+  return binding(repoId, fileBrowserActive);
 }
 
 export async function fetchWorkspaceBootstrap(settings?: AppSettings) {
@@ -340,6 +349,7 @@ export async function readClipboardText() {
 }
 
 export const wailsClient: WorkspaceBackend & RepoInteractionBackend = {
+  setReadActivity,
   fetchWorkspaceBootstrap,
   fetchSnapshot,
   refreshRepo,

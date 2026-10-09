@@ -6,6 +6,7 @@ import { DiffList } from './diff-list';
 import { ConflictBanner, RepoHeader, summarizeFiles } from './workspace-parts';
 import { RepoHistoryTab } from './repo-history-tab';
 import { useAppBackend } from '../application/backend-context';
+import { useWindowActivity } from '../application/use-window-activity';
 import { useRepoCommandPanel } from '../features/commands/use-repo-command-panel';
 import {
   useTerminalWorkspaceTabs,
@@ -116,6 +117,10 @@ export function Workspace({
   onError,
 }: WorkspaceProps) {
   const backend = useAppBackend();
+  const windowActive = useWindowActivity();
+  const readActivityTail = useRef(Promise.resolve());
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
   const terminalTabs = useTerminalWorkspaceTabs(repoDetails, selectedRepoId);
   const repoIds = useMemo(() => Object.keys(repoDetails), [repoDetails]);
   const repo = repoDetails[terminalTabs.activeRepoId];
@@ -131,6 +136,18 @@ export function Workspace({
   const [filesEnabled, setFilesEnabled] = useState(false);
   // Effect: 每仓库只保留轻量阅读位置，切换后释放正文和目录缓存。
   const filePositions = useRef(new Map<string, RepoFilePosition>());
+  const activityRepoId = repo?.id ?? '';
+
+  useEffect(() => {
+    const update = (repoId: string, fileBrowserActive: boolean) => {
+      // Guarantee: 按事件顺序交付失焦/聚焦，防止慢到达的旧清理关闭新项目资源。
+      readActivityTail.current = readActivityTail.current
+        .then(() => backend.setReadActivity(repoId, fileBrowserActive))
+        .catch(error => onErrorRef.current(error, '更新读取资源生命周期失败'));
+    };
+    update(windowActive ? activityRepoId : '', windowActive && Boolean(activityRepoId) && mainTab === 'files');
+    return () => update('', false);
+  }, [backend, activityRepoId, mainTab, windowActive]);
 
   useEffect(() => {
     if (mainTab === 'files') setFilesEnabled(true);
