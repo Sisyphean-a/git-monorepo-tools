@@ -13,6 +13,70 @@ import (
 	"time"
 )
 
+func TestBatchUpdatesReportStatusReadFailureAfterSuccessfulOperation(t *testing.T) {
+	for _, operation := range []string{"pulled", "pushed"} {
+		t.Run(operation, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "missing-repo")
+			id := repoIDForPath(path)
+			states := []batchRepoState{{entry: repoEntry{repoPath: path}}}
+			results := []PullResult{{ID: id, Path: path, Result: operation, Commits: 3}}
+			updates := defaultGitExecutor().buildBatchUpdates(states, results)
+			if len(updates) != 1 || updates[0].Repo.ScanError == "" {
+				t.Fatalf("failed scan snapshot must be published: %#v", updates)
+			}
+			if results[0].Result != "failed" || results[0].Commits != 3 || !strings.Contains(results[0].Detail, "操作已完成，但刷新仓库状态失败") {
+				t.Fatalf("must distinguish operation completion from failed read: %#v", results)
+			}
+		})
+	}
+}
+
+func TestBatchPullPrioritizesUnsafeWorktreeReasons(t *testing.T) {
+	for _, repo := range []RepoDetail{
+		{Repo: Repo{Remote: "—", Conflicts: 1}},
+		{Repo: Repo{Remote: "origin", Ahead: 1, Behind: 1, Conflicts: 1}},
+	} {
+		result := defaultGitExecutor().executePullAll(repo, "ff-only")
+		if result.Result != "failed" || !strings.Contains(result.Detail, "冲突") {
+			t.Fatalf("conflicts must remain the primary refusal: %#v", result)
+		}
+	}
+	for _, repo := range []RepoDetail{
+		{Repo: Repo{Remote: "—", Modified: 1}},
+		{Repo: Repo{Remote: "origin", Ahead: 1, Behind: 1}, Files: []FileChange{{Path: "local.txt"}}},
+	} {
+		result := defaultGitExecutor().executePullAll(repo, "ff-only")
+		if result.Result != "skipped" || !strings.Contains(result.Detail, "本地") {
+			t.Fatalf("local changes must remain visible as the refusal: %#v", result)
+		}
+	}
+}
+
+func TestEnsurePullReadyPreservesReasonsAndBlocksCountOnlyChanges(t *testing.T) {
+	cases := []struct {
+		name string
+		repo RepoDetail
+		want string
+	}{
+		{name: "scan error", repo: RepoDetail{Repo: Repo{ScanError: "cannot read tracked.txt"}}, want: "cannot read tracked.txt"},
+		{name: "conflicts", repo: RepoDetail{Repo: Repo{Conflicts: 2}}, want: "2 个冲突"},
+		{name: "count only", repo: RepoDetail{Repo: Repo{Modified: 7}}, want: "7 个文件"},
+		{name: "file paths", repo: RepoDetail{Files: []FileChange{{Path: "a.txt"}, {Path: "a.txt", Staged: true}, {Path: " b.txt "}}}, want: "2 个文件）：\na.txt\n b.txt "},
+		{name: "no upstream", repo: RepoDetail{Repo: Repo{Remote: "—"}}, want: "upstream"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ensurePullReady(tc.repo)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q, got %v", tc.want, err)
+			}
+		})
+	}
+	if err := ensurePullReady(RepoDetail{Repo: Repo{Remote: "origin", Behind: 3}}); err != nil {
+		t.Fatalf("clean tracked branch must remain pullable: %v", err)
+	}
+}
+
 func TestGetRepoHistoryMarksUnknownTotalWhenMoreCommitsRemain(t *testing.T) {
 	root := t.TempDir()
 	repoPath := filepath.Join(root, "repo")

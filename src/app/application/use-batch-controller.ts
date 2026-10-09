@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AppSettings, PullResult, RepoSnapshotUpdate } from '../domain/types.js';
 import type { WorkspaceBackend } from './ports.js';
+import { readErrorMessage } from './repo-action-error.js';
 
 type RunQueuedTask = <T>(task: () => Promise<T>, onSuccess?: (result: T) => void) => Promise<T>;
 
@@ -85,7 +86,7 @@ export async function executeBatchAction(
   }
 }
 
-async function retryRepo({ config, updateResult, repoId, batchOperation }: RetryRepoRequest) {
+export async function retryRepo({ config, updateResult, repoId, batchOperation }: RetryRepoRequest) {
   const action = batchOperation === 'pullAll' ? 'pull' : 'push';
   try {
     await config.mutateRepo(repoId, action);
@@ -96,7 +97,7 @@ async function retryRepo({ config, updateResult, repoId, batchOperation }: Retry
   } catch (error) {
     updateResult(repoId, {
       result: 'failed',
-      detail: error instanceof Error ? error.message : '重试失败',
+      detail: readErrorMessage(error),
     });
   }
 }

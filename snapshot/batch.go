@@ -57,10 +57,15 @@ func (executor gitExecutor) buildBatchUpdates(states []batchRepoState, results [
 		}
 		update, err := executor.buildRepoUpdate(result.ID, states[index].entry.repoPath, states[index].entry.category, false)
 		if err != nil {
-			results[index] = PullResult{ID: result.ID, Name: result.Name, Path: result.Path, Result: "failed", Detail: "操作已完成，但状态回读失败：" + err.Error()}
+			results[index].Result = "failed"
+			results[index].Detail = "操作已完成，但刷新仓库状态失败：" + err.Error() + "\n请先刷新核对状态，不要直接重复操作。"
 			continue
 		}
 		updates = append(updates, update)
+		if update.Repo.ScanError != "" {
+			results[index].Result = "failed"
+			results[index].Detail = "操作已完成，但刷新仓库状态失败：" + update.Repo.ScanError + "\n请先刷新核对状态，不要直接重复操作。"
+		}
 	}
 	return updates
 }

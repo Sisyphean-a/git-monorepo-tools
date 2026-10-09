@@ -8,6 +8,7 @@ import type { AppSettings, BuiltInCommandAction, CommandCombo, CustomCommandButt
 import type { PanelAction, PanelActionGroup, PanelCommandSection } from '../../components/ai-commit-panel';
 import type { CommandConsoleState } from './command-console-state';
 import type { AppBackend } from '../../application/ports';
+import { describeRepoActionError, type RepoActionFailure } from '../../application/repo-action-error';
 
 interface UseRepoCommandPanelArgs {
   repo: RepoDetail;
@@ -18,6 +19,28 @@ interface UseRepoCommandPanelArgs {
   onRunCustomCommand: (repoPath: string, command: string, streamId?: string) => Promise<RepoCommandResult>;
   onOpenCommands: () => void;
   backend: Pick<AppBackend, 'generateCommitMessage' | 'onEvent' | 'stopRepoCommand'>;
+}
+
+export async function runRepoPanelAction(
+  actionKey: string,
+  handler: (isActive: () => boolean) => Promise<void>,
+  feedback: {
+    repo: Pick<RepoDetail, 'name' | 'path'>;
+    isActive: () => boolean;
+    setBusyAction: (action: string | null) => void;
+    setError: (error: RepoActionFailure | null) => void;
+  },
+) {
+  feedback.setBusyAction(actionKey);
+  feedback.setError(null);
+  try {
+    await handler(feedback.isActive);
+  } catch (error) {
+    // Effect: 错误和忙碌态均写回发起仓库，切换不会让旧操作覆盖新仓库或允许同仓库重入。
+    feedback.setError(describeRepoActionError(actionKey, error, feedback.repo));
+  } finally {
+    feedback.setBusyAction(null);
+  }
 }
 
 export function useRepoCommandPanel({
@@ -31,8 +54,19 @@ export function useRepoCommandPanel({
   backend,
 }: UseRepoCommandPanelArgs) {
   const [commitMessage, setCommitMessage] = useState('');
-  const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
+  const [busyActions, setBusyActions] = useState<Record<string, string | null>>({});
+  const busyAction = busyActions[repo.id] ?? null;
+  const setBusyAction = (action: string | null) => {
+    if (!repoIdsRef.current.includes(repo.id)) return;
+    setBusyActions(current => ({ ...current, [repo.id]: action }));
+  };
+  const [actionErrors, setActionErrors] = useState<Record<string, RepoActionFailure | null>>({});
+  const repoIdsRef = useRef(repoIds);
+  repoIdsRef.current = repoIds;
+  const setAiError = (error: RepoActionFailure | null) => {
+    if (!repoIdsRef.current.includes(repo.id)) return;
+    setActionErrors(current => ({ ...current, [repo.id]: error }));
+  };
   // Rule: 命令输出按仓库隔离存储，每个项目有独立的输出区域；切换项目时各自保留，互不覆盖。
   const [commandConsoles, setCommandConsoles] = useState<Record<string, CommandConsoleState | null>>({});
   const scopeRef = useRef(0);
@@ -48,14 +82,20 @@ export function useRepoCommandPanel({
 
   useEffect(() => {
     scopeRef.current += 1;
-    setBusyAction(null);
     setCommitMessage('');
-    setAiError(null);
-    // Rule: 命令输出属于工作区日志，只能由用户显式清空，切换项目不得重置。
+    // Rule: 命令输出和操作错误归属发起仓库；切换项目不得清除，切回后仍可查阅。
   }, [repo.id]);
 
   useEffect(() => {
     setCommandConsoles(current => pruneCommandConsoles(current, repoIds));
+    setActionErrors(current => {
+      const entries = Object.entries(current).filter(([id]) => repoIds.includes(id));
+      return entries.length === Object.keys(current).length ? current : Object.fromEntries(entries);
+    });
+    setBusyActions(current => {
+      const entries = Object.entries(current).filter(([id]) => repoIds.includes(id));
+      return entries.length === Object.keys(current).length ? current : Object.fromEntries(entries);
+    });
   }, [repoIds]);
 
   const repoActionBody = (body?: Record<string, unknown>) => ({
@@ -74,19 +114,13 @@ export function useRepoCommandPanel({
     return () => scope === scopeRef.current;
   };
 
-  const runBusyAction = async (actionKey: string, handler: (isActive: () => boolean) => Promise<void>) => {
-    const isActive = createScopeGuard();
-    if (isActive()) setBusyAction(actionKey);
-    try {
-      await handler(isActive);
-    } finally {
-      if (isActive()) setBusyAction(null);
-    }
-  };
+  const runBusyAction = (actionKey: string, handler: (isActive: () => boolean) => Promise<void>) => runRepoPanelAction(
+    actionKey, handler,
+    { repo, isActive: createScopeGuard(), setBusyAction, setError: setAiError },
+  );
 
   const triggerBusyAction = (actionKey: string, handler: (isActive: () => boolean) => Promise<void>) => {
-    void runBusyAction(actionKey, handler)
-      .catch(error => setAiError(error instanceof Error ? error.message : '操作失败'));
+    void runBusyAction(actionKey, handler);
   };
 
   const executeBuiltInAction = async (
@@ -104,15 +138,9 @@ export function useRepoCommandPanel({
       return '已完成';
     }
     if (action === 'generate') {
-      try {
-        if (isActive()) setAiError(null);
-        const nextMessage = await backend.generateCommitMessage(repo.id, settings);
-        setMessage(nextMessage);
-        return nextMessage;
-      } catch (error) {
-        if (isActive()) setAiError(error instanceof Error ? error.message : 'AI 生成失败');
-        throw error;
-      }
+      const nextMessage = await backend.generateCommitMessage(repo.id, settings);
+      setMessage(nextMessage);
+      return nextMessage;
     }
     if (action === 'commit') {
       const nextMessage = getMessage().trim();
@@ -149,8 +177,10 @@ export function useRepoCommandPanel({
         if (isActive()) setCommitMessage(value);
       });
 
+      let currentAction: BuiltInCommandAction | undefined;
       try {
         for (const action of combo.actions) {
+          currentAction = action;
           if (cancelled) {
             session.appendLine('已终止：剩余步骤未执行');
             session.finish('failed');
@@ -167,7 +197,9 @@ export function useRepoCommandPanel({
         }
         session.finish('success');
       } catch (error) {
-        session.appendLine(error instanceof Error ? error.message : '执行失败');
+        const failure = describeRepoActionError(currentAction ?? combo.label, error, repo);
+        session.appendLine(`${failure.title}\n${failure.reason}\n${failure.suggestion}\n${failure.detail}`);
+        setAiError(failure);
         session.finish('failed');
       } finally {
         terminators.clear(repo.id);
@@ -185,7 +217,7 @@ export function useRepoCommandPanel({
         return backend.stopRepoCommand(streamId).catch(error => {
           // Failure: 命令可能在点击瞬间已结束；恢复可重试状态并显式提示，而不是停在“终止中…”。
           terminateRequested = false;
-          if (isActive()) setAiError(error instanceof Error ? error.message : '终止命令失败');
+          setAiError(describeRepoActionError('terminate', error, repo));
           throw error;
         });
       });
@@ -207,11 +239,15 @@ export function useRepoCommandPanel({
         let refreshFailed = false;
         await onRefresh().catch(error => {
           refreshFailed = true;
-          session.appendLine(error instanceof Error ? error.message : '刷新失败');
+          const failure = describeRepoActionError('refresh', error, repo);
+          session.appendLine(`${failure.title}\n${failure.reason}\n${failure.suggestion}\n${failure.detail}`);
+          setAiError(failure);
         });
         session.finish(result.exitCode === 0 && !refreshFailed ? 'success' : 'failed');
       } catch (error) {
-        session.appendLine(error instanceof Error ? error.message : '执行失败');
+        const failure = describeRepoActionError(command.label || '自定义命令', error, repo);
+        session.appendLine(`${failure.title}\n${failure.reason}\n${failure.suggestion}\n${failure.detail}`);
+        setAiError(failure);
         session.finish('failed');
       } finally {
         stopListening();
@@ -317,7 +353,7 @@ export function useRepoCommandPanel({
   return {
     stagedCount,
     commitMessage,
-    aiError,
+    aiError: actionErrors[repo.id] ?? null,
     topAction,
     actionGroups,
     commandSections,

@@ -4,6 +4,7 @@ import { C } from '../theme';
 import type { CommandConsoleState } from '../features/commands/command-console-state';
 import { formatCommandTime, resolveCommandConsoleAction } from '../features/commands/repo-command-console';
 import { ToolbarBtn } from './workspace-parts';
+import type { RepoActionFailure } from '../application/repo-action-error';
 
 export interface PanelAction {
   key: string;
@@ -32,7 +33,7 @@ export interface PanelCommandSection {
 interface AiCommitPanelProps {
   topAction?: PanelAction;
   message: string;
-  error: string | null;
+  error: RepoActionFailure | null;
   actionGroups: PanelActionGroup[];
   commandSections: PanelCommandSection[];
   commandConsole: CommandConsoleState | null;
@@ -41,7 +42,7 @@ interface AiCommitPanelProps {
   onTerminateConsole: () => Promise<void>;
 }
 
-function MessageEditor({ message, error, onMessageChange }: Pick<AiCommitPanelProps, 'message' | 'error' | 'onMessageChange'>) {
+function MessageEditor({ message, onMessageChange }: Pick<AiCommitPanelProps, 'message' | 'onMessageChange'>) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ color: C.textSecondary, fontSize: 11, fontWeight: 600 }}>
@@ -75,12 +76,23 @@ function MessageEditor({ message, error, onMessageChange }: Pick<AiCommitPanelPr
           e.target.style.borderColor = C.border;
         }}
       />
-      {error && (
-        <div style={{ color: C.conflict, fontSize: 11, lineHeight: 1.5 }}>
-          {error}
-        </div>
-      )}
     </div>
+  );
+}
+
+export function RepoActionError({ error }: { error: RepoActionFailure }) {
+  return (
+    <section role="alert" aria-label={error.title} style={{ border: `1px solid ${C.conflict}60`, borderRadius: 8, padding: 10, background: C.panel2, fontSize: 11, lineHeight: 1.65, overflowWrap: 'anywhere' }}>
+      <div style={{ color: C.conflict, fontWeight: 600 }}>{error.title}</div>
+      <div style={{ color: C.textSecondary }}>{error.repoName}</div>
+      <div style={{ color: C.textWeak, fontFamily: 'JetBrains Mono, monospace' }}>{error.repoPath}</div>
+      <div style={{ color: C.textPrimary, marginTop: 6 }}>{error.reason}</div>
+      <div style={{ color: C.textSecondary, marginTop: 6 }}>处理建议：{error.suggestion}</div>
+      <details open style={{ marginTop: 8 }}>
+        <summary style={{ color: C.textSecondary, cursor: 'pointer' }}>原始错误（可选中复制）</summary>
+        <pre style={{ color: C.textSecondary, fontFamily: 'JetBrains Mono, monospace', fontSize: 10, whiteSpace: 'pre-wrap', wordBreak: 'break-word', userSelect: 'text', maxHeight: 200, overflow: 'auto', margin: '6px 0 0' }}>{error.detail}</pre>
+      </details>
+    </section>
   );
 }
 
@@ -304,8 +316,9 @@ export function AiCommitPanel({
             style={{ width: '100%', justifyContent: 'center', padding: '8px 10px' }}
           />
         )}
-        <MessageEditor message={message} error={error} onMessageChange={onMessageChange} />
+        <MessageEditor message={message} onMessageChange={onMessageChange} />
         <ActionCluster actionGroups={actionGroups} />
+        {error && <RepoActionError error={error} />}
         {commandSections.map(section => <CommandSection key={section.key} section={section} />)}
         <div style={{ flex: 1, minHeight: 0 }} />
       </div>

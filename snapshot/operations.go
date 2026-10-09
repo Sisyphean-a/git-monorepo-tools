@@ -17,7 +17,11 @@ func (s *Service) MutateRepo(repoID, action string, request Request, body RepoAc
 	if err := executor.mutateRepo(repo, action, request, body); err != nil {
 		return RepoSnapshotUpdate{}, err
 	}
-	return executor.buildRepoUpdate(repo.ID, repo.Path, repo.Category, request.RefreshRemotes)
+	update, err := executor.buildRepoUpdate(repo.ID, repo.Path, repo.Category, request.RefreshRemotes)
+	if err != nil {
+		return RepoSnapshotUpdate{}, fmt.Errorf("操作已完成，但刷新仓库状态失败：%w", err)
+	}
+	return update, nil
 }
 
 func (s *Service) RefreshRepo(repoID string, request Request) (RepoSnapshotUpdate, error) {
@@ -157,8 +161,10 @@ func (executor gitExecutor) mutateRepo(repo RepoDetail, action string, request R
 		if _, err := executor.runGit(repo.Path, []string{"reset", "--hard", "HEAD"}); err != nil {
 			return err
 		}
-		_, err := executor.runGit(repo.Path, []string{"clean", "-fd"})
-		return err
+		if _, err := executor.runGit(repo.Path, []string{"clean", "-fd"}); err != nil {
+			return fmt.Errorf("已重置已跟踪文件，但清理未跟踪文件失败：%w", err)
+		}
+		return nil
 	default:
 		return fmt.Errorf("未找到操作：%s", action)
 	}
@@ -180,17 +186,17 @@ func (executor gitExecutor) executePullAll(repo RepoDetail, strategy string) Pul
 	if repo.ScanError != "" {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: "仓库扫描失败：" + repo.ScanError}
 	}
+	if repo.Conflicts > 0 {
+		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: "检测到冲突，需先人工处理"}
+	}
+	if repo.Modified > 0 || len(repo.Files) > 0 {
+		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：存在本地未提交改动"}
+	}
 	if repo.Remote == "—" {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：当前分支没有 upstream"}
 	}
 	if repo.Ahead > 0 && repo.Behind > 0 {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：当前分支与远端已分叉"}
-	}
-	if repo.Conflicts > 0 {
-		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: "检测到冲突，需先人工处理"}
-	}
-	if repo.Modified > 0 {
-		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：存在本地未提交改动"}
 	}
 	if repo.Behind == 0 {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "uptodate", Detail: "工作区干净，已与远端同步"}
@@ -241,13 +247,24 @@ func ensureCommitMessage(message string) error {
 
 func ensurePullReady(repo RepoDetail) error {
 	if strings.TrimSpace(repo.ScanError) != "" {
-		return errors.New("当前仓库扫描失败，请先刷新或排查后再拉取")
+		return fmt.Errorf("当前仓库扫描失败，请先刷新或排查后再拉取：\n%s", repo.ScanError)
 	}
 	if repo.Conflicts > 0 {
-		return errors.New("当前仓库存在冲突，不能执行 pull")
+		return fmt.Errorf("当前仓库存在 %d 个冲突，不能执行 pull", repo.Conflicts)
 	}
-	if len(repo.Files) > 0 {
-		return errors.New("当前仓库有本地改动，请先提交或处理后再拉取")
+	if repo.Modified > 0 || len(repo.Files) > 0 {
+		paths := []string{}
+		seen := map[string]bool{}
+		for _, file := range repo.Files {
+			if !seen[file.Path] {
+				paths = append(paths, file.Path)
+				seen[file.Path] = true
+			}
+		}
+		return fmt.Errorf("当前仓库有本地改动，请先提交或处理后再拉取（%d 个文件）：\n%s", max(repo.Modified, len(paths)), strings.Join(paths, "\n"))
+	}
+	if repo.Remote == "—" {
+		return errors.New("当前分支没有 upstream，无法拉取；请先配置跟踪分支")
 	}
 	return nil
 }

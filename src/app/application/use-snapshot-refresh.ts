@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { createSnapshotCoordinator } from './snapshot-coordinator';
+import { createSnapshotCoordinator, type ForegroundTaskOptions } from './snapshot-coordinator';
+import { readErrorMessage } from './repo-action-error';
 import type { SnapshotApplyContext } from '../domain/repo-snapshot-merge';
 import type { AppSettings, AppSnapshot } from '../domain/types';
 import type { SnapshotFetchOptions, WorkspaceBackend } from './ports';
@@ -99,8 +100,8 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
     },
     requestRefresh,
     refreshSnapshot,
-    runQueuedTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
-      return coordinatorRef.current.runTask(task, onSuccess);
+    runQueuedTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void, options?: ForegroundTaskOptions) {
+      return coordinatorRef.current.runTask(task, onSuccess, options);
     },
     runBackgroundTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
       return coordinatorRef.current.runBackgroundTask(task, onSuccess);
@@ -109,5 +110,5 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
 }
 
 function formatRefreshError(error: unknown) {
-  return error instanceof Error ? error.message : '仓库刷新失败';
+  return readErrorMessage(error);
 }

@@ -2,8 +2,9 @@ import { useState } from 'react';
 import type { AppSettings, AppSnapshot, RepoLog, RepoMutationAction, RepoSnapshotUpdate } from '../domain/types';
 import type { LocalRepoAction, WorkspaceBackend } from './ports';
 import { viewRepoLog } from './repo-log';
+import { readErrorMessage } from './repo-action-error';
 
-type RunQueuedTask = <T>(task: () => Promise<T>, onSuccess?: (result: T) => void) => Promise<T>;
+type RunQueuedTask = <T>(task: () => Promise<T>, onSuccess?: (result: T) => void, options?: import('./snapshot-coordinator').ForegroundTaskOptions) => Promise<T>;
 
 interface RepoActionsConfig {
   backend: WorkspaceBackend;
@@ -17,7 +18,7 @@ export function useRepoActions(config: RepoActionsConfig) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [repoLog, setRepoLog] = useState<RepoLog | null>(null);
   const reportActionError = (error: unknown, fallback: string) => {
-    setActionError(error instanceof Error ? error.message : fallback);
+    setActionError(`${fallback}：${readErrorMessage(error)}`);
   };
   const actions = createRepoActions({ ...config, setActionError, setRepoLog, reportActionError });
   return { actionError, repoLog, closeRepoLog: () => setRepoLog(null), reportActionError, ...actions };
@@ -29,11 +30,15 @@ interface RepoActionContext extends RepoActionsConfig {
   reportActionError: (error: unknown, fallback: string) => void;
 }
 
-function createRepoActions(context: RepoActionContext) {
+export function createRepoActions(context: RepoActionContext) {
   const mutateRepo = (repoId: string, action: RepoMutationAction, body?: Record<string, unknown>) => (
     context.runQueuedTask(
       () => context.backend.mutateRepo(repoId, action, context.settings, body),
-      context.applyRepoUpdate,
+      update => {
+        context.applyRepoUpdate(update);
+        if (update.repo.scanError) throw new Error(`操作已完成，但刷新仓库状态失败：\n${update.repo.scanError}`);
+      },
+      { reportErrors: false },
     )
   );
   const refreshWorkspace = (repoId: string) => context.runQueuedTask(
@@ -43,7 +48,11 @@ function createRepoActions(context: RepoActionContext) {
       { refreshRemotes: false },
       readRepoRefreshTarget(context.snapshot, repoId),
     ),
-    context.applyRepoUpdate,
+    update => {
+      context.applyRepoUpdate(update);
+      if (update.repo.scanError) throw new Error(`仓库扫描失败：\n${update.repo.scanError}`);
+    },
+    { reportErrors: false },
   );
   return {
     mutateRepo,

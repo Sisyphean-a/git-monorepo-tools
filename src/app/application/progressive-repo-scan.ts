@@ -1,5 +1,6 @@
 import type { AppSettings, Repo, RepoDetail, RepoSnapshotUpdate } from '../domain/types.js';
 import type { WorkspaceBackend } from './ports.js';
+import { readErrorMessage } from './repo-action-error.js';
 
 interface ProgressiveRepoScanRequest {
   target: Repo;
@@ -51,7 +52,7 @@ function buildProgressiveErrorUpdate(
   error: unknown,
   fallbackDetail?: RepoDetail,
 ): RepoSnapshotUpdate {
-  const message = error instanceof Error ? error.message : '仓库扫描失败';
+  const message = readErrorMessage(error);
   return {
     repo: {
       ...(fallbackDetail ?? createFallbackRepoDetail(target, scannedAt)),

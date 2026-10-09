@@ -38,7 +38,10 @@ func (s *Service) GetFileDiff(request FileDiffRequest) (FileDiff, error) {
 		return FileDiff{}, err
 	}
 	if content == "" {
-		return FileDiff{}, fmt.Errorf("未找到当前变更：%s", path)
+		// Rule: 空文本 diff 只有在当前 status 仍确认此暂存区变更时才有效，不能把陈旧请求当成成功。
+		if _, _, err := executor.validateRequestedChange(repoPath, path, request.Staged); err != nil {
+			return FileDiff{}, err
+		}
 	}
 	return FileDiff{RepoID: request.RepoID, Path: path, Staged: request.Staged, Content: content}, nil
 }

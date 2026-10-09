@@ -8,6 +8,7 @@ import {
   DIFF_VIEWPORT_HEIGHT,
 } from '../features/diff/diff-viewport';
 import { getDiffLine, indexDiffLines, measureDiffWidth } from '../features/diff/diff-lines';
+import { readErrorMessage } from '../application/repo-action-error';
 
 interface FileDiffPanelProps {
   file: FileChange;
@@ -60,7 +61,7 @@ function DiffContent({ content }: { content: string }) {
   const viewport = calculateDiffViewport({ lineCount: lineStarts.length, scrollTop });
 
   if (!content) {
-    return <div style={{ padding: 14, color: C.textWeak, fontSize: 11 }}>当前文件没有可显示的文本差异</div>;
+    return <div style={{ padding: 14, color: C.textWeak, fontSize: 11 }}>Git 将此文件标记为变更，但没有可显示的文本差异。可能涉及空文件、换行符规范化、文件模式、索引状态或子模块；文本 diff 为空不代表工作树干净。</div>;
   }
   const visibleLines = Array.from(
     { length: viewport.end - viewport.start },
@@ -99,7 +100,7 @@ export function FileDiffPanel({ file, loader }: FileDiffPanelProps) {
         if (active) setState({ status: 'ready', content: diff.content });
       },
       error => {
-        if (active) setState({ status: 'error', message: error instanceof Error ? error.message : '差异加载失败' });
+        if (active) setState({ status: 'error', message: readErrorMessage(error) });
       },
     );
     return () => {

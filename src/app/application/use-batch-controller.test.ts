@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_SETTINGS } from '../infrastructure/settings-store.js';
 import {
   executeBatchAction,
+  retryRepo,
   type BatchControllerConfig,
   type BatchRunState,
 } from './use-batch-controller.js';
@@ -34,6 +35,15 @@ function createState(events: string[]): BatchRunState {
     setActiveAction: value => events.push(`active:${value ?? 'none'}`),
   };
 }
+
+test('batch retry retains Wails string error details for both pull and push', async () => {
+  for (const batchOperation of ['pullAll', 'pushAll'] as const) {
+    const config = createConfig({ mutateRepo: async () => { throw 'Wails failure\nraw Git details'; } });
+    const updates: unknown[] = [];
+    await retryRepo({ config, repoId: 'repo-A', batchOperation, updateResult: (id, patch) => updates.push({ id, ...patch }) });
+    assert.deepEqual(updates, [{ id: 'repo-A', result: 'failed', detail: 'Wails failure\nraw Git details' }]);
+  }
+});
 
 test('executeBatchAction publishes a successful batch and clears activity', async () => {
   const events: string[] = [];

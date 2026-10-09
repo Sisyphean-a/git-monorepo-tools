@@ -14,6 +14,63 @@ import (
 	"unicode/utf16"
 )
 
+func TestSnapshotKeepsStatusChangesWithoutTextDiff(t *testing.T) {
+	repoPath := t.TempDir()
+	initTestRepo(t, repoPath)
+	runTestGit(t, repoPath, "config", "core.autocrlf", "true")
+	commitTestFile(t, repoPath, "line endings.txt", "before\r\n", "seed")
+	writeTestFile(t, repoPath, "line endings.txt", "before\n")
+	parsed, err := defaultGitExecutor().readStatus(repoPath)
+	if err != nil || len(parsed.entries) != 1 {
+		t.Fatalf("expected dirty status fixture, got %#v, %v", parsed.entries, err)
+	}
+	diff, err := runGit(repoPath, []string{"diff", "--numstat"})
+	if err != nil || diff != "" {
+		t.Fatalf("expected empty normalized diff, got %q, %v", diff, err)
+	}
+	snapshot, err := defaultGitExecutor().buildRepoSnapshot(repoEntry{repoPath: repoPath}, time.Unix(0, 0))
+	if err != nil || snapshot.repo.ScanError != "" {
+		t.Fatalf("build snapshot: %v, %s", err, snapshot.repo.ScanError)
+	}
+	if len(snapshot.detail.Files) != 1 || snapshot.repo.Modified != 1 || snapshot.detail.UnstagedCount != 1 {
+		t.Fatalf("status-only change must remain visible: %#v", snapshot.detail)
+	}
+	file := snapshot.detail.Files[0]
+	if file.Path != "line endings.txt" || file.Status != "M" || file.Staged || file.Additions != 0 || file.Deletions != 0 || file.PreviousSizeBytes != 7 {
+		t.Fatalf("unexpected status-only change: %#v", file)
+	}
+	if err := ensurePullReady(snapshot.detail); err == nil || !strings.Contains(err.Error(), "本地改动") {
+		t.Fatalf("pull must reject status-only change: %v", err)
+	}
+	files, err := defaultGitExecutor().loadWorkingDiffFiles(repoPath)
+	if err != nil || len(files) != 1 || files[0].Path != file.Path {
+		t.Fatalf("diff viewer must also keep status-only change: %#v, %v", files, err)
+	}
+	service := NewService(repoPath)
+	defer service.Close()
+	diffResult, err := service.GetFileDiff(FileDiffRequest{
+		RepoID: repoIDForPath(repoPath), Snapshot: Request{RepoPath: repoPath, RepoCategory: "测试"},
+		FilePath: file.Path, Status: "M",
+	})
+	if err != nil || diffResult.Content != "" || diffResult.Path != file.Path {
+		t.Fatalf("status-only file must open as a valid empty text diff: %#v, %v", diffResult, err)
+	}
+	runTestGit(t, repoPath, "add", "--", file.Path)
+	if _, err := service.GetFileDiff(FileDiffRequest{
+		RepoID: repoIDForPath(repoPath), Snapshot: Request{RepoPath: repoPath, RepoCategory: "测试"},
+		FilePath: file.Path, Status: "M",
+	}); err == nil || !strings.Contains(err.Error(), "未找到当前变更") {
+		t.Fatalf("a stale or clean file must still be rejected: %v", err)
+	}
+}
+
+func TestBuildGitErrorKeepsBothOutputStreams(t *testing.T) {
+	err := buildGitError([]string{"commit"}, "nothing to commit", "warning: LF will be replaced by CRLF")
+	if !strings.Contains(err.Error(), "nothing to commit") || !strings.Contains(err.Error(), "warning:") {
+		t.Fatalf("lost Git failure details: %v", err)
+	}
+}
+
 func TestRunGitTimeoutStopsChildProcess(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("child process tree verification runs on Windows")

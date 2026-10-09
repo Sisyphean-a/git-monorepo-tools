@@ -1,6 +1,12 @@
 import type { AppSettings, AppSnapshot } from '../domain/types.js';
 import type { SnapshotApplyContext } from '../domain/repo-snapshot-merge.js';
 import type { SnapshotFetchOptions } from './ports.js';
+import { readErrorMessage } from './repo-action-error.js';
+
+export interface ForegroundTaskOptions {
+  /** Rule: 单仓操作由目标仓库面板持有错误，不写入会随当前项目展示的全局错误。 */
+  reportErrors?: boolean;
+}
 
 type ErrorReporter = (message: string | null) => void;
 type Waiter = { resolve: () => void; reject: (error: unknown) => void };
@@ -79,9 +85,9 @@ export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
       invalidateProgressiveScan();
       return enqueueRefresh(refreshQueue, settings, fetchOptions, processRefreshQueue);
     },
-    runTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void) {
+    runTask<T>(task: () => Promise<T>, onSuccess?: (result: T) => void, taskOptions: ForegroundTaskOptions = {}) {
       beginInteraction();
-      const queued = enqueueForegroundTask(task, result => onSuccess?.(result), options, finishInteraction, foregroundTail);
+      const queued = enqueueForegroundTask(task, result => onSuccess?.(result), options, finishInteraction, foregroundTail, taskOptions.reportErrors !== false);
       foregroundTail = queued.settled;
       return queued.promise;
     },
@@ -146,16 +152,17 @@ function enqueueForegroundTask<T>(
   options: SnapshotCoordinatorOptions,
   finishInteraction: () => void,
   tail: Promise<void>,
+  reportErrors: boolean,
 ) {
   const pending = tail.then(async () => {
     const result = await task();
     finishInteraction();
     onSuccess(result, options);
-    options.reportError?.(null);
+    if (reportErrors) options.reportError?.(null);
     return result;
   });
   const promise = pending.catch(error => {
-    options.reportError?.(formatError(error));
+    if (reportErrors) options.reportError?.(formatError(error));
     throw error;
   });
   return { promise, settled: promise.then(() => undefined, () => undefined) };
@@ -199,5 +206,5 @@ function mergeFetchOptions(
 }
 
 function formatError(error: unknown) {
-  return error instanceof Error ? error.message : '刷新失败';
+  return readErrorMessage(error);
 }

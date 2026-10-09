@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { buildSidebarSnapshot, mergeSidebarRepoUpdate, type SidebarSnapshot } from '../domain/sidebar-snapshot.js';
 import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types.js';
 import type { SnapshotFetchOptions } from './ports.js';
+import { readErrorMessage } from './repo-action-error.js';
 
 interface SidebarScanConfig {
   settings: AppSettings;
@@ -39,7 +40,7 @@ export function useSidebarScan(config: SidebarScanConfig) {
     try {
       await refreshSnapshotRef.current(settingsRef.current, { refreshRemotes: true });
     } catch (error) {
-      reportErrorRef.current(error instanceof Error ? error.message : '侧边栏扫描失败');
+      reportErrorRef.current(readErrorMessage(error));
     }
   };
 

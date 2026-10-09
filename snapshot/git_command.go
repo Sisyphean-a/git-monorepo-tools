@@ -176,8 +176,11 @@ func firstGitError(errors ...error) error {
 
 func buildGitError(args []string, stdout, stderr string) error {
 	message := strings.TrimSpace(stderr)
-	if message == "" {
-		message = strings.TrimSpace(stdout)
+	if output := strings.TrimSpace(stdout); output != "" {
+		if message != "" {
+			message += "\n"
+		}
+		message += output
 	}
 	if message == "" {
 		message = "git " + strings.Join(args, " ") + " 失败"

@@ -50,6 +50,19 @@ const snapshot = (label: string): AppSnapshot => ({
   commitCandidates: {},
 });
 
+test('repo-owned foreground errors remain rejected without contaminating or clearing global errors', async () => {
+  const reported: (string | null)[] = [];
+  const coordinator = createSnapshotCoordinator({
+    applySnapshot: () => {}, readRepoUpdateRevision: () => 0,
+    fetchSnapshot: async () => snapshot('unused'), reportError: error => reported.push(error),
+  });
+  await assert.rejects(coordinator.runTask(async () => { throw 'error in repo A'; }, undefined, { reportErrors: false }), error => error === 'error in repo A');
+  assert.equal(await coordinator.runTask(async () => 'done', undefined, { reportErrors: false }), 'done');
+  assert.deepEqual(reported, []);
+  await assert.rejects(coordinator.runTask(async () => { throw 'workspace scan error'; }), error => error === 'workspace scan error');
+  assert.deepEqual(reported, ['workspace scan error']);
+});
+
 test('coalesces queued refreshes and keeps latest settings', async () => {
   const calls: Array<{ concurrency: number; refreshRemotes: boolean }> = [];
   const applied: string[] = [];

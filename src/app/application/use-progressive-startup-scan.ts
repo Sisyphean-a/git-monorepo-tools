@@ -5,6 +5,7 @@ import { loadProgressiveRepoUpdate, normalizeProgressiveConcurrency, orderProgre
 import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types.js';
 import type { ProgressiveSnapshotLease } from './snapshot-coordinator.js';
 import type { SnapshotFetchOptions, WorkspaceBackend } from './ports.js';
+import { readErrorMessage } from './repo-action-error.js';
 
 interface StartupScanHandlers {
   getPreferredRepoId: () => string;
@@ -86,7 +87,7 @@ export function useProgressiveStartupScan(config: ProgressiveStartupScanConfig) 
       },
     }).catch(error => {
       if (!active) return;
-      lease.reportError(error instanceof Error ? error.message : '启动扫描失败');
+      lease.reportError(readErrorMessage(error));
     }).finally(() => {
       if (active) setStartupScanActive(false);
     });

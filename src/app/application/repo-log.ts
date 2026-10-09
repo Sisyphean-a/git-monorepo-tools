@@ -1,7 +1,8 @@
 import type { AppSettings, RepoLog } from '../domain/types.js';
+import { readErrorMessage } from './repo-action-error.js';
 
 function formatRepoLogError(error: unknown) {
-  return error instanceof Error ? error.message : '查看日志失败';
+  return readErrorMessage(error);
 }
 
 export async function viewRepoLog(

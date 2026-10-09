@@ -33,7 +33,7 @@ type parsedStatus struct {
 }
 
 func (executor gitExecutor) readStatus(repoPath string) (parsedStatus, error) {
-	output, err := executor.runGitRaw(repoPath, []string{"status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"})
+	output, err := executor.runGitRaw(repoPath, []string{"status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--no-renames"})
 	return parseStatus(output), err
 }
 
@@ -150,6 +150,7 @@ func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) 
 	// Parse each stage before reading the next one so Git's raw output does not remain live together.
 	staged := executor.loadFileChangeGroup(repoPath, true)
 	unstaged := executor.loadFileChangeGroup(repoPath, false)
+	mergeStatusOnlyChanges(entries, &staged, &unstaged)
 	objectSizes, objectSizeErr := executor.readObjectSizes(repoPath, collectObjectIDs(staged.baseObjects, unstaged.baseObjects))
 	stagedPreviousSizes, stagedPreviousSizeBytes := resolvePreviousSizes(staged.baseObjects, objectSizes)
 	unstagedPreviousSizes, unstagedPreviousSizeBytes := resolvePreviousSizes(unstaged.baseObjects, objectSizes)
@@ -163,6 +164,39 @@ func (executor gitExecutor) buildFileChanges(repoPath string, entries []string) 
 		staged.statsErr, staged.statusErr, unstaged.statsErr, unstaged.statusErr,
 		staged.parseErr, unstaged.parseErr, staged.baseErr, unstaged.baseErr, objectSizeErr, untrackedErr,
 	)
+}
+
+// Rule: status 是脏工作树的依据；换行规范化后 diff 可为空，仍保留文件与原 blob 大小，不把它伪装成干净。
+func mergeStatusOnlyChanges(entries []string, staged, unstaged *fileChangeGroup) {
+	for _, entry := range entries {
+		fieldCount := 9
+		if strings.HasPrefix(entry, "u ") {
+			fieldCount = 11
+		} else if !strings.HasPrefix(entry, "1 ") {
+			continue
+		}
+		fields := strings.SplitN(entry, " ", fieldCount)
+		if len(fields) != fieldCount || len(fields[1]) != 2 {
+			continue
+		}
+		path := normalizePath(fields[fieldCount-1])
+		for index, group := range []*fileChangeGroup{staged, unstaged} {
+			code := fields[1][index]
+			if code == '.' {
+				continue
+			}
+			if _, exists := group.stats[path]; exists {
+				continue
+			}
+			if group.stats == nil {
+				group.stats = map[string]FileChange{}
+			}
+			group.stats[path] = FileChange{Path: path, Status: workingFileStatus(code)}
+			if fieldCount == 9 && !isZeroObjectID(fields[6+index]) {
+				group.baseObjects[path] = fields[6+index]
+			}
+		}
+	}
 }
 
 // Flow: 差异查看器只读取已跟踪文件的状态和行数；未跟踪扫描、文件大小与正文均留到各自边界处理。
@@ -333,6 +367,9 @@ func resolvePreviousSizes(objectIDs map[string]string, objectSizes map[string]in
 
 func parseNumstat(output string, statuses map[string]string) (map[string]FileChange, error) {
 	stats := map[string]FileChange{}
+	for path, status := range statuses {
+		stats[path] = FileChange{Path: path, Status: status}
+	}
 	records := strings.Split(output, "\x00")
 	if !strings.Contains(output, "\x00") {
 		records = strings.Split(output, "\n")
