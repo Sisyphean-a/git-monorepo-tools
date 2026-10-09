@@ -34,6 +34,10 @@ export function GetRepoLog(arg1, arg2) {
   return window['go']['main']['App']['GetRepoLog'](arg1, arg2);
 }
 
+export function GetResourceSnapshot() {
+  return window['go']['main']['App']['GetResourceSnapshot']();
+}
+
 export function GetSnapshot(arg1) {
   return window['go']['main']['App']['GetSnapshot'](arg1);
 }

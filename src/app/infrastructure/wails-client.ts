@@ -8,6 +8,7 @@ import type {
   RepoFileRequest,
   RepoHistoryRequest,
   RepoInteractionBackend,
+  ResourceMonitorBackend,
   RepoRefreshTarget,
   WorkingDiffFilesRequest,
   SnapshotFetchOptions,
@@ -62,6 +63,7 @@ type WailsFileDiffRequest = {
 };
 
 type WailsBindings = {
+  GetResourceSnapshot?: () => Promise<import('../domain/resource-monitor.js').ResourceSnapshot>;
   SetReadActivity?: (repoId: string, fileBrowserActive: boolean) => Promise<void>;
   GetWorkspaceBootstrap: WailsBootstrapBinding;
   GetSnapshot: WailsSnapshotBinding;
@@ -164,6 +166,12 @@ function getWailsBindings(): WailsBindings {
     throw new Error('Wails 绑定不完整');
   }
   return binding as WailsBindings;
+}
+
+export async function fetchResourceSnapshot() {
+  const binding = getWailsBindings().GetResourceSnapshot;
+  if (typeof binding !== 'function') throw new Error('Wails 资源监控绑定不可用');
+  return binding();
 }
 
 export async function setReadActivity(repoId: string, fileBrowserActive: boolean) {
@@ -348,7 +356,8 @@ export async function readClipboardText() {
   return binding();
 }
 
-export const wailsClient: WorkspaceBackend & RepoInteractionBackend = {
+export const wailsClient: WorkspaceBackend & RepoInteractionBackend & ResourceMonitorBackend = {
+  fetchResourceSnapshot,
   setReadActivity,
   fetchWorkspaceBootstrap,
   fetchSnapshot,

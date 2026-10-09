@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, FolderOpen, GitBranch, GitCompare, Settings2, Terminal } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, FolderOpen, GitBranch, GitCompare, Settings2, Terminal } from 'lucide-react';
 import { C } from '../theme';
 import type { FileChange, Repo } from '../domain/types';
 
@@ -38,6 +38,7 @@ export function RepoHeader({
   repo,
   fileSummary,
   onOpenFolder,
+  onOpenMonitor,
   onOpenTerminal,
   onOpenDiffViewer,
   onOpenSettings,
@@ -45,6 +46,7 @@ export function RepoHeader({
   repo: Repo;
   fileSummary: ReturnType<typeof summarizeFiles>;
   onOpenFolder: () => void;
+  onOpenMonitor: () => void;
   onOpenTerminal: () => void;
   onOpenDiffViewer: () => void;
   onOpenSettings: () => void;
@@ -74,6 +76,7 @@ export function RepoHeader({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+          <HeaderActionBtn icon={<Activity size={11} />} label="资源监控" onClick={onOpenMonitor} />
           <HeaderActionBtn icon={<FolderOpen size={11} />} label="文件夹" onClick={onOpenFolder} />
           <HeaderActionBtn icon={<Terminal size={11} />} label="外部终端" onClick={onOpenTerminal} />
           <HeaderActionBtn icon={<GitCompare size={11} />} label="查看差异" onClick={onOpenDiffViewer} />

@@ -136,7 +136,11 @@ export interface RuntimeBackend {
   openExternalURL(url: string): void;
 }
 
-export type AppBackend = WorkspaceBackend & RepoInteractionBackend & RuntimeBackend;
+export interface ResourceMonitorBackend {
+  fetchResourceSnapshot(): Promise<import('../domain/resource-monitor.js').ResourceSnapshot>;
+}
+
+export type AppBackend = WorkspaceBackend & RepoInteractionBackend & RuntimeBackend & ResourceMonitorBackend;
 
 export interface SettingsStore {
   loadSettings(): AppSettings;

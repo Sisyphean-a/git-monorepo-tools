@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { Check, GitCompare, X } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
 import { C } from '../theme';
+import { INSPECTOR_BACKDROP_STYLE, INSPECTOR_DIALOG_STYLE } from './common';
 import type { AppSettings, CommitDetail, DiffViewerRequest, FileChange, RepoDetail } from '../domain/types';
 import { buildDiffRowOffsets, calculateVariableDiffViewport, DIFF_LINE_HEIGHT } from '../features/diff/diff-viewport';
 import { chooseDefaultWorkingDiffMode, filterWorkingDiffFiles, type WorkingDiffMode } from '../features/diff/diff-viewer-state';
@@ -218,28 +219,13 @@ export function DiffViewerModal({ request, repo, settings, onClose }: DiffViewer
     <>
       <div
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.68)', zIndex: 90, backdropFilter: 'blur(3px)' }}
+        style={INSPECTOR_BACKDROP_STYLE}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="代码差异查看器"
-        style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '94vw',
-          height: '92vh',
-          background: C.panel1,
-          border: `1px solid ${C.border}`,
-          borderRadius: 12,
-          zIndex: 91,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          boxShadow: '0 25px 70px rgba(0,0,0,0.55)',
-        }}
+        style={INSPECTOR_DIALOG_STYLE}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
           <GitCompare size={16} color={C.btnPrimary} />

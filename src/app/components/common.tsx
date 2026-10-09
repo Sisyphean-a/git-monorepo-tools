@@ -1,5 +1,16 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { C } from '../theme';
+
+export const INSPECTOR_BACKDROP_STYLE: CSSProperties = {
+  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.68)', zIndex: 90, backdropFilter: 'blur(3px)',
+};
+
+export const INSPECTOR_DIALOG_STYLE: CSSProperties = {
+  position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+  width: '94vw', height: '92vh', background: C.panel1, border: `1px solid ${C.border}`,
+  borderRadius: 12, zIndex: 91, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+  boxShadow: '0 25px 70px rgba(0,0,0,0.55)',
+};
 
 export function AppFrame({ children }: { children: ReactNode }) {
   return (

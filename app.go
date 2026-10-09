@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"git-monorepo-tools/internal/desktop"
+	"git-monorepo-tools/internal/monitor"
 	"git-monorepo-tools/internal/terminal"
 	"git-monorepo-tools/snapshot"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -111,6 +112,10 @@ func (a *App) shutdown(context.Context) {
 	if a.terminals != nil {
 		a.terminals.CloseAll()
 	}
+}
+
+func (a *App) GetResourceSnapshot() (monitor.Snapshot, error) {
+	return monitor.ReadSnapshot()
 }
 
 func (a *App) SetReadActivity(repoID string, fileBrowserActive bool) {

@@ -39,6 +39,7 @@ interface WorkspaceProps {
   onOpenSettings: (tab?: SettingsTab) => void;
   onOpenCommands: () => void;
   onOpenDiffViewer: (request: DiffViewerRequest) => void;
+  onOpenMonitor: () => void;
   onViewLog: (repoId: string) => Promise<void>;
   onFileTreeWidthChange: (repoId: string, width: number) => void;
   onError: (error: unknown, fallback: string) => void;
@@ -112,6 +113,7 @@ export function Workspace({
   onOpenSettings,
   onOpenCommands,
   onOpenDiffViewer,
+  onOpenMonitor,
   onViewLog,
   onFileTreeWidthChange,
   onError,
@@ -221,6 +223,7 @@ export function Workspace({
       <RepoHeader
         repo={repo}
         fileSummary={fileSummary}
+        onOpenMonitor={onOpenMonitor}
         onOpenFolder={handleOpenFolder}
         onOpenTerminal={handleOpenTerminal}
         onOpenDiffViewer={() => onOpenDiffViewer({ kind: 'working', repoId: repo.id })}

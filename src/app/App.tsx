@@ -3,6 +3,7 @@ import { AddRepoMenu } from './components/add-repo-menu';
 import { AppFrame } from './components/common';
 import { CommandModal } from './components/command-modal';
 import { DiffViewerModal } from './components/diff-viewer-modal';
+import { ResourceMonitorModal } from './components/resource-monitor-modal';
 import { LogViewerModal } from './components/log-viewer-modal';
 import { PullAllDrawer } from './components/pull-all-drawer';
 import { SettingsModal } from './components/settings-modal';
@@ -92,6 +93,7 @@ function WorkspaceLayout({
         onRunCustomCommand={workspace.runRepoCommand}
         onOpenSettings={dialogs.openSettings}
         onOpenCommands={dialogs.openCommands}
+        onOpenMonitor={dialogs.openMonitor}
         onOpenDiffViewer={dialogs.openDiffViewer}
         onViewLog={workspace.openRepoLog}
         onFileTreeWidthChange={workspace.setFileTreeWidth}
@@ -162,6 +164,7 @@ function AppDialogs({
           dialogs.closeCommands();
         }}
       />
+      {dialogs.monitorOpen && <ResourceMonitorModal onClose={dialogs.closeMonitor} />}
       <LogViewerModal log={workspace.repoLog} onClose={workspace.closeRepoLog} />
       <DiffViewerModal
         request={dialogs.diffViewerRequest}
@@ -189,12 +192,16 @@ function LoadingState({ error, onRetry }: { error: string | null; onRetry: () =>
 }
 
 function useDialogs() {
+  const [monitorOpen, setMonitorOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai-commit');
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [diffViewerRequest, setDiffViewerRequest] = useState<DiffViewerRequest | null>(null);
   return {
+    monitorOpen,
+    openMonitor: () => setMonitorOpen(true),
+    closeMonitor: () => setMonitorOpen(false),
     addMenuOpen,
     openAddMenu: () => setAddMenuOpen(true),
     closeAddMenu: () => setAddMenuOpen(false),
