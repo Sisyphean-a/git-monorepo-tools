@@ -53,7 +53,7 @@ export function AddRepoMenu({ open, onClose, onAddFolder, onAddCategory }: AddRe
       <div
         style={{
           position: 'fixed',
-          top: 70,
+          top: 46,
           left: 18,
           width: 320,
           background: C.panel1,

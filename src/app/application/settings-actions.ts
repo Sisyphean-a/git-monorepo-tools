@@ -16,8 +16,7 @@ export function createSettingsActions(context: SettingsActionContext) {
   return {
     saveSettings: (value: AppSettings) => saveSettings(context, value),
     setFileTreeWidth: (repoId: string, width: number) => setFileTreeWidth(context, repoId, width),
-    toggleAutoScan: () => toggleAutoScan(context),
-    addScanRoot: () => addScanRoot(context),
+    addScanRoot: (onFolderPicked?: () => void) => addScanRoot(context, onFolderPicked),
     addCategory: (name: string) => addCategory(context, name),
     removeScanRoot: (path: string) => removeScanRoot(context, path),
     ignoreRepo: (path: string) => ignoreRepo(context, path),
@@ -49,17 +48,7 @@ function setFileTreeWidth(context: SettingsActionContext, repoId: string, width:
   });
 }
 
-function toggleAutoScan(context: SettingsActionContext) {
-  return persistSettings(context, {
-    ...context.settings,
-    gitBehavior: {
-      ...context.settings.gitBehavior,
-      autoScanEnabled: !context.settings.gitBehavior.autoScanEnabled,
-    },
-  });
-}
-
-async function addScanRoot(context: SettingsActionContext) {
+async function addScanRoot(context: SettingsActionContext, onFolderPicked?: () => void) {
   let folder: string | null;
   try {
     folder = await context.backend.pickFolder();
@@ -67,7 +56,10 @@ async function addScanRoot(context: SettingsActionContext) {
     context.reportError(error, '打开目录选择器失败');
     return null;
   }
-  if (!folder || hasScanRoot(context.settings, folder)) return null;
+  if (!folder) return null;
+  // Rule: 目录一经用户确认就通知调用方，入口弹窗立刻关闭，仓库发现刷新继续在后台执行。
+  onFolderPicked?.();
+  if (hasScanRoot(context.settings, folder)) return null;
   const rootName = folder.split(/[\\/]/).filter(Boolean).at(-1) ?? '自定义工作区';
   const next = persistSettings(context, {
     ...context.settings,

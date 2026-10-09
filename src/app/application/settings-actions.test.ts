@@ -81,6 +81,79 @@ test('addScanRoot returns the persisted settings even when the refresh fails', a
   assert.deepEqual(errors, ['目录已添加，但刷新失败']);
 });
 
+test('addScanRoot notifies the confirmed folder before the background refresh resolves', async () => {
+  const settings: AppSettings = { ...DEFAULT_SETTINGS, scanRoots: [] };
+  const events: string[] = [];
+  let finishRefresh: () => void = () => undefined;
+  const actions = createSettingsActions({
+    backend: { pickFolder: async () => 'D:/repos' },
+    settingsStore: {
+      loadSettings: () => settings,
+      saveSettings: () => undefined,
+      sanitizeSettings: value => value as AppSettings,
+    },
+    settings,
+    setSettings: () => undefined,
+    snapshot: null,
+    refreshSnapshot: () => new Promise<void>(resolve => { finishRefresh = resolve; }),
+    reportError: () => undefined,
+  });
+
+  const pending = actions.addScanRoot(() => events.push('picked'));
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  assert.deepEqual(events, ['picked']);
+  finishRefresh();
+  await pending;
+  assert.deepEqual(events, ['picked']);
+});
+
+test('addScanRoot stays silent when the folder picker is cancelled', async () => {
+  const settings: AppSettings = { ...DEFAULT_SETTINGS, scanRoots: [] };
+  const events: string[] = [];
+  const actions = createSettingsActions({
+    backend: { pickFolder: async () => null },
+    settingsStore: {
+      loadSettings: () => settings,
+      saveSettings: () => events.push('save'),
+      sanitizeSettings: value => value as AppSettings,
+    },
+    settings,
+    setSettings: () => events.push('state'),
+    snapshot: null,
+    refreshSnapshot: async () => { events.push('refresh'); },
+    reportError: () => undefined,
+  });
+
+  const next = await actions.addScanRoot(() => events.push('picked'));
+
+  assert.equal(next, null);
+  assert.deepEqual(events, []);
+});
+
+test('addScanRoot closes the entry popup for an already configured folder without refreshing', async () => {
+  const settings: AppSettings = { ...DEFAULT_SETTINGS, scanRoots: [{ path: 'D:/repos', category: '已有' }] };
+  const events: string[] = [];
+  const actions = createSettingsActions({
+    backend: { pickFolder: async () => 'D:/repos' },
+    settingsStore: {
+      loadSettings: () => settings,
+      saveSettings: () => events.push('save'),
+      sanitizeSettings: value => value as AppSettings,
+    },
+    settings,
+    setSettings: () => events.push('state'),
+    snapshot: null,
+    refreshSnapshot: async () => { events.push('refresh'); },
+    reportError: () => undefined,
+  });
+
+  const next = await actions.addScanRoot(() => events.push('picked'));
+
+  assert.equal(next, null);
+  assert.deepEqual(events, ['picked']);
+});
+
 test('addCategory returns the persisted settings for an open settings draft', () => {
   const settings: AppSettings = { ...DEFAULT_SETTINGS, customCategories: [] };
   const actions = createSettingsActions({

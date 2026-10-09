@@ -1,15 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useRepoTerminalStatuses } from '../features/terminal/terminal-workspace';
 import { C } from '../theme';
 import type { AppSettings, Repo } from '../domain/types';
 import { SidebarFooter } from './sidebar-footer';
 import { SidebarHeader } from './sidebar-header';
-import { SidebarRepoList, matchesRepoSearch } from './sidebar-repo-list';
+import { SidebarRepoList } from './sidebar-repo-list';
 
 interface SidebarProps {
   repos: Repo[];
   categories: string[];
-  scannedAt: string;
   settings: AppSettings;
   batchAction: 'pull' | 'push' | null;
   isRefreshing: boolean;
@@ -20,20 +19,14 @@ interface SidebarProps {
   onPushAll: () => void;
   onRefresh: () => void;
   onOpenAddMenu: () => void;
-  onToggleAutoScan: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
   const [search, setSearch] = useState('');
   const terminalStates = useRepoTerminalStatuses();
-  const query = search.trim().toLowerCase();
-  const matchedCount = useMemo(
-    () => query ? props.repos.filter(repo => matchesRepoSearch(repo, query)).length : props.repos.length,
-    [props.repos, query],
-  );
   return (
     <div style={sidebarStyle}>
-      <SidebarHeader repos={props.repos} matchedCount={matchedCount} search={search} onSearch={setSearch} onOpenAddMenu={props.onOpenAddMenu} />
+      <SidebarHeader search={search} onSearch={setSearch} onOpenAddMenu={props.onOpenAddMenu} />
       <SidebarRepoList
         repos={props.repos}
         categories={props.categories}
@@ -43,7 +36,14 @@ export function Sidebar(props: SidebarProps) {
         selectedRepoId={props.selectedRepoId}
         onSelectRepo={props.onSelectRepo}
       />
-      <SidebarFooter {...props} />
+      <SidebarFooter
+        batchAction={props.batchAction}
+        isRefreshing={props.isRefreshing}
+        recentError={props.recentError}
+        onPullAll={props.onPullAll}
+        onPushAll={props.onPushAll}
+        onRefresh={props.onRefresh}
+      />
     </div>
   );
 }

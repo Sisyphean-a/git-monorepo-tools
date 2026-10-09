@@ -6,6 +6,8 @@ export function AppFrame({ children }: { children: ReactNode }) {
     <div
       style={{
         height: '100vh',
+        // Rule: 原生标题栏与内容区同为 panel1，用一条分隔线区分标题栏和内容区。
+        borderTop: `1px solid ${C.border}`,
         display: 'flex',
         flexDirection: 'column',
         background: C.appBg,

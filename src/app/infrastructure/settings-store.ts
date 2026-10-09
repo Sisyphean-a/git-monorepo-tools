@@ -179,11 +179,6 @@ function sanitizeFileTreeWidths(value: unknown) {
   return widths;
 }
 
-export function formatAutoScanLabel(settings: AppSettings) {
-  if (!settings.gitBehavior.autoScanEnabled) return '自动扫描：关闭';
-  return `自动扫描：${settings.gitBehavior.autoScanIntervalSeconds} 秒`;
-}
-
 export const settingsStore: SettingsStore = {
   loadSettings,
   saveSettings,

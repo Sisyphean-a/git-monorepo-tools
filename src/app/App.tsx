@@ -62,7 +62,6 @@ function WorkspaceLayout({
 }) {
   const snapshot = workspace.snapshot!;
   const sidebar = workspace.sidebar.sidebarSnapshot ?? {
-    scannedAt: snapshot.scannedAt,
     categories: snapshot.categories,
     repos: snapshot.repos,
   };
@@ -72,7 +71,6 @@ function WorkspaceLayout({
       <Sidebar
         repos={sidebar.repos}
         categories={mergeCategories(sidebar.categories, workspace.settings.customCategories)}
-        scannedAt={sidebar.scannedAt}
         settings={workspace.settings}
         batchAction={batch.activeAction}
         isRefreshing={workspace.refreshing}
@@ -83,7 +81,6 @@ function WorkspaceLayout({
         onPushAll={() => void batch.runBatch('push')}
         onRefresh={() => void workspace.sidebar.refreshSidebar()}
         onOpenAddMenu={dialogs.openAddMenu}
-        onToggleAutoScan={workspace.toggleAutoScan}
       />
       <Workspace
         repoDetails={snapshot.repoDetails}
@@ -114,8 +111,9 @@ function AppDialogs({
   dialogs: DialogController;
 }) {
   const snapshot = workspace.snapshot!;
-  const addFolder = async () => {
-    if (await workspace.addScanRoot()) dialogs.closeAddMenu();
+  const addFolder = () => {
+    // Rule: 目录确认后立刻关闭入口弹窗，仓库发现刷新在后台继续（见 ADR-001）。
+    void workspace.addScanRoot(() => dialogs.closeAddMenu());
   };
   const addCategory = () => {
     const name = window.prompt('输入新分类名称');
@@ -127,7 +125,7 @@ function AppDialogs({
 
   return (
     <>
-      <AddRepoMenu open={dialogs.addMenuOpen} onClose={dialogs.closeAddMenu} onAddFolder={() => void addFolder()} onAddCategory={addCategory} />
+      <AddRepoMenu open={dialogs.addMenuOpen} onClose={dialogs.closeAddMenu} onAddFolder={addFolder} onAddCategory={addCategory} />
       <PullAllDrawer
         open={batch.open}
         operation={batch.operation}

@@ -46,6 +46,13 @@ test('repository images are shown as text because binary preview is not availabl
   assert.ok(renderMarkdown('![badge](https://example.com/a.png)').includes('<img src="https://example.com/a.png"'));
 });
 
+test('single newlines inside a paragraph render as hard breaks', () => {
+  const html = renderMarkdown('范围：workspace\n原因：空间不足\n\n下一段');
+  assert.equal((html.match(/<br>/g) ?? []).length, 1);
+  assert.ok(html.includes('范围：workspace<br>原因：空间不足'));
+  assert.ok(html.includes('<p>下一段</p>'));
+});
+
 test('gfm tables and task lists render', () => {
   const html = renderMarkdown('| a | b |\n| - | - |\n| 1 | 2 |\n\n- [x] done\n- [ ] todo');
   assert.ok(html.includes('<table>'));

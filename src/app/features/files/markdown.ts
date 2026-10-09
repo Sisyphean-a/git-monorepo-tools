@@ -42,7 +42,9 @@ export function renderMarkdown(content: string, options: MarkdownRenderOptions =
     },
   };
 
-  const instance = new Marked<string, string>({ gfm: true, breaks: false });
+  // Rule: 单换行按硬换行渲染，与 VS Code/Typora 预览一致；CommonMark 默认会把段内软换行折叠成空格，
+  // 而 .codestable 等仓库文档按“一行一个字段”书写，折叠后会丢失行结构。
+  const instance = new Marked<string, string>({ gfm: true, breaks: true });
   instance.use({ renderer });
   return instance.parse(content, { async: false });
 }
