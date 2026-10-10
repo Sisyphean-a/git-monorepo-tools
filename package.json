@@ -9,8 +9,10 @@
     "web:dev": "vite",
     "web:build": "vite build",
     "typecheck": "tsc --noEmit",
+    "check:format": "node scripts/check-format.mjs",
+    "check": "npm run check:format && npm run typecheck && npm test && npm run web:build && go vet ./... && go test ./... -count=1",
     "preview": "vite preview",
-    "test": "tsx --test \"src/**/*.test.{ts,tsx}\"",
+    "test": "tsx --test \"src/**/*.test.{ts,tsx}\" && node --test scripts/check-format.test.mjs",
     "wails:dev": "wails dev",
     "wails:build": "wails build"
   },

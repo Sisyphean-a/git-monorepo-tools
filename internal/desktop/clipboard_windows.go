@@ -122,8 +122,7 @@ func (Client) ReadClipboardImagePath() (string, error) {
 }
 
 func (Client) ReadClipboardText() (string, error) {
-	// OpenClipboard ownership is thread-affine. Keep the complete open/read/close
-	// sequence on one OS thread so Go's scheduler cannot invalidate the handle.
+	// Guarantee: 打开、读取和关闭剪贴板固定在同一 OS 线程，保持 Win32 的线程归属约束。
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -173,11 +172,41 @@ func readOpenClipboardFormat(format uint32, codePage uint32) (string, error) {
 	}
 	defer globalUnlock.Call(handle)
 
+	return readClipboardMemory(pointer, size, format, codePage)
+}
+
+func readClipboardMemory(address, size uintptr, format, codePage uint32) (string, error) {
+	if size > uintptr(^uint(0)>>1) {
+		return "", errors.New("剪贴板数据超过 Go 缓冲区可表示长度")
+	}
+	var units []uint16
+	var bytes []byte
+	var buffer *byte
 	if format == clipboardFormatUnicodeText {
-		units := unsafe.Slice((*uint16)(unsafe.Pointer(pointer)), int(size)/2)
+		units = make([]uint16, int(size)/2)
+		if len(units) == 0 {
+			return "", nil
+		}
+		size = uintptr(len(units)) * 2
+		buffer = (*byte)(unsafe.Pointer(&units[0]))
+	} else {
+		bytes = make([]byte, int(size))
+		if len(bytes) == 0 {
+			return "", nil
+		}
+		buffer = &bytes[0]
+	}
+	// Guarantee: 在 GlobalLock 的有效期内由 Win32 复制到 Go 缓冲区，不将原生整数地址转为 Go 指针；复制失败或不完整都显式报错。
+	var copied uintptr
+	if err := windows.ReadProcessMemory(windows.CurrentProcess(), address, buffer, size, &copied); err != nil {
+		return "", fmt.Errorf("复制 Windows 剪贴板格式 %d 数据失败: %w", format, err)
+	}
+	if copied != size {
+		return "", fmt.Errorf("复制 Windows 剪贴板格式 %d 数据不完整: %d/%d", format, copied, size)
+	}
+	if format == clipboardFormatUnicodeText {
 		return decodeClipboardUTF16(units), nil
 	}
-	bytes := unsafe.Slice((*byte)(unsafe.Pointer(pointer)), int(size))
 	return decodeClipboardBytes(bytes, codePage)
 }
 
