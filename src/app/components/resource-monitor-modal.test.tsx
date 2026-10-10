@@ -54,10 +54,11 @@ test('content shows launch baseline, deltas, peaks, whole-session trends and pro
     },
   };
   const html = renderToStaticMarkup(<ResourceMonitorContent state={state} error={null} />);
-  assert.match(html, /已运行 1 分 0 秒/);
-  assert.match(html, /已采样 2 次 · 平均间隔 1 分 0 秒/);
-  assert.match(html, /面板打开：每 5 秒（含子进程明细）/);
-  assert.match(html, /会话平均 3.5%/);
+  assert.match(html, /运行 1 分 0 秒/);
+  assert.match(html, /已采样 2 次（间隔 1 分 0 秒）/);
+  assert.match(html, /面板刷新：每 5 秒/);
+  assert.match(html, /会话开始/);
+  assert.match(html, /平均 3.5%/);
   assert.match(html, /较启动 \+50.0 MiB/);
   assert.match(html, /峰值 160.0 MiB/);
   assert.match(html, /较启动 \+60.0 MiB/);
@@ -70,6 +71,18 @@ test('content shows launch baseline, deltas, peaks, whole-session trends and pro
   assert.match(html, /−1.5 个\/秒/);
   assert.match(html, /会话平均 \+2.0 个\/秒/);
   assert.match(html, /不是 git.exe 单独占用/);
+
+  // Layout: 卡片顺序固定为 主进程资源 / 系统内存 / Go 指标 / File 对象 / 内存总体 / 子进程表。
+  assert.match(html, /主进程资源/);
+  assert.match(html, /当前进程 \(PID 4242\)/);
+  assert.match(html, /内存总体/);
+  assert.equal((html.match(/role="progressbar"/g) ?? []).length, 1);
+  assert.match(html, /可用物理内存/);
+  assert.match(html, /物理内存总量/);
+  assert.match(html, />50\.0%</);
+  for (const [before, after] of [['主进程资源', '系统内存'], ['系统内存', 'Go 堆'], ['Go 堆', 'File 内核对象'], ['File 内核对象', '内存总体'], ['内存总体', '子进程 · 1']]) {
+    assert.ok(html.indexOf(before!) < html.indexOf(after!), `${before} 应在 ${after} 之前`);
+  }
 
   const failed = renderToStaticMarkup(<ResourceMonitorContent state={{ ...state, snapshot: { ...state.snapshot!, system: { ...state.snapshot!.system, filePool: null, filePoolError: 'NTSTATUS 0xC0000022' } } }} error={null} />);
   assert.match(failed, /File 池标签读取失败：NTSTATUS 0xC0000022/);
@@ -113,14 +126,42 @@ test('content keeps unknown first-sample values distinct from measured ones', ()
   assert.match(html, /后台：每 30 秒/);
 });
 
+test('panel layout keeps one breakpoint rule for KPI rows and the Go grid', () => {
+  const state: ResourceMonitorState = {
+    revision: 1, live: false, startedAt: 1_000, sampleCount: 1, error: '',
+    samples: [{ capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100, heapBytes: 50, cpuPercent: null, pagedPoolBytes: 10, nonpagedPoolBytes: 20, filePoolCount: null, filePoolBytes: null }],
+    peaks: { privateBytes: 100, heapBytes: 50, cpuPercent: null, nonpagedPoolBytes: 20 },
+    averageCpuPercent: null, snapshot: null,
+  };
+  const html = renderToStaticMarkup(<ResourceMonitorContent state={state} error={null} />);
+  assert.equal((html.match(/class="resource-monitor-kpis"/g) ?? []).length, 3);
+  assert.equal((html.match(/class="resource-monitor-go"/g) ?? []).length, 1);
+  assert.match(html, /\.resource-monitor-kpis\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)\}/);
+  assert.match(html, /@media \(max-width:1150px\)\{\.resource-monitor-kpis,\.resource-monitor-go\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\}/);
+  assert.match(html, /@media \(min-width:1900px\)\{\.resource-monitor-go\{grid-template-columns:repeat\(6,minmax\(0,1fr\)\)\}\}/);
+});
+
 test('trend renders observed samples and distinguishes its two lines without color alone', () => {
   const samples: ResourceSample[] = [
     { capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100, heapBytes: 50, cpuPercent: null, pagedPoolBytes: 0, nonpagedPoolBytes: 0, filePoolCount: null, filePoolBytes: null },
     { capturedAt: 6_000, elapsedMillis: 6_000, intervalMillis: 5_000, privateBytes: 200, heapBytes: 80, cpuPercent: 1, pagedPoolBytes: 0, nonpagedPoolBytes: 0, filePoolCount: null, filePoolBytes: null },
   ];
-  const html = renderToStaticMarkup(<Trend title="主进程内存" samples={samples} first={s => s.privateBytes} second={s => s.heapBytes} firstLabel="私有提交" secondLabel="Go 堆" />);
-  assert.match(html, /私有提交/);
-  assert.match(html, /Go 堆/);
+  const html = renderToStaticMarkup(<Trend title="系统内核池" samples={samples} series={[
+    { label: '非分页池', color: '#3b82f6', select: s => s.nonpagedPoolBytes },
+    { label: '分页池', color: '#8b5cf6', dashed: true, select: s => s.pagedPoolBytes },
+  ]} />);
+  assert.match(html, /非分页池/);
+  assert.match(html, /分页池/);
   assert.match(html, /stroke-dasharray="5 4"/);
   assert.doesNotMatch(html, /暂无采样/);
+});
+
+test('trend omits the legend for a single series', () => {
+  const samples: ResourceSample[] = [
+    { capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100, heapBytes: 50, cpuPercent: null, pagedPoolBytes: 0, nonpagedPoolBytes: 0, filePoolCount: null, filePoolBytes: null },
+  ];
+  const html = renderToStaticMarkup(<Trend title="主进程私有提交" samples={samples} series={[{ label: '私有提交', color: '#3b82f6', select: s => s.privateBytes }]} />);
+  assert.match(html, /<circle/);
+  assert.doesNotMatch(html, /stroke-dasharray="5 4"/);
+  assert.equal((html.match(/border-top/g) ?? []).length, 0);
 });
