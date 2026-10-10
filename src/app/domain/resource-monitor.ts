@@ -9,6 +9,27 @@ export interface MonitoredProcess {
   cpuPercent: number | null;
   handleCount: number | null;
   error?: string;
+  terminalSessionId?: string;
+  label?: string;
+  labelError?: string;
+  attributionError?: string;
+}
+
+export interface FilePool {
+  count: number;
+  bytes: number;
+  netPerSecond: number | null;
+}
+
+export interface TerminalScope {
+  sessionId: string;
+  repoId: string;
+  repoPath: string;
+  shell: string;
+  startedAt: number;
+  rootPid: number;
+  rootCreatedAt: number;
+  error?: string;
 }
 
 export interface ResourceSnapshot {
@@ -18,8 +39,9 @@ export interface ResourceSnapshot {
   main: MonitoredProcess;
   // null 表示本次采样未枚举进程树（未采集），[] 表示已枚举且确实没有子进程。
   children: MonitoredProcess[] | null;
+  terminals: TerminalScope[] | null;
   go: { heapBytes: number; reservedBytes: number; heapObjects: number; goroutines: number; gcCount: number };
-  system: { totalBytes: number; availableBytes: number; pagedPoolBytes: number; nonpagedPoolBytes: number };
+  system: { totalBytes: number; availableBytes: number; pagedPoolBytes: number; nonpagedPoolBytes: number; filePool: FilePool | null; filePoolError?: string };
 }
 
 // Sample 是后端采样器返回的轻量历史点；intervalMillis 是它与上一点之间的单调毫秒间隔。
@@ -32,6 +54,8 @@ export interface ResourceSample {
   cpuPercent: number | null;
   pagedPoolBytes: number;
   nonpagedPoolBytes: number;
+  filePoolCount: number | null;
+  filePoolBytes: number | null;
 }
 
 export interface ResourcePeaks {
@@ -67,6 +91,12 @@ export function formatDelta(bytes: number | null): string {
   if (bytes === null) return '—';
   if (bytes < 0) return `−${formatMemory(-bytes)}`;
   return `+${formatMemory(bytes)}`;
+}
+
+export function formatCountRate(value: number | null): string {
+  if (value === null) return '—';
+  const sign = value > 0 ? '+' : value < 0 ? '−' : '';
+  return `${sign}${Math.abs(value).toFixed(1)} 个/秒`;
 }
 
 export function formatDuration(millis: number): string {
@@ -111,6 +141,8 @@ export interface SessionSummary {
   heap: SeriesSummary;
   nonpaged: SeriesSummary;
   paged: SeriesSummary;
+  fileCount: SeriesSummary;
+  fileBytes: SeriesSummary;
   peakPrivateBytes: number | null;
   peakHeapBytes: number;
   peakCpuPercent: number | null;
@@ -132,6 +164,8 @@ export function summarizeSession(state: ResourceMonitorState): SessionSummary | 
     heap: summarizeSeries(state.samples, sample => sample.heapBytes),
     nonpaged: summarizeSeries(state.samples, sample => sample.nonpagedPoolBytes),
     paged: summarizeSeries(state.samples, sample => sample.pagedPoolBytes),
+    fileCount: summarizeSeries(state.samples, sample => sample.filePoolCount),
+    fileBytes: summarizeSeries(state.samples, sample => sample.filePoolBytes),
     peakPrivateBytes: state.peaks.privateBytes,
     peakHeapBytes: state.peaks.heapBytes,
     peakCpuPercent: state.peaks.cpuPercent,

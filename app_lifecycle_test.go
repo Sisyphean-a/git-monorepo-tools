@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
+
+	"git-monorepo-tools/internal/terminal"
 )
 
 type lifecycleWorkspace struct {
@@ -103,7 +106,7 @@ func TestAppResourceMonitorSamplesFromStartupToShutdown(t *testing.T) {
 	if !state.Live {
 		t.Fatal("reopened panel must return to the live cadence")
 	}
-	if state.Snapshot == nil || state.Snapshot.Children == nil {
+	if state.Snapshot == nil || state.Snapshot.Children == nil || state.Snapshot.Terminals == nil {
 		t.Fatal("live observation must include the process tree, even when it is empty")
 	}
 	app.shutdown(context.Background())
@@ -114,6 +117,46 @@ func TestAppResourceMonitorSamplesFromStartupToShutdown(t *testing.T) {
 	after := app.monitor.State()
 	if after.Revision != frozen.Revision {
 		t.Fatalf("sampler kept running after shutdown: %d -> %d", frozen.Revision, after.Revision)
+	}
+}
+
+type resourceTerminalGateway struct {
+	terminalGateway
+}
+
+func (resourceTerminalGateway) ResourceSessions() []terminal.ResourceSession {
+	return []terminal.ResourceSession{{Info: terminal.TerminalSessionInfo{SessionID: "a", RepoID: "project", RepoPath: "E:/project", Shell: "pwsh", StartedAt: 1}, Root: terminal.ProcessIdentity{PID: 999999, CreatedAt: 2}, Error: "成员查询失败"}}
+}
+
+func TestAppConnectsTerminalOwnershipToLiveResourceSnapshot(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("原生资源采样仅支持 Windows")
+	}
+	app := newApp(&lifecycleWorkspace{}, nil)
+	app.terminals = resourceTerminalGateway{}
+	app.monitor.SetLive(true)
+	app.monitor.Start()
+	defer app.monitor.Stop()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		state, err := app.GetResourceMonitorState()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.Snapshot != nil {
+			if len(state.Snapshot.Terminals) != 1 {
+				t.Fatal("terminal provider was not wired into the sampler")
+			}
+			scope := state.Snapshot.Terminals[0]
+			if scope.SessionID != "a" || scope.RepoID != "project" || scope.RepoPath != "E:/project" || scope.RootPID != 999999 || scope.RootCreatedAt != 2 || scope.Error != "成员查询失败" {
+				t.Fatal("the composition root lost terminal attribution fields or its failure")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("live sample did not arrive")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

@@ -37,8 +37,8 @@ test('dialog shares diff dimensions, identifies system scope, and waits for the 
 test('content shows launch baseline, deltas, peaks, whole-session trends and process CPU', () => {
   const mebibyte = 1024 ** 2;
   const samples: ResourceSample[] = [
-    { capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100 * mebibyte, heapBytes: 10 * mebibyte, cpuPercent: null, pagedPoolBytes: 1 * mebibyte, nonpagedPoolBytes: 200 * mebibyte },
-    { capturedAt: 61_000, elapsedMillis: 61_000, intervalMillis: 60_000, privateBytes: 150 * mebibyte, heapBytes: 20 * mebibyte, cpuPercent: 4, pagedPoolBytes: 2 * mebibyte, nonpagedPoolBytes: 260 * mebibyte },
+    { capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100 * mebibyte, heapBytes: 10 * mebibyte, cpuPercent: null, pagedPoolBytes: 1 * mebibyte, nonpagedPoolBytes: 200 * mebibyte, filePoolCount: 1_000, filePoolBytes: 1 * mebibyte },
+    { capturedAt: 61_000, elapsedMillis: 61_000, intervalMillis: 60_000, privateBytes: 150 * mebibyte, heapBytes: 20 * mebibyte, cpuPercent: 4, pagedPoolBytes: 2 * mebibyte, nonpagedPoolBytes: 260 * mebibyte, filePoolCount: 1_120, filePoolBytes: 2 * mebibyte },
   ];
   const state: ResourceMonitorState = {
     revision: 2, live: true, startedAt: 1_000, sampleCount: 2, error: '', samples,
@@ -47,9 +47,10 @@ test('content shows launch baseline, deltas, peaks, whole-session trends and pro
     snapshot: {
       capturedAt: 61_000, elapsedMillis: 61_000, logicalCpus: 8,
       main: { pid: 4242, parentPid: 0, name: 'git-monorepo-tools.exe', createdAt: 1, workingSetBytes: 200 * mebibyte, privateBytes: 150 * mebibyte, cpuTimeMillis: 1_000, cpuPercent: 4, handleCount: 321 },
+      terminals: [],
       children: [{ pid: 9, parentPid: 4242, name: 'git.exe', createdAt: 2, workingSetBytes: 50 * mebibyte, privateBytes: 20 * mebibyte, cpuTimeMillis: 10, cpuPercent: 1.5, handleCount: 12 }],
       go: { heapBytes: 20 * mebibyte, reservedBytes: 30 * mebibyte, heapObjects: 1_000, goroutines: 12, gcCount: 3 },
-      system: { totalBytes: 16 * 1024 ** 3, availableBytes: 8 * 1024 ** 3, pagedPoolBytes: 2 * mebibyte, nonpagedPoolBytes: 260 * mebibyte },
+      system: { totalBytes: 16 * 1024 ** 3, availableBytes: 8 * 1024 ** 3, pagedPoolBytes: 2 * mebibyte, nonpagedPoolBytes: 260 * mebibyte, filePool: { count: 1_120, bytes: 2 * mebibyte, netPerSecond: -1.5 } },
     },
   };
   const html = renderToStaticMarkup(<ResourceMonitorContent state={state} error={null} />);
@@ -64,18 +65,28 @@ test('content shows launch baseline, deltas, peaks, whole-session trends and pro
   assert.match(html, /git\.exe/);
   assert.match(html, /1\.5%/);
   assert.doesNotMatch(html, /暂无采样/);
+  assert.match(html, /File 内核对象 · 全系统池标签/);
+  assert.match(html, /1,120/);
+  assert.match(html, /−1.5 个\/秒/);
+  assert.match(html, /会话平均 \+2.0 个\/秒/);
+  assert.match(html, /不是 git.exe 单独占用/);
+
+  const failed = renderToStaticMarkup(<ResourceMonitorContent state={{ ...state, snapshot: { ...state.snapshot!, system: { ...state.snapshot!.system, filePool: null, filePoolError: 'NTSTATUS 0xC0000022' } } }} error={null} />);
+  assert.match(failed, /File 池标签读取失败：NTSTATUS 0xC0000022/);
+  assert.doesNotMatch(failed, /−1.5 个\/秒/);
+  assert.match(failed, /150.0 MiB/);
 });
 
 test('distinguishes an unread process tree from an empty one', () => {
   const base = {
-    capturedAt: 61_000, elapsedMillis: 61_000, logicalCpus: 8,
+    capturedAt: 61_000, elapsedMillis: 61_000, logicalCpus: 8, terminals: [],
     main: { pid: 4242, parentPid: 0, name: 'tool.exe', createdAt: 1, workingSetBytes: 1, privateBytes: 1, cpuTimeMillis: 1, cpuPercent: 0, handleCount: 1 },
     go: { heapBytes: 1, reservedBytes: 1, heapObjects: 1, goroutines: 1, gcCount: 0 },
-    system: { totalBytes: 1, availableBytes: 1, pagedPoolBytes: 1, nonpagedPoolBytes: 1 },
+    system: { totalBytes: 1, availableBytes: 1, pagedPoolBytes: 1, nonpagedPoolBytes: 1, filePool: null },
   };
   const baseState: ResourceMonitorState = {
     revision: 2, live: true, startedAt: 1_000, sampleCount: 1, error: '',
-    samples: [{ capturedAt: 61_000, elapsedMillis: 61_000, intervalMillis: 60_000, privateBytes: 1, heapBytes: 1, cpuPercent: 0, pagedPoolBytes: 1, nonpagedPoolBytes: 1 }],
+    samples: [{ capturedAt: 61_000, elapsedMillis: 61_000, intervalMillis: 60_000, privateBytes: 1, heapBytes: 1, cpuPercent: 0, pagedPoolBytes: 1, nonpagedPoolBytes: 1, filePoolCount: null, filePoolBytes: null }],
     peaks: { privateBytes: 1, heapBytes: 1, cpuPercent: 0, nonpagedPoolBytes: 1 },
     averageCpuPercent: 0,
     snapshot: { ...base, children: null },
@@ -93,7 +104,7 @@ test('distinguishes an unread process tree from an empty one', () => {
 test('content keeps unknown first-sample values distinct from measured ones', () => {
   const state: ResourceMonitorState = {
     revision: 1, live: false, startedAt: 1_000, sampleCount: 1, error: '',
-    samples: [{ capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100, heapBytes: 50, cpuPercent: null, pagedPoolBytes: 10, nonpagedPoolBytes: 20 }],
+    samples: [{ capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100, heapBytes: 50, cpuPercent: null, pagedPoolBytes: 10, nonpagedPoolBytes: 20, filePoolCount: null, filePoolBytes: null }],
     peaks: { privateBytes: 100, heapBytes: 50, cpuPercent: null, nonpagedPoolBytes: 20 },
     averageCpuPercent: null, snapshot: null,
   };
@@ -104,8 +115,8 @@ test('content keeps unknown first-sample values distinct from measured ones', ()
 
 test('trend renders observed samples and distinguishes its two lines without color alone', () => {
   const samples: ResourceSample[] = [
-    { capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100, heapBytes: 50, cpuPercent: null, pagedPoolBytes: 0, nonpagedPoolBytes: 0 },
-    { capturedAt: 6_000, elapsedMillis: 6_000, intervalMillis: 5_000, privateBytes: 200, heapBytes: 80, cpuPercent: 1, pagedPoolBytes: 0, nonpagedPoolBytes: 0 },
+    { capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 0, privateBytes: 100, heapBytes: 50, cpuPercent: null, pagedPoolBytes: 0, nonpagedPoolBytes: 0, filePoolCount: null, filePoolBytes: null },
+    { capturedAt: 6_000, elapsedMillis: 6_000, intervalMillis: 5_000, privateBytes: 200, heapBytes: 80, cpuPercent: 1, pagedPoolBytes: 0, nonpagedPoolBytes: 0, filePoolCount: null, filePoolBytes: null },
   ];
   const html = renderToStaticMarkup(<Trend title="主进程内存" samples={samples} first={s => s.privateBytes} second={s => s.heapBytes} firstLabel="私有提交" secondLabel="Go 堆" />);
   assert.match(html, /私有提交/);

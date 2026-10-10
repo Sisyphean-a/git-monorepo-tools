@@ -37,6 +37,10 @@ func newTerminalHost(repoPath string, cols, rows int) (terminalHost, string, err
 	return &posixPtyHost{ptmx: ptmx, cmd: cmd}, shellLabel, nil
 }
 
+func (h *posixPtyHost) ResourceProcesses() (ProcessIdentity, []ProcessIdentity, error) {
+	return ProcessIdentity{}, nil, errors.New("终端资源归属目前仅支持 Windows")
+}
+
 func (h *posixPtyHost) Read(buffer []byte) (int, error) {
 	return h.ptmx.Read(buffer)
 }

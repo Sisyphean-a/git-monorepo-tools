@@ -29,14 +29,20 @@ type Sampler struct {
 	done           chan struct{}
 }
 
-func NewSampler() *Sampler {
+func NewSampler(readTerminals func() []TerminalScope) *Sampler {
 	return &Sampler{
 		interval:     DefaultSampleInterval,
 		liveInterval: LiveSampleInterval,
 		panelLease:   PanelLease,
 		samples:      []Sample{},
-		read:         ReadSnapshot,
-		wake:         make(chan struct{}, 1),
+		read: func(live bool) (Snapshot, error) {
+			var scopes []TerminalScope
+			if live && readTerminals != nil {
+				scopes = readTerminals()
+			}
+			return readSnapshot(live, scopes)
+		},
+		wake: make(chan struct{}, 1),
 	}
 }
 
@@ -127,6 +133,12 @@ func (s *Sampler) State() State {
 		if s.latest.Children != nil {
 			snapshot.Children = append([]Process{}, s.latest.Children...)
 		}
+		if s.latest.Terminals != nil {
+			snapshot.Terminals = append([]TerminalScope{}, s.latest.Terminals...)
+			for index := range snapshot.Terminals {
+				snapshot.Terminals[index].Members = append([]ProcessIdentity{}, s.latest.Terminals[index].Members...)
+			}
+		}
 		state.Snapshot = &snapshot
 	}
 	return state
@@ -188,6 +200,7 @@ func (s *Sampler) capture(live bool) {
 	}
 	s.lastError = ""
 	interval := attachCPU(&snapshot, s.previous, snapshot.LogicalCPUs)
+	attachFilePoolRate(&snapshot, s.previous)
 	s.previous = &snapshot
 	s.latest = &snapshot
 	sample := Sample{
@@ -195,6 +208,10 @@ func (s *Sampler) capture(live bool) {
 		PrivateBytes: snapshot.Main.PrivateBytes, HeapBytes: snapshot.Go.HeapBytes,
 		CPUPercent: snapshot.Main.CPUPercent, PagedPoolBytes: snapshot.System.PagedPoolBytes,
 		NonpagedPoolBytes: snapshot.System.NonpagedPoolBytes,
+	}
+	if file := snapshot.System.FilePool; file != nil {
+		sample.FilePoolCount = pointer(file.Count)
+		sample.FilePoolBytes = pointer(file.Bytes)
 	}
 	s.sampleCount++
 	s.samples = appendSample(s.samples, sample)
@@ -255,6 +272,8 @@ func mergeSamples(older, newer Sample) Sample {
 		HeapBytes:         (older.HeapBytes + newer.HeapBytes) / 2,
 		PagedPoolBytes:    (older.PagedPoolBytes + newer.PagedPoolBytes) / 2,
 		NonpagedPoolBytes: (older.NonpagedPoolBytes + newer.NonpagedPoolBytes) / 2,
+		FilePoolCount:     averageBytes(older.FilePoolCount, newer.FilePoolCount),
+		FilePoolBytes:     averageBytes(older.FilePoolBytes, newer.FilePoolBytes),
 	}
 	if merged.IntervalMillis > 0 && older.CPUPercent != nil && newer.CPUPercent != nil {
 		percent := (*older.CPUPercent*float64(older.IntervalMillis) + *newer.CPUPercent*float64(newer.IntervalMillis)) / float64(merged.IntervalMillis)
@@ -274,6 +293,6 @@ func averageBytes(left, right *uint64) *uint64 {
 	if right == nil {
 		return left
 	}
-	average := *left/2 + *right/2
+	average := *left/2 + *right/2 + (*left%2+*right%2)/2
 	return &average
 }

@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatDelta, formatDuration, formatMemory, summarizeSeries, summarizeSession, type ResourceMonitorState, type ResourceSample } from './resource-monitor.js';
+import { formatCountRate, formatDelta, formatDuration, formatMemory, summarizeSeries, summarizeSession, type ResourceMonitorState, type ResourceSample } from './resource-monitor.js';
 
 function sample(overrides: Partial<ResourceSample> = {}): ResourceSample {
   return {
     capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 1_000, privateBytes: 100,
-    heapBytes: 50, cpuPercent: null, pagedPoolBytes: 10, nonpagedPoolBytes: 20, ...overrides,
+    heapBytes: 50, cpuPercent: null, pagedPoolBytes: 10, nonpagedPoolBytes: 20, filePoolCount: null, filePoolBytes: null, ...overrides,
   };
 }
 
@@ -40,6 +40,18 @@ test('session summary keeps the launch baseline, average cadence and exact peaks
   assert.equal(summarizeSession(state([])), null);
 });
 
+test('File summaries skip unknown samples and keep counts distinct from byte totals', () => {
+  const summary = summarizeSession(state([
+    sample(),
+    sample({ elapsedMillis: 6_000, filePoolCount: 1_000, filePoolBytes: 400_000 }),
+    sample({ elapsedMillis: 11_000, filePoolCount: 1_500, filePoolBytes: 600_000 }),
+  ]));
+  assert.ok(summary);
+  assert.deepEqual(summary.fileCount, { start: 1_000, current: 1_500, delta: 500, perMinute: 6_000 });
+  assert.equal(summary.fileBytes.delta, 200_000);
+  assert.equal(summarizeSession(state([sample()]))?.fileCount.perMinute, null);
+});
+
 test('formats memory, deltas and session durations for display', () => {
   assert.equal(formatMemory(null), '—');
   assert.equal(formatMemory(1024 ** 3), '1.0 GiB');
@@ -50,4 +62,8 @@ test('formats memory, deltas and session durations for display', () => {
   assert.equal(formatDuration(59_400), '59 秒');
   assert.equal(formatDuration(90_000), '1 分 30 秒');
   assert.equal(formatDuration(3_600_000), '1 时 0 分');
+  assert.equal(formatCountRate(null), '—');
+  assert.equal(formatCountRate(0), '0.0 个/秒');
+  assert.equal(formatCountRate(100), '+100.0 个/秒');
+  assert.equal(formatCountRate(-2.25), '−2.3 个/秒');
 });

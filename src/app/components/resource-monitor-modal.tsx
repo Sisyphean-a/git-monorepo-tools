@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Activity, AlertTriangle, X } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
 import { createResourceMonitorView } from '../application/resource-monitor-view';
-import { formatDelta, formatDuration, formatMemory, summarizeSession, type ResourceMonitorState, type ResourceSample, type ResourceSnapshot } from '../domain/resource-monitor';
+import { formatCountRate, formatDelta, formatDuration, formatMemory, summarizeSession, type ResourceMonitorState, type ResourceSample } from '../domain/resource-monitor';
+import { ResourceProcessTree } from './resource-process-tree';
 import { C } from '../theme';
 import { INSPECTOR_BACKDROP_STYLE, INSPECTOR_DIALOG_STYLE } from './common';
 
@@ -76,6 +77,8 @@ export function ResourceMonitorContent({ state, error }: { state: ResourceMonito
   const snapshot = state?.snapshot ?? null;
   const summary = state ? summarizeSession(state) : null;
   const mainCpu = snapshot?.main.cpuPercent ?? null;
+  const file = snapshot?.system.filePool ?? null;
+  const fileError = snapshot?.system.filePoolError;
   return (
     <>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px', padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: C.panel2, fontSize: 11, color: C.textSecondary }}>
@@ -118,13 +121,26 @@ export function ResourceMonitorContent({ state, error }: { state: ResourceMonito
                 title="本次会话已保留采样的平均变化率，不代表本工具造成的增长" />
             </div>
             <Trend title="系统内核池" samples={state?.samples ?? []} first={sample => sample.nonpagedPoolBytes} second={sample => sample.pagedPoolBytes} firstLabel="非分页池" secondLabel="分页池" />
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+              <h3 style={{ margin: 0, fontSize: 12, fontWeight: 600 }}>File 内核对象 · 全系统池标签</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, margin: '16px 0 10px' }}>
+                <Metric label="存活数量" value={file?.count.toLocaleString() ?? '—'} title="全系统 File 标签的累计分配减累计释放，统计存活分配块，不是文件句柄数量" />
+                <Metric label="占用内存" value={formatMemory(file?.bytes ?? null)}
+                  hint={file && summary ? `较首次有效采样 ${formatDelta(summary.fileBytes.delta)}` : undefined} title="File 标签的分页池与非分页池占用合计，不能归属到本工具" />
+                <Metric label="每秒净增长" value={formatCountRate(file?.netPerSecond ?? null)}
+                  hint={file && summary?.fileCount.perMinute != null ? `会话平均 ${formatCountRate(summary.fileCount.perMinute / 60)}` : '首次或上次未采集时无对比'}
+                  title="最近两次采样的存活数量差除以实际秒数；负值表示净释放，持续增长是排查线索，不是泄漏归因" />
+              </div>
+              {fileError && <div role="alert" style={{ fontSize: 11, color: C.conflict, marginBottom: 8 }}>File 池标签读取失败：{fileError} · 将自动重试</div>}
+              <div style={{ ...smallLabel, fontSize: 10 }}>数量为 File 标签存活分配块；非文件句柄数，不代表本工具独占或已证明泄漏。</div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 18, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
               <Metric label="可用物理内存" value={formatMemory(snapshot?.system.availableBytes ?? null)} />
               <Metric label="物理内存总量" value={formatMemory(snapshot?.system.totalBytes ?? null)} />
             </div>
           </section>
         </div>
-        <ProcessTable snapshot={snapshot} />
+        <ResourceProcessTree snapshot={snapshot} />
         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, padding: '12px 4px 0', fontSize: 10, color: C.textSecondary }}>
           <span>系统内核池不归属于某个应用；这里只读监控，不清理内存。</span>
           <span>{state ? `更新于 ${new Date(snapshot?.capturedAt ?? state.startedAt).toLocaleTimeString()} · 历史自动降采样保留全程趋势` : '尚未采样'}</span>
@@ -175,21 +191,4 @@ export function Trend({ title, samples, first, second, firstLabel, secondLabel }
     </div>
     {!!samples.length && <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: 62, marginTop: 10, fontSize: 10, color: C.textSecondary }}><span>{new Date(samples[0]!.capturedAt).toLocaleTimeString()}</span><span>{new Date(samples.at(-1)!.capturedAt).toLocaleTimeString()}</span></div>}
   </div>;
-}
-
-function ProcessTable({ snapshot }: { snapshot: ResourceSnapshot | null }) {
-  const rows = snapshot ? snapshot.children : null;
-  const total = rows && !rows.some(row => row.privateBytes === null) ? rows.reduce((sum, row) => sum + (row.privateBytes ?? 0), 0) : null;
-  const cell: CSSProperties = { padding: '10px 12px', borderBottom: `1px solid ${C.border}`, textAlign: 'right', whiteSpace: 'nowrap', fontFamily: mono, fontSize: 11, color: C.textSecondary };
-  return <section style={{ ...sectionStyle, padding: 0, marginTop: 14 }}>
-    <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', padding: '14px 16px', borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}><h2 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>子进程 · {rows === null ? '未采集' : rows.length}</h2><span style={smallLabel}>面板打开时采集 · 私有提交合计 {formatMemory(total)}</span></div>
-    <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead><tr>{['进程', 'PID', '私有提交', '工作集（含共享）', 'CPU', '句柄'].map((label, index) => <th key={label} style={{ ...cell, textAlign: index === 0 ? 'left' : 'right', background: C.panel2, fontFamily: 'inherit', fontWeight: 500 }}>{label}</th>)}</tr></thead>
-      <tbody>{(rows ?? []).map(row => <tr key={`${row.pid}:${row.createdAt}`} title={row.error}><td style={{ ...cell, textAlign: 'left' }}><span style={{ color: C.textPrimary }}>{row.name}</span>{row.error && <div style={{ fontSize: 10, color: C.conflict, marginTop: 4, whiteSpace: 'normal' }}>读取失败：{row.error}</div>}</td><td style={cell}>{row.pid}</td><td style={cell}>{formatMemory(row.privateBytes)}</td><td style={cell}>{formatMemory(row.workingSetBytes)}</td><td style={cell}>{row.cpuPercent == null ? '—' : `${row.cpuPercent.toFixed(1)}%`}</td><td style={cell}>{row.handleCount?.toLocaleString() ?? '—'}</td></tr>)}</tbody>
-    </table>
-      {!snapshot && <div style={{ padding: 24, textAlign: 'center', ...smallLabel }}>尚无进程数据</div>}
-      {snapshot && rows === null && <div style={{ padding: 24, textAlign: 'center', ...smallLabel }}>正在采集进程树…</div>}
-      {rows?.length === 0 && <div style={{ padding: 24, textAlign: 'center', ...smallLabel }}>当前没有子进程</div>}
-    </div>
-  </section>;
 }

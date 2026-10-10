@@ -77,13 +77,13 @@ func TestSnapshotDoesNotLeakQueryHandles(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	for range 2 {
-		if _, err := readPlatformSnapshot(false); err != nil {
+		if _, err := readPlatformSnapshot(false, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
 	before := currentHandleCount(t)
 	for range 50 {
-		if _, err := readPlatformSnapshot(false); err != nil {
+		if _, err := readPlatformSnapshot(false, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -276,8 +276,74 @@ func TestMergeSamplesWeightsCPUByInterval(t *testing.T) {
 	}
 }
 
+func TestSamplerStopWaitsForInFlightAndAddsOneClosingSample(t *testing.T) {
+	sampler := NewSampler(nil)
+	entered, release := make(chan struct{}), make(chan struct{})
+	calls := 0
+	sampler.read = func(bool) (Snapshot, error) {
+		calls++
+		if calls == 1 {
+			close(entered)
+			<-release
+		}
+		return Snapshot{ElapsedMillis: uint64(calls)}, nil
+	}
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+		sampler.Stop()
+	}()
+	sampler.Start()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial sample did not begin")
+	}
+	beforeStop := sampler.State().SampleCount
+	stopped := make(chan struct{})
+	go func() {
+		sampler.Stop()
+		close(stopped)
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		sampler.mu.Lock()
+		started := sampler.started
+		sampler.mu.Unlock()
+		if !started {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Stop did not request shutdown")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case <-stopped:
+		t.Fatal("Stop returned before the in-flight sample finished")
+	default:
+	}
+	close(release)
+	released = true
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop did not finish after the reader was released")
+	}
+	state := sampler.State()
+	if beforeStop != 0 || calls != 2 || state.SampleCount != 2 || state.Samples[0].ElapsedMillis != 1 || state.Samples[1].ElapsedMillis != 2 {
+		t.Fatalf("Stop must retain the in-flight sample and exactly one closing sample: before=%d calls=%d state=%+v", beforeStop, calls, state)
+	}
+	sampler.Stop()
+	if sampler.State().SampleCount != 2 {
+		t.Fatal("a repeated Stop must not add another closing sample")
+	}
+}
+
 func TestSamplerStateAndLifecycle(t *testing.T) {
-	sampler := NewSampler()
+	sampler := NewSampler(nil)
 	sampler.Stop()
 	if state := sampler.State(); state.Snapshot != nil || state.SampleCount != 0 || state.Samples == nil {
 		t.Fatalf("unexpected initial state: %+v", state)
@@ -319,13 +385,14 @@ func TestSamplerStateAndLifecycle(t *testing.T) {
 	waitFor(6)
 	beforeStop := sampler.State().SampleCount
 	sampler.Stop()
-	if after := sampler.State().SampleCount; after != beforeStop+1 {
+	// Rule: State 与 Stop 不是原子操作，在途采样也会收尾；精确补记次数由阻塞读取器的关闭测试验证。
+	if after := sampler.State().SampleCount; after <= beforeStop {
 		t.Fatalf("shutdown must record the closing boundary: %d -> %d", beforeStop, after)
 	}
 }
 
 func TestObserveRenewsPanelLeaseAndExpiresToBackground(t *testing.T) {
-	sampler := NewSampler()
+	sampler := NewSampler(nil)
 	sampler.panelLease = 20 * time.Millisecond
 	if state := sampler.Observe(); !state.Live {
 		t.Fatal("first observe must activate live sampling")
@@ -342,7 +409,7 @@ func TestObserveRenewsPanelLeaseAndExpiresToBackground(t *testing.T) {
 }
 
 func TestSamplerIntervalFollowsLiveMode(t *testing.T) {
-	sampler := NewSampler()
+	sampler := NewSampler(nil)
 	if got := sampler.nextInterval(); got != DefaultSampleInterval {
 		t.Fatalf("idle interval: %v", got)
 	}
@@ -357,7 +424,7 @@ func TestSamplerIntervalFollowsLiveMode(t *testing.T) {
 }
 
 func TestSamplerKeepsBackgroundCadenceAfterLiveEnds(t *testing.T) {
-	sampler := NewSampler()
+	sampler := NewSampler(nil)
 	sampler.interval = 5 * time.Millisecond
 	sampler.liveInterval = 5 * time.Millisecond
 	sampler.Start()
@@ -384,7 +451,7 @@ func TestSamplerKeepsBackgroundCadenceAfterLiveEnds(t *testing.T) {
 }
 
 func TestRecordCPUWeightsBySampledInterval(t *testing.T) {
-	sampler := NewSampler()
+	sampler := NewSampler(nil)
 	sampler.recordCPU(Sample{IntervalMillis: 1_000, CPUPercent: pointer(10.0)})
 	sampler.recordCPU(Sample{IntervalMillis: 3_000})
 	sampler.recordCPU(Sample{IntervalMillis: 3_000, CPUPercent: pointer(20.0)})
@@ -395,7 +462,7 @@ func TestRecordCPUWeightsBySampledInterval(t *testing.T) {
 }
 
 func TestSamplerKeepsLastSnapshotAndRecoversAfterReadFailure(t *testing.T) {
-	sampler := NewSampler()
+	sampler := NewSampler(nil)
 	failing := false
 	sampler.read = func(live bool) (Snapshot, error) {
 		if failing {
@@ -423,7 +490,7 @@ func TestSamplerKeepsLastSnapshotAndRecoversAfterReadFailure(t *testing.T) {
 }
 
 func TestStateJSONContract(t *testing.T) {
-	sampler := NewSampler()
+	sampler := NewSampler(nil)
 	sampler.sampleOnce()
 	encoded, err := json.Marshal(sampler.State())
 	if err != nil {

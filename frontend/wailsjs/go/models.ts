@@ -1,5 +1,21 @@
 export namespace monitor {
 	
+	export class FilePool {
+	    count: number;
+	    bytes: number;
+	    netPerSecond?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FilePool(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.count = source["count"];
+	        this.bytes = source["bytes"];
+	        this.netPerSecond = source["netPerSecond"];
+	    }
+	}
 	export class GoMemory {
 	    heapBytes: number;
 	    reservedBytes: number;
@@ -49,6 +65,10 @@ export namespace monitor {
 	    cpuPercent?: number;
 	    handleCount?: number;
 	    error?: string;
+	    terminalSessionId?: string;
+	    label?: string;
+	    labelError?: string;
+	    attributionError?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Process(source);
@@ -66,6 +86,24 @@ export namespace monitor {
 	        this.cpuPercent = source["cpuPercent"];
 	        this.handleCount = source["handleCount"];
 	        this.error = source["error"];
+	        this.terminalSessionId = source["terminalSessionId"];
+	        this.label = source["label"];
+	        this.labelError = source["labelError"];
+	        this.attributionError = source["attributionError"];
+	    }
+	}
+	export class ProcessIdentity {
+	    PID: number;
+	    CreatedAt: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProcessIdentity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.PID = source["PID"];
+	        this.CreatedAt = source["CreatedAt"];
 	    }
 	}
 	export class Sample {
@@ -77,6 +115,8 @@ export namespace monitor {
 	    cpuPercent?: number;
 	    pagedPoolBytes: number;
 	    nonpagedPoolBytes: number;
+	    filePoolCount?: number;
+	    filePoolBytes?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Sample(source);
@@ -92,6 +132,8 @@ export namespace monitor {
 	        this.cpuPercent = source["cpuPercent"];
 	        this.pagedPoolBytes = source["pagedPoolBytes"];
 	        this.nonpagedPoolBytes = source["nonpagedPoolBytes"];
+	        this.filePoolCount = source["filePoolCount"];
+	        this.filePoolBytes = source["filePoolBytes"];
 	    }
 	}
 	export class SystemMemory {
@@ -99,6 +141,8 @@ export namespace monitor {
 	    availableBytes: number;
 	    pagedPoolBytes: number;
 	    nonpagedPoolBytes: number;
+	    filePool?: FilePool;
+	    filePoolError?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SystemMemory(source);
@@ -110,6 +154,52 @@ export namespace monitor {
 	        this.availableBytes = source["availableBytes"];
 	        this.pagedPoolBytes = source["pagedPoolBytes"];
 	        this.nonpagedPoolBytes = source["nonpagedPoolBytes"];
+	        this.filePool = this.convertValues(source["filePool"], FilePool);
+	        this.filePoolError = source["filePoolError"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TerminalScope {
+	    sessionId: string;
+	    repoId: string;
+	    repoPath: string;
+	    shell: string;
+	    startedAt: number;
+	    rootPid: number;
+	    rootCreatedAt: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalScope(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.repoId = source["repoId"];
+	        this.repoPath = source["repoPath"];
+	        this.shell = source["shell"];
+	        this.startedAt = source["startedAt"];
+	        this.rootPid = source["rootPid"];
+	        this.rootCreatedAt = source["rootCreatedAt"];
+	        this.error = source["error"];
 	    }
 	}
 	export class Snapshot {
@@ -118,6 +208,7 @@ export namespace monitor {
 	    logicalCpus: number;
 	    main: Process;
 	    children: Process[];
+	    terminals: TerminalScope[];
 	    go: GoMemory;
 	    system: SystemMemory;
 	
@@ -132,6 +223,7 @@ export namespace monitor {
 	        this.logicalCpus = source["logicalCpus"];
 	        this.main = this.convertValues(source["main"], Process);
 	        this.children = this.convertValues(source["children"], Process);
+	        this.terminals = this.convertValues(source["terminals"], TerminalScope);
 	        this.go = this.convertValues(source["go"], GoMemory);
 	        this.system = this.convertValues(source["system"], SystemMemory);
 	    }
@@ -200,6 +292,7 @@ export namespace monitor {
 		    return a;
 		}
 	}
+	
 
 }
 

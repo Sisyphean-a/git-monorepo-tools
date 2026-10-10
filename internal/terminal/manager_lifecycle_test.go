@@ -29,6 +29,10 @@ func newScriptedTerminalHost(output string) *scriptedTerminalHost {
 	}
 }
 
+func (h *scriptedTerminalHost) ResourceProcesses() (ProcessIdentity, []ProcessIdentity, error) {
+	return ProcessIdentity{}, []ProcessIdentity{}, nil
+}
+
 func (h *scriptedTerminalHost) Read(buffer []byte) (int, error) {
 	return h.reader.Read(buffer)
 }

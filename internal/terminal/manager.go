@@ -18,6 +18,7 @@ type terminalHost interface {
 	Kill() error
 	Resize(cols, rows int) error
 	Wait() (int, error)
+	ResourceProcesses() (ProcessIdentity, []ProcessIdentity, error)
 }
 
 type Manager struct {
@@ -28,10 +29,10 @@ type Manager struct {
 }
 
 type terminalSession struct {
-	id        string
-	repoID    string
-	repoPath  string
-	repoInfo  os.FileInfo
+	id       string
+	repoID   string
+	repoPath string
+	repoInfo os.FileInfo
 	// isDefault marks the per-repository session eligible for EnsureSession reuse.
 	isDefault bool
 	shell     string

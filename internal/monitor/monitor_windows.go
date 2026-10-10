@@ -18,6 +18,7 @@ var (
 	getPerformance = psapi.NewProc("GetPerformanceInfo")
 	getHandleCount = kernel.NewProc("GetProcessHandleCount")
 	getTickCount   = kernel.NewProc("GetTickCount64")
+	querySystem    = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtQuerySystemInformation")
 )
 
 type processMemory struct {
@@ -34,7 +35,7 @@ type performanceInfo struct {
 }
 
 // Flow: 主进程与系统计数直接读取；只有 includeProcesses 为真时才枚举进程表并构建进程树。
-func readPlatformSnapshot(includeProcesses bool) (Snapshot, error) {
+func readPlatformSnapshot(includeProcesses bool, terminals []TerminalScope) (Snapshot, error) {
 	root := uint32(os.Getpid())
 	main, err := readProcess(processIdentity{pid: root, name: executableName()})
 	if err != nil {
@@ -59,6 +60,11 @@ func readPlatformSnapshot(includeProcesses bool) (Snapshot, error) {
 			PagedPoolBytes:    uint64(info.KernelPaged) * uint64(info.PageSize),
 			NonpagedPoolBytes: uint64(info.KernelNonpaged) * uint64(info.PageSize),
 		},
+	}
+	result.System.FilePool, err = readFilePool()
+	if err != nil {
+		// Failure: File 查询有独立错误和未知值，不能把失败伪装成零，也不抹掉已成功读取的进程与系统总量。
+		result.System.FilePoolError = err.Error()
 	}
 	// Guarantee: 未枚举进程树时 children 保持 null（未采集），不能和“确实没有子进程”的 [] 混淆。
 	if !includeProcesses {
@@ -99,6 +105,34 @@ func readPlatformSnapshot(includeProcesses bool) (Snapshot, error) {
 			queue = append(queue, child)
 		}
 	}
+	// Flow: Job 归属可以保留中间父进程已退出的存活成员；只补充身份仍匹配的成员，不能把被复用的 PID 纳入快照。
+	for index := range terminals {
+		scope := &terminals[index]
+		for _, identity := range scope.Members {
+			if seen[identity.PID] || identity.PID == root {
+				continue
+			}
+			entry, found := rows[identity.PID]
+			if !found {
+				continue
+			}
+			process, readErr := readProcess(processIdentity{pid: identity.PID, parentPid: entry.ParentProcessID, name: windows.UTF16ToString(entry.ExeFile[:])})
+			if readErr != nil {
+				if !errors.Is(readErr, windows.ERROR_INVALID_PARAMETER) && !errors.Is(readErr, windows.ERROR_NOT_FOUND) {
+					if scope.Error != "" {
+						scope.Error += "；"
+					}
+					scope.Error += fmt.Sprintf("成员 PID %d 资源读取失败：%v", identity.PID, readErr)
+				}
+				continue
+			}
+			if process.CreatedAt != identity.CreatedAt {
+				continue
+			}
+			seen[identity.PID] = true
+			result.Children = append(result.Children, process)
+		}
+	}
 	sort.Slice(result.Children, func(i, j int) bool { return result.Children[i].PID < result.Children[j].PID })
 	return result, nil
 }
@@ -135,6 +169,72 @@ func processEntries() (map[uint32]windows.ProcessEntry32, error) {
 	}
 }
 
+const systemPoolTagInformation = 22
+
+type poolTag struct {
+	Tag                           [4]byte
+	PagedAllocs, PagedFrees       uint32
+	PagedUsed                     uintptr
+	NonpagedAllocs, NonpagedFrees uint32
+	NonpagedUsed                  uintptr
+}
+
+type poolTagInformation struct {
+	Count uint32
+	First poolTag
+}
+
+func readFilePool() (*FilePool, error) {
+	if err := querySystem.Find(); err != nil {
+		return nil, fmt.Errorf("NtQuerySystemInformation 不可用：%w", err)
+	}
+	buffer := make([]byte, unsafe.Sizeof(poolTagInformation{}))
+	for {
+		var needed uint32
+		status, _, _ := querySystem.Call(systemPoolTagInformation, uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)), uintptr(unsafe.Pointer(&needed)))
+		code := uint32(status)
+		if code == 0xc0000004 || code == 0xc0000023 {
+			// Flow: 系统标签表可在查询间增长，按返回长度或扩容后的长度重试，只受 Native API 的 ULONG 长度与地址空间约束。
+			size := max(uint64(needed), uint64(len(buffer))*2)
+			if size > uint64(^uint32(0)) || size > uint64(^uint(0)>>1) {
+				return nil, fmt.Errorf("池标签表超过 Native API 可表示长度：%d", size)
+			}
+			buffer = make([]byte, int(size))
+			continue
+		}
+		if int32(code) < 0 {
+			return nil, fmt.Errorf("NtQuerySystemInformation：NTSTATUS 0x%08X", code)
+		}
+		if needed > uint32(len(buffer)) {
+			return nil, fmt.Errorf("池标签返回长度无效：%d", needed)
+		}
+		return parseFilePool(buffer[:needed])
+	}
+}
+
+func parseFilePool(buffer []byte) (*FilePool, error) {
+	offset, stride := int(unsafe.Offsetof(poolTagInformation{}.First)), int(unsafe.Sizeof(poolTag{}))
+	if len(buffer) < offset {
+		return nil, errors.New("池标签返回头部不完整")
+	}
+	count := uint64(*(*uint32)(unsafe.Pointer(&buffer[0])))
+	if count > uint64((len(buffer)-offset)/stride) {
+		return nil, errors.New("池标签返回条目不完整")
+	}
+	for index := 0; index < int(count); index++ {
+		entry := *(*poolTag)(unsafe.Pointer(&buffer[offset+index*stride]))
+		if entry.Tag != [4]byte{'F', 'i', 'l', 'e'} {
+			continue
+		}
+		// Rule: 旧版池标签累计分配/释放计数为 ULONG，先按 uint32 模运算求差，避免开机累计计数回绕造成虚假巨量增长。
+		return &FilePool{
+			Count: uint64(entry.PagedAllocs-entry.PagedFrees) + uint64(entry.NonpagedAllocs-entry.NonpagedFrees),
+			Bytes: uint64(entry.PagedUsed) + uint64(entry.NonpagedUsed),
+		}, nil
+	}
+	return nil, errors.New("系统未返回 File 池标签")
+}
+
 type processIdentity struct {
 	pid       uint32
 	parentPid uint32
@@ -167,12 +267,13 @@ func readProcess(identity processIdentity) (Process, error) {
 	if ok == 0 {
 		return Process{}, callErr
 	}
+	label, labelError := processLabel(handle, identity.name)
 	working, private := uint64(memory.WorkingSet), uint64(memory.Private)
 	ticks := func(value windows.Filetime) uint64 { return uint64(value.HighDateTime)<<32 | uint64(value.LowDateTime) }
 	cpu := float64(ticks(user)+ticks(system)) / 10000
 	return Process{
 		PID: identity.pid, ParentPID: identity.parentPid, Name: identity.name,
 		CreatedAt: created.Nanoseconds() / 1e6, WorkingSetBytes: &working, PrivateBytes: &private,
-		CPUTimeMillis: &cpu, HandleCount: &count,
+		CPUTimeMillis: &cpu, HandleCount: &count, Label: label, LabelError: labelError,
 	}, nil
 }

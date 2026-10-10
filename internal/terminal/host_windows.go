@@ -24,7 +24,9 @@ type conptyHost struct {
 	process windows.Handle
 	job     windows.Handle
 
-	closeOnce sync.Once
+	closeOnce     sync.Once
+	handlesMu     sync.RWMutex
+	handlesClosed bool
 }
 
 type windowsEnvironmentVariable struct {
@@ -107,8 +109,11 @@ func (h *conptyHost) Resize(cols, rows int) error {
 
 func (h *conptyHost) Wait() (int, error) {
 	defer func() {
+		h.handlesMu.Lock()
+		defer h.handlesMu.Unlock()
 		_ = closeHandle(h.job)
 		_ = closeHandle(h.process)
+		h.handlesClosed = true
 	}()
 
 	status, err := windows.WaitForSingleObject(h.process, windows.INFINITE)
@@ -127,6 +132,11 @@ func (h *conptyHost) Wait() (int, error) {
 }
 
 func (h *conptyHost) Kill() error {
+	h.handlesMu.RLock()
+	defer h.handlesMu.RUnlock()
+	if h.handlesClosed {
+		return nil
+	}
 	if h.job != 0 {
 		return windows.TerminateJobObject(h.job, 1)
 	}

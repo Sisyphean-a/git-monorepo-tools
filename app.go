@@ -55,6 +55,7 @@ type terminalGateway interface {
 	WriteInput(string, string) error
 	Resize(string, int, int) error
 	CloseAll()
+	ResourceSessions() []terminal.ResourceSession
 }
 
 type App struct {
@@ -76,15 +77,31 @@ func NewApp() (*App, error) {
 }
 
 func newApp(workspace workspaceService, desktopClient desktopGateway) *App {
-	return &App{workspace: workspace, desktop: desktopClient, monitor: monitor.NewSampler()}
+	app := &App{workspace: workspace, desktop: desktopClient}
+	app.monitor = monitor.NewSampler(func() []monitor.TerminalScope {
+		if app.terminals == nil {
+			return nil
+		}
+		resources := app.terminals.ResourceSessions()
+		result := make([]monitor.TerminalScope, 0, len(resources))
+		for _, resource := range resources {
+			scope := monitor.TerminalScope{SessionID: resource.Info.SessionID, RepoID: resource.Info.RepoID, RepoPath: resource.Info.RepoPath, Shell: resource.Info.Shell, StartedAt: resource.Info.StartedAt, RootPID: resource.Root.PID, RootCreatedAt: resource.Root.CreatedAt, Error: resource.Error}
+			for _, member := range resource.Members {
+				scope.Members = append(scope.Members, monitor.ProcessIdentity{PID: member.PID, CreatedAt: member.CreatedAt})
+			}
+			result = append(result, scope)
+		}
+		return result
+	})
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.monitor.Start()
 	a.terminals = terminal.NewManager(func(name string, payload any) {
 		wruntime.EventsEmit(ctx, name, payload)
 	})
+	a.monitor.Start()
 	maintenanceCtx, cancel := context.WithCancel(ctx)
 	a.maintenanceCancel = cancel
 	a.maintenanceDone = make(chan struct{})

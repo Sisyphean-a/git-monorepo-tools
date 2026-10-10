@@ -6,16 +6,20 @@ import (
 )
 
 type Process struct {
-	PID             uint32   `json:"pid"`
-	ParentPID       uint32   `json:"parentPid"`
-	Name            string   `json:"name"`
-	CreatedAt       int64    `json:"createdAt"`
-	WorkingSetBytes *uint64  `json:"workingSetBytes"`
-	PrivateBytes    *uint64  `json:"privateBytes"`
-	CPUTimeMillis   *float64 `json:"cpuTimeMillis"`
-	CPUPercent      *float64 `json:"cpuPercent"`
-	HandleCount     *uint32  `json:"handleCount"`
-	Error           string   `json:"error,omitempty"`
+	PID               uint32   `json:"pid"`
+	ParentPID         uint32   `json:"parentPid"`
+	Name              string   `json:"name"`
+	CreatedAt         int64    `json:"createdAt"`
+	WorkingSetBytes   *uint64  `json:"workingSetBytes"`
+	PrivateBytes      *uint64  `json:"privateBytes"`
+	CPUTimeMillis     *float64 `json:"cpuTimeMillis"`
+	CPUPercent        *float64 `json:"cpuPercent"`
+	HandleCount       *uint32  `json:"handleCount"`
+	Error             string   `json:"error,omitempty"`
+	TerminalSessionID string   `json:"terminalSessionId,omitempty"`
+	Label             string   `json:"label,omitempty"`
+	LabelError        string   `json:"labelError,omitempty"`
+	AttributionError  string   `json:"attributionError,omitempty"`
 }
 
 type GoMemory struct {
@@ -26,21 +30,48 @@ type GoMemory struct {
 	GCCount       uint32 `json:"gcCount"`
 }
 
+// Rule: FilePool 统计全系统 File 标签的存活分配块，不是本工具的句柄或可归属到进程的对象。
+type FilePool struct {
+	Count        uint64   `json:"count"`
+	Bytes        uint64   `json:"bytes"`
+	NetPerSecond *float64 `json:"netPerSecond"`
+}
+
 type SystemMemory struct {
-	TotalBytes        uint64 `json:"totalBytes"`
-	AvailableBytes    uint64 `json:"availableBytes"`
-	PagedPoolBytes    uint64 `json:"pagedPoolBytes"`
-	NonpagedPoolBytes uint64 `json:"nonpagedPoolBytes"`
+	TotalBytes        uint64    `json:"totalBytes"`
+	AvailableBytes    uint64    `json:"availableBytes"`
+	PagedPoolBytes    uint64    `json:"pagedPoolBytes"`
+	NonpagedPoolBytes uint64    `json:"nonpagedPoolBytes"`
+	FilePool          *FilePool `json:"filePool"`
+	FilePoolError     string    `json:"filePoolError,omitempty"`
+}
+
+type ProcessIdentity struct {
+	PID       uint32
+	CreatedAt int64
+}
+
+type TerminalScope struct {
+	SessionID     string            `json:"sessionId"`
+	RepoID        string            `json:"repoId"`
+	RepoPath      string            `json:"repoPath"`
+	Shell         string            `json:"shell"`
+	StartedAt     int64             `json:"startedAt"`
+	RootPID       uint32            `json:"rootPid"`
+	RootCreatedAt int64             `json:"rootCreatedAt"`
+	Error         string            `json:"error,omitempty"`
+	Members       []ProcessIdentity `json:"-"`
 }
 
 type Snapshot struct {
-	CapturedAt    int64        `json:"capturedAt"`
-	ElapsedMillis uint64       `json:"elapsedMillis"`
-	LogicalCPUs   int          `json:"logicalCpus"`
-	Main          Process      `json:"main"`
-	Children      []Process    `json:"children"`
-	Go            GoMemory     `json:"go"`
-	System        SystemMemory `json:"system"`
+	CapturedAt    int64           `json:"capturedAt"`
+	ElapsedMillis uint64          `json:"elapsedMillis"`
+	LogicalCPUs   int             `json:"logicalCpus"`
+	Main          Process         `json:"main"`
+	Children      []Process       `json:"children"`
+	Terminals     []TerminalScope `json:"terminals"`
+	Go            GoMemory        `json:"go"`
+	System        SystemMemory    `json:"system"`
 }
 
 // Sample 是历史序列中的一次轻量采样，只保留数值与可比对的时间基准。
@@ -53,6 +84,8 @@ type Sample struct {
 	CPUPercent        *float64 `json:"cpuPercent"`
 	PagedPoolBytes    uint64   `json:"pagedPoolBytes"`
 	NonpagedPoolBytes uint64   `json:"nonpagedPoolBytes"`
+	FilePoolCount     *uint64  `json:"filePoolCount"`
+	FilePoolBytes     *uint64  `json:"filePoolBytes"`
 }
 
 // Peak 由原始采样直接更新，不受历史降采样影响，保证峰值精确。
@@ -89,9 +122,17 @@ const (
 // Effect: 仅查询当前进程、Go 运行时与系统计数；includeProcesses 为真时额外枚举当前进程树。
 // Guarantee: 不启动后台采样、不强制 GC、不清理系统内存。
 func ReadSnapshot(includeProcesses bool) (Snapshot, error) {
-	result, err := readPlatformSnapshot(includeProcesses)
+	return readSnapshot(includeProcesses, nil)
+}
+
+func readSnapshot(includeProcesses bool, terminals []TerminalScope) (Snapshot, error) {
+	result, err := readPlatformSnapshot(includeProcesses, terminals)
 	if err != nil {
 		return Snapshot{}, err
+	}
+	if includeProcesses {
+		result.Terminals = terminals
+		attachTerminalScopes(&result)
 	}
 	var memory runtime.MemStats
 	runtime.ReadMemStats(&memory)
@@ -136,6 +177,20 @@ func attachCPU(snapshot *Snapshot, previous *Snapshot, cores int) uint64 {
 		}
 	}
 	return elapsed
+}
+
+// Rule: 净增长用相邻有效快照的单调时间计算，首次、File 查询中断或时间不递增时保持未知；释放多于分配时允许负值。
+func attachFilePoolRate(snapshot *Snapshot, previous *Snapshot) {
+	current := snapshot.System.FilePool
+	if current == nil {
+		return
+	}
+	current.NetPerSecond = nil
+	if previous == nil || previous.System.FilePool == nil || snapshot.ElapsedMillis <= previous.ElapsedMillis {
+		return
+	}
+	delta := int64(current.Count) - int64(previous.System.FilePool.Count)
+	current.NetPerSecond = pointer(float64(delta) * 1000 / float64(snapshot.ElapsedMillis-previous.ElapsedMillis))
 }
 
 func pointer[T any](value T) *T {
