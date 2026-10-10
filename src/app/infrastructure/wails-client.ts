@@ -63,7 +63,7 @@ type WailsFileDiffRequest = {
 };
 
 type WailsBindings = {
-  GetResourceSnapshot?: () => Promise<import('../domain/resource-monitor.js').ResourceSnapshot>;
+  GetResourceMonitorState?: () => Promise<import('../domain/resource-monitor.js').ResourceMonitorState>;
   SetReadActivity?: (repoId: string, fileBrowserActive: boolean) => Promise<void>;
   GetWorkspaceBootstrap: WailsBootstrapBinding;
   GetSnapshot: WailsSnapshotBinding;
@@ -168,8 +168,8 @@ function getWailsBindings(): WailsBindings {
   return binding as WailsBindings;
 }
 
-export async function fetchResourceSnapshot() {
-  const binding = getWailsBindings().GetResourceSnapshot;
+export async function fetchResourceMonitorState() {
+  const binding = getWailsBindings().GetResourceMonitorState;
   if (typeof binding !== 'function') throw new Error('Wails 资源监控绑定不可用');
   return binding();
 }
@@ -357,7 +357,7 @@ export async function readClipboardText() {
 }
 
 export const wailsClient: WorkspaceBackend & RepoInteractionBackend & ResourceMonitorBackend = {
-  fetchResourceSnapshot,
+  fetchResourceMonitorState,
   setReadActivity,
   fetchWorkspaceBootstrap,
   fetchSnapshot,

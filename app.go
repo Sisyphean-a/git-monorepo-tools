@@ -62,6 +62,7 @@ type App struct {
 	workspace         workspaceService
 	desktop           desktopGateway
 	terminals         terminalGateway
+	monitor           *monitor.Sampler
 	maintenanceCancel context.CancelFunc
 	maintenanceDone   chan struct{}
 }
@@ -75,11 +76,12 @@ func NewApp() (*App, error) {
 }
 
 func newApp(workspace workspaceService, desktopClient desktopGateway) *App {
-	return &App{workspace: workspace, desktop: desktopClient}
+	return &App{workspace: workspace, desktop: desktopClient, monitor: monitor.NewSampler()}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.monitor.Start()
 	a.terminals = terminal.NewManager(func(name string, payload any) {
 		wruntime.EventsEmit(ctx, name, payload)
 	})
@@ -102,6 +104,9 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(context.Context) {
+	if a.monitor != nil {
+		a.monitor.Stop()
+	}
 	if a.maintenanceCancel != nil {
 		a.maintenanceCancel()
 		<-a.maintenanceDone
@@ -114,8 +119,12 @@ func (a *App) shutdown(context.Context) {
 	}
 }
 
-func (a *App) GetResourceSnapshot() (monitor.Snapshot, error) {
-	return monitor.ReadSnapshot()
+// GetResourceMonitorState 返回采样器的只读视图，并续租面板观察窗口；采样生命周期由 startup/shutdown 拥有。
+func (a *App) GetResourceMonitorState() (monitor.State, error) {
+	if a.monitor == nil {
+		return monitor.State{}, errors.New("资源监控尚未初始化")
+	}
+	return a.monitor.Observe(), nil
 }
 
 func (a *App) SetReadActivity(repoID string, fileBrowserActive bool) {

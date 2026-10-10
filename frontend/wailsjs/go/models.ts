@@ -20,6 +20,24 @@ export namespace monitor {
 	        this.gcCount = source["gcCount"];
 	    }
 	}
+	export class Peak {
+	    privateBytes?: number;
+	    heapBytes: number;
+	    cpuPercent?: number;
+	    nonpagedPoolBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Peak(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.privateBytes = source["privateBytes"];
+	        this.heapBytes = source["heapBytes"];
+	        this.cpuPercent = source["cpuPercent"];
+	        this.nonpagedPoolBytes = source["nonpagedPoolBytes"];
+	    }
+	}
 	export class Process {
 	    pid: number;
 	    parentPid: number;
@@ -28,6 +46,7 @@ export namespace monitor {
 	    workingSetBytes?: number;
 	    privateBytes?: number;
 	    cpuTimeMillis?: number;
+	    cpuPercent?: number;
 	    handleCount?: number;
 	    error?: string;
 	
@@ -44,8 +63,35 @@ export namespace monitor {
 	        this.workingSetBytes = source["workingSetBytes"];
 	        this.privateBytes = source["privateBytes"];
 	        this.cpuTimeMillis = source["cpuTimeMillis"];
+	        this.cpuPercent = source["cpuPercent"];
 	        this.handleCount = source["handleCount"];
 	        this.error = source["error"];
+	    }
+	}
+	export class Sample {
+	    capturedAt: number;
+	    elapsedMillis: number;
+	    intervalMillis: number;
+	    privateBytes?: number;
+	    heapBytes: number;
+	    cpuPercent?: number;
+	    pagedPoolBytes: number;
+	    nonpagedPoolBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Sample(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.capturedAt = source["capturedAt"];
+	        this.elapsedMillis = source["elapsedMillis"];
+	        this.intervalMillis = source["intervalMillis"];
+	        this.privateBytes = source["privateBytes"];
+	        this.heapBytes = source["heapBytes"];
+	        this.cpuPercent = source["cpuPercent"];
+	        this.pagedPoolBytes = source["pagedPoolBytes"];
+	        this.nonpagedPoolBytes = source["nonpagedPoolBytes"];
 	    }
 	}
 	export class SystemMemory {
@@ -88,6 +134,52 @@ export namespace monitor {
 	        this.children = this.convertValues(source["children"], Process);
 	        this.go = this.convertValues(source["go"], GoMemory);
 	        this.system = this.convertValues(source["system"], SystemMemory);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class State {
+	    revision: number;
+	    live: boolean;
+	    startedAt: number;
+	    sampleCount: number;
+	    error: string;
+	    samples: Sample[];
+	    peaks: Peak;
+	    averageCpuPercent?: number;
+	    snapshot?: Snapshot;
+	
+	    static createFrom(source: any = {}) {
+	        return new State(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.revision = source["revision"];
+	        this.live = source["live"];
+	        this.startedAt = source["startedAt"];
+	        this.sampleCount = source["sampleCount"];
+	        this.error = source["error"];
+	        this.samples = this.convertValues(source["samples"], Sample);
+	        this.peaks = this.convertValues(source["peaks"], Peak);
+	        this.averageCpuPercent = source["averageCpuPercent"];
+	        this.snapshot = this.convertValues(source["snapshot"], Snapshot);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

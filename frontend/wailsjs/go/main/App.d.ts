@@ -20,7 +20,7 @@ export function GetRepoHistory(arg1:string,arg2:snapshot.Request,arg3:number,arg
 
 export function GetRepoLog(arg1:string,arg2:snapshot.Request):Promise<snapshot.RepoLog>;
 
-export function GetResourceSnapshot():Promise<monitor.Snapshot>;
+export function GetResourceMonitorState():Promise<monitor.State>;
 
 export function GetSnapshot(arg1:snapshot.Request):Promise<snapshot.AppSnapshot>;
 

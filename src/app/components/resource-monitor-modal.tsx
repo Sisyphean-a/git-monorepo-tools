@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Activity, AlertTriangle, RefreshCw, X } from 'lucide-react';
+import { Activity, AlertTriangle, X } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
-import { useWindowActivity } from '../application/use-window-activity';
-import { createResourceMonitorPolling } from '../application/resource-monitor-polling';
-import { appendResourceSample, formatMemory, poolGrowthPerMinute, processCPUPercent, type MonitoredProcess, type ResourceSample, type ResourceSnapshot } from '../domain/resource-monitor';
+import { createResourceMonitorView } from '../application/resource-monitor-view';
+import { formatDelta, formatDuration, formatMemory, summarizeSession, type ResourceMonitorState, type ResourceSample, type ResourceSnapshot } from '../domain/resource-monitor';
 import { C } from '../theme';
 import { INSPECTOR_BACKDROP_STYLE, INSPECTOR_DIALOG_STYLE } from './common';
 
@@ -13,37 +12,23 @@ const smallLabel: CSSProperties = { color: C.textSecondary, fontSize: 11 };
 
 export function ResourceMonitorModal({ onClose }: { onClose: () => void }) {
   const backend = useAppBackend();
-  const active = useWindowActivity();
-  const [snapshot, setSnapshot] = useState<ResourceSnapshot | null>(null);
-  const [previous, setPrevious] = useState<ResourceSnapshot | null>(null);
-  const [samples, setSamples] = useState<ResourceSample[]>([]);
-  const [pending, setPending] = useState(false);
+  const [state, setState] = useState<ResourceMonitorState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const latest = useRef<ResourceSnapshot | null>(null);
-  const poller = useRef<ReturnType<typeof createResourceMonitorPolling> | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    const session = createResourceMonitorPolling({
-      fetch: () => backend.fetchResourceSnapshot(),
-      onSnapshot: next => {
-        setPrevious(latest.current);
-        latest.current = next;
-        setSnapshot(next);
-        setSamples(history => appendResourceSample(history, next));
-        setError(null);
-      },
-      onPending: setPending,
-      onError: failure => setError(failure instanceof Error ? failure.message : typeof failure === 'string' ? failure : JSON.stringify(failure) ?? '资源采样失败'),
+    // Flow: 面板打开期间持续读取采样器状态，读取本身续租高频窗口；关闭后租约到期自动回到后台节奏。
+    const view = createResourceMonitorView({
+      fetch: () => backend.fetchResourceMonitorState(),
+      onState: setState,
+      onError: setError,
     });
-    poller.current = session;
-    return () => { session.dispose(); poller.current = null; };
+    void view.refresh();
+    return () => view.dispose();
   }, [backend]);
-
-  useEffect(() => { poller.current?.setActive(active); }, [active, backend]);
 
   useEffect(() => {
     const origin = document.activeElement;
@@ -64,9 +49,8 @@ export function ResourceMonitorModal({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const elapsed = snapshot && previous ? snapshot.elapsedMillis - previous.elapsedMillis : 0;
-  const cpu = snapshot ? processCPUPercent(snapshot.main, previous?.main, elapsed, snapshot.logicalCpus) : null;
-  const growth = poolGrowthPerMinute(samples);
+  const snapshot = state?.snapshot ?? null;
+  const failure = error ?? state?.error ?? null;
   return (
     <>
       <div onClick={onClose} style={INSPECTOR_BACKDROP_STYLE} />
@@ -77,52 +61,74 @@ export function ResourceMonitorModal({ onClose }: { onClose: () => void }) {
             <div style={{ fontSize: 14, fontWeight: 600, color: C.textPrimary }}>资源监控</div>
             <div style={{ marginTop: 3, fontSize: 10, color: C.textSecondary }}>Git Monorepo Tools{snapshot ? ` · PID ${snapshot.main.pid}` : ''}</div>
           </div>
-          <span role="status" style={{ color: error ? C.conflict : C.textSecondary, fontSize: 11 }}>
-            {!active ? '窗口失焦 · 已暂停' : error ? snapshot ? '采样失败 · 数据已过期' : '采样失败' : pending ? '采样中…' : '实时采样'}
-          </span>
-          <button type="button" disabled={pending || !active} onClick={() => void poller.current?.refresh()} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, cursor: pending || !active ? 'default' : 'pointer', opacity: pending || !active ? 0.6 : 1, fontSize: 11 }}><RefreshCw size={12} />刷新</button>
+          <span role="status" style={{ color: failure ? C.conflict : C.textSecondary, fontSize: 11 }}>{failure ? '采样失败' : '应用级采样'}</span>
           <button ref={closeButton} type="button" onClick={onClose} aria-label="关闭资源监控" title="关闭" style={{ display: 'flex', padding: 4, background: 'none', border: 'none', color: C.textSecondary, cursor: 'pointer' }}><X size={17} /></button>
         </header>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
-          {error && <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.conflict, background: `${C.conflict}12`, border: `1px solid ${C.conflict}40`, borderRadius: 6, padding: '10px 12px', marginBottom: 14, fontSize: 12 }}><AlertTriangle size={14} />{error} · 可点击刷新重试</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(420px, 100%), 1fr))', gap: 14 }}>
-            <section style={sectionStyle}>
-              <SectionTitle title="本工具 · 主进程" detail="进程指标" />
-              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', margin: '20px 0' }}>
-                <Metric label="私有提交" value={formatMemory(snapshot?.main.privateBytes ?? null)} primary title="此进程独占的已提交内存，不等于物理驻留内存" />
-                <Metric label="工作集" value={formatMemory(snapshot?.main.workingSetBytes ?? null)} title="当前驻留物理内存，包含共享页面" />
-                <Metric label="CPU" value={cpu === null ? '—' : `${cpu.toFixed(1)}%`} title="相邻采样间的 CPU 使用率，按逻辑核数归一化；首次采样无值" />
-              </div>
-              <Trend title="主进程内存" samples={samples} first={sample => sample.privateBytes} second={sample => sample.heapBytes} firstLabel="私有提交" secondLabel="Go 堆" />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 18, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                <Metric label="Go 堆" value={formatMemory(snapshot?.go.heapBytes ?? null)} />
-                <Metric label="Go 已取得内存" value={formatMemory(snapshot?.go.reservedBytes ?? null)} title="Go 运行时向系统取得的内存，不是进程工作集" />
-                <Metric label="句柄" value={snapshot?.main.handleCount?.toLocaleString() ?? '—'} />
-                <Metric label="Goroutine" value={snapshot?.go.goroutines.toLocaleString() ?? '—'} />
-                <Metric label="堆对象" value={snapshot?.go.heapObjects.toLocaleString() ?? '—'} />
-                <Metric label="GC 次数" value={snapshot?.go.gcCount.toLocaleString() ?? '—'} />
-              </div>
-            </section>
-            <section style={sectionStyle}>
-              <SectionTitle title="系统内存" detail="全系统指标" />
-              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', margin: '20px 0' }}>
-                <Metric label="非分页池" value={formatMemory(snapshot?.system.nonpagedPoolBytes ?? null)} primary />
-                <Metric label="分页池" value={formatMemory(snapshot?.system.pagedPoolBytes ?? null)} />
-                <Metric label="非分页池变化" value={growth === null ? '—' : `${growth > 0 ? '+' : growth < 0 ? '−' : ''}${formatMemory(Math.abs(growth))}/min`} title="本次打开期间、已保留采样的平均变化率，不代表本工具造成的增长" />
-              </div>
-              <Trend title="系统内核池" samples={samples} first={sample => sample.nonpagedBytes} second={sample => sample.pagedBytes} firstLabel="非分页池" secondLabel="分页池" />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 18, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-                <Metric label="可用物理内存" value={formatMemory(snapshot?.system.availableBytes ?? null)} />
-                <Metric label="物理内存总量" value={formatMemory(snapshot?.system.totalBytes ?? null)} />
-              </div>
-            </section>
-          </div>
-          <ProcessTable snapshot={snapshot} previous={previous} elapsed={elapsed} />
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <ResourceMonitorContent state={state} error={failure} />
         </div>
-        <footer style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, padding: '10px 16px', fontSize: 10, color: C.textSecondary, borderTop: `1px solid ${C.border}` }}>
+      </div>
+    </>
+  );
+}
+
+export function ResourceMonitorContent({ state, error }: { state: ResourceMonitorState | null; error: string | null }) {
+  const snapshot = state?.snapshot ?? null;
+  const summary = state ? summarizeSession(state) : null;
+  const mainCpu = snapshot?.main.cpuPercent ?? null;
+  return (
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px', padding: '10px 16px', borderBottom: `1px solid ${C.border}`, background: C.panel2, fontSize: 11, color: C.textSecondary }}>
+        <span>会话开始 {state?.startedAt ? new Date(state.startedAt).toLocaleTimeString() : '—'}</span>
+        <span>已运行 {summary ? formatDuration(summary.elapsedMillis) : '—'}</span>
+        <span>已采样 {state?.sampleCount ?? 0} 次{summary && summary.sampleCount > 1 ? ` · 平均间隔 ${formatDuration(summary.averageIntervalMillis)}` : ''}</span>
+        <span>{state?.live ? '面板打开：每 5 秒（含子进程明细）' : '后台：每 30 秒'}</span>
+      </div>
+      <div style={{ padding: 16 }}>
+        {error && <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.conflict, background: `${C.conflict}12`, border: `1px solid ${C.conflict}40`, borderRadius: 6, padding: '10px 12px', marginBottom: 14, fontSize: 12 }}><AlertTriangle size={14} />{error} · 已保留上次采样，将自动重试</div>}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(420px, 100%), 1fr))', gap: 14 }}>
+          <section style={sectionStyle}>
+            <SectionTitle title="本工具 · 主进程" detail="进程指标" />
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', margin: '18px 0' }}>
+              <Metric label="私有提交" value={formatMemory(snapshot?.main.privateBytes ?? null)} primary
+                hint={summary ? `较启动 ${formatDelta(summary.private.delta)} · 峰值 ${formatMemory(summary.peakPrivateBytes)}` : '等待采样'}
+                title="此进程独占的已提交内存，不等于物理驻留内存" />
+              <Metric label="工作集" value={formatMemory(snapshot?.main.workingSetBytes ?? null)} title="当前驻留物理内存，包含共享页面" />
+              <Metric label="CPU" value={mainCpu === null ? '—' : `${mainCpu.toFixed(1)}%`}
+                hint={summary?.averageCpuPercent == null ? '首次采样无对比' : `会话平均 ${summary.averageCpuPercent.toFixed(1)}%${summary.peakCpuPercent == null ? '' : ` · 峰值 ${summary.peakCpuPercent.toFixed(1)}%`}`}
+                title="相邻采样间的 CPU 使用率，按逻辑核数归一化；首次采样无值" />
+            </div>
+            <Trend title="主进程内存" samples={state?.samples ?? []} first={sample => sample.privateBytes} second={sample => sample.heapBytes} firstLabel="私有提交" secondLabel="Go 堆" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 18, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+              <Metric label="Go 堆" value={formatMemory(snapshot?.go.heapBytes ?? null)} hint={summary ? `较启动 ${formatDelta(summary.heap.delta)}` : undefined} />
+              <Metric label="Go 已取得内存" value={formatMemory(snapshot?.go.reservedBytes ?? null)} title="Go 运行时向系统取得的内存，不是进程工作集" />
+              <Metric label="句柄" value={snapshot?.main.handleCount?.toLocaleString() ?? '—'} />
+              <Metric label="Goroutine" value={snapshot?.go.goroutines.toLocaleString() ?? '—'} />
+              <Metric label="堆对象" value={snapshot?.go.heapObjects.toLocaleString() ?? '—'} />
+              <Metric label="GC 次数" value={snapshot?.go.gcCount.toLocaleString() ?? '—'} />
+            </div>
+          </section>
+          <section style={sectionStyle}>
+            <SectionTitle title="系统内存" detail="全系统指标" />
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', margin: '18px 0' }}>
+              <Metric label="非分页池" value={formatMemory(snapshot?.system.nonpagedPoolBytes ?? null)} primary
+                hint={summary ? `较启动 ${formatDelta(summary.nonpaged.delta)} · 峰值 ${formatMemory(summary.peakNonpagedPoolBytes)}` : '等待采样'} />
+              <Metric label="分页池" value={formatMemory(snapshot?.system.pagedPoolBytes ?? null)} hint={summary ? `较启动 ${formatDelta(summary.paged.delta)}` : undefined} />
+              <Metric label="非分页池变化" value={summary?.nonpaged.perMinute == null ? '—' : `${formatDelta(summary.nonpaged.perMinute)}/min`}
+                title="本次会话已保留采样的平均变化率，不代表本工具造成的增长" />
+            </div>
+            <Trend title="系统内核池" samples={state?.samples ?? []} first={sample => sample.nonpagedPoolBytes} second={sample => sample.pagedPoolBytes} firstLabel="非分页池" secondLabel="分页池" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 18, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+              <Metric label="可用物理内存" value={formatMemory(snapshot?.system.availableBytes ?? null)} />
+              <Metric label="物理内存总量" value={formatMemory(snapshot?.system.totalBytes ?? null)} />
+            </div>
+          </section>
+        </div>
+        <ProcessTable snapshot={snapshot} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, padding: '12px 4px 0', fontSize: 10, color: C.textSecondary }}>
           <span>系统内核池不归属于某个应用；这里只读监控，不清理内存。</span>
-          <span>每 5 秒采样 · 最近 60 次 · {snapshot ? `更新于 ${new Date(snapshot.capturedAt).toLocaleTimeString()}` : '尚未采样'}</span>
-        </footer>
+          <span>{state ? `更新于 ${new Date(snapshot?.capturedAt ?? state.startedAt).toLocaleTimeString()} · 历史自动降采样保留全程趋势` : '尚未采样'}</span>
+        </div>
       </div>
     </>
   );
@@ -132,8 +138,12 @@ function SectionTitle({ title, detail }: { title: string; detail: string }) {
   return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><h2 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: C.textPrimary }}>{title}</h2><span style={{ ...smallLabel, fontSize: 10 }}>{detail}</span></div>;
 }
 
-function Metric({ label, value, primary = false, title }: { label: string; value: string; primary?: boolean; title?: string }) {
-  return <div title={title} style={{ minWidth: 0 }}><div style={smallLabel}>{label}</div><div style={{ color: C.textPrimary, fontSize: primary ? 28 : 17, fontWeight: primary ? 600 : 500, fontFamily: mono, fontVariantNumeric: 'tabular-nums', marginTop: 7, whiteSpace: 'nowrap' }}>{value}</div></div>;
+function Metric({ label, value, primary = false, hint, title }: { label: string; value: string; primary?: boolean; hint?: string; title?: string }) {
+  return <div title={title} style={{ minWidth: 0 }}>
+    <div style={smallLabel}>{label}</div>
+    <div style={{ color: C.textPrimary, fontSize: primary ? 28 : 17, fontWeight: primary ? 600 : 500, fontFamily: mono, fontVariantNumeric: 'tabular-nums', marginTop: 7, whiteSpace: 'nowrap' }}>{value}</div>
+    {hint && <div style={{ ...smallLabel, fontSize: 10, marginTop: 5, whiteSpace: 'nowrap' }}>{hint}</div>}
+  </div>;
 }
 
 export function Trend({ title, samples, first, second, firstLabel, secondLabel }: { title: string; samples: ResourceSample[]; first: (sample: ResourceSample) => number | null; second: (sample: ResourceSample) => number | null; firstLabel: string; secondLabel: string }) {
@@ -156,7 +166,7 @@ export function Trend({ title, samples, first, second, firstLabel, secondLabel }
       <div style={{ position: 'relative', width: 54, flexShrink: 0, fontSize: 10, color: C.textSecondary }}><span style={{ position: 'absolute', top: 12 }}>{values.length ? formatMemory(maximum) : '—'}</span><span style={{ position: 'absolute', bottom: 0 }}>0</span></div>
       <div style={{ minWidth: 0, flex: 1, position: 'relative' }}>
         <svg role="img" aria-label={`${title}趋势`} viewBox="0 0 520 146" preserveAspectRatio="none" style={{ width: '100%', height: 146, display: 'block' }}>
-          <title>{`${title}，横轴为采样时间，纵轴为内存大小`}</title>
+          <title>{`${title}，横轴为本次会话时间，纵轴为内存大小`}</title>
           {[18, 80, 142].map(y => <line key={y} x1={0} x2={520} y1={y} y2={y} stroke={C.border} strokeDasharray="3 5" />)}
           {draw(first, C.btnPrimary)}{draw(second, C.textSecondary, true)}
         </svg>
@@ -167,19 +177,19 @@ export function Trend({ title, samples, first, second, firstLabel, secondLabel }
   </div>;
 }
 
-function ProcessTable({ snapshot, previous, elapsed }: { snapshot: ResourceSnapshot | null; previous: ResourceSnapshot | null; elapsed: number }) {
-  const rows = snapshot?.children ?? [];
-  const previousByPID = new Map(previous?.children.map(process => [process.pid, process]) ?? []);
-  const total = rows.some(row => row.privateBytes === null) ? null : rows.reduce((sum, row) => sum + (row.privateBytes ?? 0), 0);
+function ProcessTable({ snapshot }: { snapshot: ResourceSnapshot | null }) {
+  const rows = snapshot ? snapshot.children : null;
+  const total = rows && !rows.some(row => row.privateBytes === null) ? rows.reduce((sum, row) => sum + (row.privateBytes ?? 0), 0) : null;
   const cell: CSSProperties = { padding: '10px 12px', borderBottom: `1px solid ${C.border}`, textAlign: 'right', whiteSpace: 'nowrap', fontFamily: mono, fontSize: 11, color: C.textSecondary };
   return <section style={{ ...sectionStyle, padding: 0, marginTop: 14 }}>
-    <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', padding: '14px 16px', borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}><h2 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>子进程 · {rows.length}</h2><span style={smallLabel}>当前进程树 · 私有提交合计 {snapshot ? formatMemory(total) : '—'}</span></div>
+    <div style={{ display: 'flex', gap: 16, justifyContent: 'space-between', padding: '14px 16px', borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}><h2 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>子进程 · {rows === null ? '未采集' : rows.length}</h2><span style={smallLabel}>面板打开时采集 · 私有提交合计 {formatMemory(total)}</span></div>
     <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead><tr>{['进程', 'PID', '私有提交', '工作集（含共享）', 'CPU', '句柄'].map((label, index) => <th key={label} style={{ ...cell, textAlign: index === 0 ? 'left' : 'right', background: C.panel2, fontFamily: 'inherit', fontWeight: 500 }}>{label}</th>)}</tr></thead>
-      <tbody>{rows.map((row: MonitoredProcess) => {
-        const cpu = processCPUPercent(row, previousByPID.get(row.pid), elapsed, snapshot?.logicalCpus ?? 1);
-        return <tr key={`${row.pid}:${row.createdAt}`} title={row.error}><td style={{ ...cell, textAlign: 'left' }}><span style={{ color: C.textPrimary }}>{row.name}</span>{row.error && <div style={{ fontSize: 10, color: C.conflict, marginTop: 4, whiteSpace: 'normal' }}>读取失败：{row.error}</div>}</td><td style={cell}>{row.pid}</td><td style={cell}>{formatMemory(row.privateBytes)}</td><td style={cell}>{formatMemory(row.workingSetBytes)}</td><td style={cell}>{cpu === null ? '—' : `${cpu.toFixed(1)}%`}</td><td style={cell}>{row.handleCount?.toLocaleString() ?? '—'}</td></tr>;
-      })}</tbody>
-    </table>{!rows.length && <div style={{ padding: 24, textAlign: 'center', ...smallLabel }}>{snapshot ? '当前没有子进程' : '尚无进程数据'}</div>}</div>
+      <tbody>{(rows ?? []).map(row => <tr key={`${row.pid}:${row.createdAt}`} title={row.error}><td style={{ ...cell, textAlign: 'left' }}><span style={{ color: C.textPrimary }}>{row.name}</span>{row.error && <div style={{ fontSize: 10, color: C.conflict, marginTop: 4, whiteSpace: 'normal' }}>读取失败：{row.error}</div>}</td><td style={cell}>{row.pid}</td><td style={cell}>{formatMemory(row.privateBytes)}</td><td style={cell}>{formatMemory(row.workingSetBytes)}</td><td style={cell}>{row.cpuPercent == null ? '—' : `${row.cpuPercent.toFixed(1)}%`}</td><td style={cell}>{row.handleCount?.toLocaleString() ?? '—'}</td></tr>)}</tbody>
+    </table>
+      {!snapshot && <div style={{ padding: 24, textAlign: 'center', ...smallLabel }}>尚无进程数据</div>}
+      {snapshot && rows === null && <div style={{ padding: 24, textAlign: 'center', ...smallLabel }}>正在采集进程树…</div>}
+      {rows?.length === 0 && <div style={{ padding: 24, textAlign: 'center', ...smallLabel }}>当前没有子进程</div>}
+    </div>
   </section>;
 }

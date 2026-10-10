@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"unsafe"
 
@@ -32,13 +33,10 @@ type performanceInfo struct {
 	Handles, Processes, Threads                                            uint32
 }
 
-func readPlatformSnapshot() (Snapshot, error) {
+// Flow: 主进程与系统计数直接读取；只有 includeProcesses 为真时才枚举进程表并构建进程树。
+func readPlatformSnapshot(includeProcesses bool) (Snapshot, error) {
 	root := uint32(os.Getpid())
-	rows, err := processEntries()
-	if err != nil {
-		return Snapshot{}, err
-	}
-	main, err := readProcess(root, rows[root])
+	main, err := readProcess(processIdentity{pid: root, name: executableName()})
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("读取主进程资源失败：%w", err)
 	}
@@ -54,13 +52,22 @@ func readPlatformSnapshot() (Snapshot, error) {
 		elapsed |= uint64(tickHigh) << 32
 	}
 	result := Snapshot{
-		Main: main, Children: []Process{}, ElapsedMillis: elapsed,
+		Main: main, ElapsedMillis: elapsed,
 		System: SystemMemory{
 			TotalBytes:        uint64(info.PhysicalTotal) * uint64(info.PageSize),
 			AvailableBytes:    uint64(info.PhysicalAvailable) * uint64(info.PageSize),
 			PagedPoolBytes:    uint64(info.KernelPaged) * uint64(info.PageSize),
 			NonpagedPoolBytes: uint64(info.KernelNonpaged) * uint64(info.PageSize),
 		},
+	}
+	// Guarantee: 未枚举进程树时 children 保持 null（未采集），不能和“确实没有子进程”的 [] 混淆。
+	if !includeProcesses {
+		return result, nil
+	}
+	result.Children = []Process{}
+	rows, err := processEntries()
+	if err != nil {
+		return Snapshot{}, err
 	}
 	byParent := map[uint32][]uint32{}
 	for pid, entry := range rows {
@@ -77,7 +84,7 @@ func readPlatformSnapshot() (Snapshot, error) {
 			}
 			seen[pid] = true
 			entry := rows[pid]
-			child, readErr := readProcess(pid, entry)
+			child, readErr := readProcess(processIdentity{pid: pid, parentPid: parent.PID, name: windows.UTF16ToString(entry.ExeFile[:])})
 			if errors.Is(readErr, windows.ERROR_INVALID_PARAMETER) || errors.Is(readErr, windows.ERROR_NOT_FOUND) {
 				continue
 			}
@@ -94,6 +101,15 @@ func readPlatformSnapshot() (Snapshot, error) {
 	}
 	sort.Slice(result.Children, func(i, j int) bool { return result.Children[i].PID < result.Children[j].PID })
 	return result, nil
+}
+
+// Effect: 取自身可执行文件名，避免为轻量采样枚举整张进程表。
+func executableName() string {
+	path, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(path)
 }
 
 func processEntries() (map[uint32]windows.ProcessEntry32, error) {
@@ -119,12 +135,18 @@ func processEntries() (map[uint32]windows.ProcessEntry32, error) {
 	}
 }
 
-func readProcess(pid uint32, entry windows.ProcessEntry32) (Process, error) {
+type processIdentity struct {
+	pid       uint32
+	parentPid uint32
+	name      string
+}
+
+func readProcess(identity processIdentity) (Process, error) {
 	// Rule: 当前进程使用伪句柄，避免把采样器自身临时句柄算入读数。
 	handle := windows.Handle(^uintptr(0))
-	if pid != uint32(os.Getpid()) {
+	if identity.pid != uint32(os.Getpid()) {
 		var err error
-		handle, err = windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+		handle, err = windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, identity.pid)
 		if err != nil {
 			return Process{}, err
 		}
@@ -149,7 +171,7 @@ func readProcess(pid uint32, entry windows.ProcessEntry32) (Process, error) {
 	ticks := func(value windows.Filetime) uint64 { return uint64(value.HighDateTime)<<32 | uint64(value.LowDateTime) }
 	cpu := float64(ticks(user)+ticks(system)) / 10000
 	return Process{
-		PID: pid, ParentPID: entry.ParentProcessID, Name: windows.UTF16ToString(entry.ExeFile[:]),
+		PID: identity.pid, ParentPID: identity.parentPid, Name: identity.name,
 		CreatedAt: created.Nanoseconds() / 1e6, WorkingSetBytes: &working, PrivateBytes: &private,
 		CPUTimeMillis: &cpu, HandleCount: &count,
 	}, nil

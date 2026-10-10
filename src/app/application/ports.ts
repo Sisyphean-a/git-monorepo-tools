@@ -137,7 +137,7 @@ export interface RuntimeBackend {
 }
 
 export interface ResourceMonitorBackend {
-  fetchResourceSnapshot(): Promise<import('../domain/resource-monitor.js').ResourceSnapshot>;
+  fetchResourceMonitorState(): Promise<import('../domain/resource-monitor.js').ResourceMonitorState>;
 }
 
 export type AppBackend = WorkspaceBackend & RepoInteractionBackend & RuntimeBackend & ResourceMonitorBackend;

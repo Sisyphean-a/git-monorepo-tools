@@ -50,3 +50,76 @@ func TestAppMaintenanceStopsWhenRuntimeContextEnds(t *testing.T) {
 	}
 	app.shutdown(context.Background())
 }
+
+func TestAppResourceMonitorSamplesFromStartupToShutdown(t *testing.T) {
+	app := newApp(&lifecycleWorkspace{}, nil)
+	app.startup(context.Background())
+	stopped := false
+	defer func() {
+		if !stopped {
+			app.shutdown(context.Background())
+		}
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	state, err := app.GetResourceMonitorState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for state.Snapshot == nil || state.SampleCount == 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("no sample after startup: %+v", state)
+		}
+		time.Sleep(10 * time.Millisecond)
+		if state, err = app.GetResourceMonitorState(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if state.StartedAt == 0 || len(state.Samples) == 0 {
+		t.Fatalf("missing launch baseline: %+v", state)
+	}
+	launch := state
+	if !state.Live {
+		t.Fatal("state reads must keep the panel observation window active")
+	}
+	// Guarantee: 面板关闭只降低采样频率，启动基线与本次会话历史都保留。
+	app.monitor.SetLive(false)
+	closed := app.monitor.State()
+	if closed.Live || closed.StartedAt != launch.StartedAt || len(closed.Samples) < len(launch.Samples) || closed.Samples[0].ElapsedMillis != launch.Samples[0].ElapsedMillis {
+		t.Fatalf("panel close dropped session history: %+v", closed)
+	}
+	// Guarantee: 重新打开面板时，下一次状态读取会激活观察窗口并立即采样，不必等到下一个后台周期。
+	revision := closed.Revision
+	deadline = time.Now().Add(2 * time.Second)
+	state = closed
+	for state.Revision <= revision {
+		if time.Now().After(deadline) {
+			t.Fatalf("reopening the panel did not trigger a fresh observation sample: %+v", state)
+		}
+		time.Sleep(10 * time.Millisecond)
+		if state, err = app.GetResourceMonitorState(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !state.Live {
+		t.Fatal("reopened panel must return to the live cadence")
+	}
+	if state.Snapshot == nil || state.Snapshot.Children == nil {
+		t.Fatal("live observation must include the process tree, even when it is empty")
+	}
+	app.shutdown(context.Background())
+	stopped = true
+	// Guarantee: 关闭后采样循环停止，状态不再推进。
+	frozen := app.monitor.State()
+	time.Sleep(50 * time.Millisecond)
+	after := app.monitor.State()
+	if after.Revision != frozen.Revision {
+		t.Fatalf("sampler kept running after shutdown: %d -> %d", frozen.Revision, after.Revision)
+	}
+}
+
+func TestAppResourceMonitorWithoutSamplerFailsLoudly(t *testing.T) {
+	app := &App{}
+	if _, err := app.GetResourceMonitorState(); err == nil {
+		t.Fatal("state must not pretend to succeed without a sampler")
+	}
+}

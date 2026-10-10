@@ -11,7 +11,7 @@
 | Wails 入口 | 组合依赖并导出桌面绑定 | `app.go` |
 | Git 工作区 | 扫描仓库、状态、变更、Git 操作、历史与差异 | `snapshot/service.go`、`snapshot/operations.go`、`snapshot/git_*.go` |
 | 终端 | 按仓库管理 ConPTY 会话并批量转发输出 | `internal/terminal/manager.go`、`internal/terminal/output_batcher.go` |
-| 只读资源监控 | 原生查询当前进程树、Go 运行时与系统内存，不托管轮询或内存清理 | `internal/monitor/`、`app.go` |
+| 只读资源监控 | 应用生命周期内采样当前进程、Go 运行时与系统内存，面板打开时附带进程树明细 | `internal/monitor/`、`app.go` |
 | 桌面能力 | 选目录、打开目录/终端/冲突工具 | `internal/desktop/client.go` |
 | 前端领域与应用层 | 纯数据规则、页面流程和端口 | `src/app/domain/`、`src/app/application/` |
 | 前端基础设施与界面 | Wails 客户端、设置存储、功能模块和组件 | `src/app/infrastructure/`、`src/app/features/`、`src/app/components/` |

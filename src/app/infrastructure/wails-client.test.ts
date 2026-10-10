@@ -5,7 +5,7 @@ import {
   createTerminalSession,
   ensureTerminalSession,
   fetchCommitDetail,
-  fetchResourceSnapshot,
+  fetchResourceMonitorState,
   fetchFileDiff,
   fetchRepoHistory,
   fetchWorkingDiffFiles,
@@ -1025,12 +1025,12 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
   });
 
   try {
-    Object.defineProperty(bindings, 'GetResourceSnapshot', { configurable: true, value: async () => ({ capturedAt: 42 }) });
-    assert.equal((await fetchResourceSnapshot()).capturedAt, 42);
-    Object.defineProperty(bindings, 'GetResourceSnapshot', { configurable: true, value: undefined });
-    await assert.rejects(fetchResourceSnapshot(), /资源监控绑定不可用/);
-    Object.defineProperty(bindings, 'GetResourceSnapshot', { value: async () => { throw new Error('resource query failed'); } });
-    await assert.rejects(fetchResourceSnapshot(), /resource query failed/);
+    Object.defineProperty(bindings, 'GetResourceMonitorState', { configurable: true, value: async () => ({ revision: 42 }) });
+    assert.equal((await fetchResourceMonitorState()).revision, 42);
+    Object.defineProperty(bindings, 'GetResourceMonitorState', { configurable: true, value: undefined });
+    await assert.rejects(fetchResourceMonitorState(), /资源监控绑定不可用/);
+    Object.defineProperty(bindings, 'GetResourceMonitorState', { value: async () => { throw new Error('resource query failed'); } });
+    await assert.rejects(fetchResourceMonitorState(), /resource query failed/);
     await setReadActivity('repo-1', true);
     await setReadActivity('repo-1', false);
     await setReadActivity('', false);

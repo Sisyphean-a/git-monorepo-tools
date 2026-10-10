@@ -1,37 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendResourceSample, formatMemory, poolGrowthPerMinute, processCPUPercent, RESOURCE_HISTORY_LIMIT, type ResourceSnapshot, type ResourceSample } from './resource-monitor.js';
+import { formatDelta, formatDuration, formatMemory, summarizeSeries, summarizeSession, type ResourceMonitorState, type ResourceSample } from './resource-monitor.js';
 
-function snapshot(time = 1_000): ResourceSnapshot {
+function sample(overrides: Partial<ResourceSample> = {}): ResourceSample {
   return {
-    capturedAt: time, elapsedMillis: time, logicalCpus: 4,
-    main: { pid: 1, parentPid: 0, name: 'tool.exe', createdAt: 10, privateBytes: 100, workingSetBytes: 200, cpuTimeMillis: time / 2, handleCount: 10 },
-    children: [], go: { heapBytes: 10, reservedBytes: 20, heapObjects: 1, goroutines: 2, gcCount: 0 },
-    system: { totalBytes: 1_000, availableBytes: 500, pagedPoolBytes: 100, nonpagedPoolBytes: time },
+    capturedAt: 1_000, elapsedMillis: 1_000, intervalMillis: 1_000, privateBytes: 100,
+    heapBytes: 50, cpuPercent: null, pagedPoolBytes: 10, nonpagedPoolBytes: 20, ...overrides,
   };
 }
 
-test('history keeps only numeric samples and remains bounded', () => {
-  let history: ResourceSample[] = [];
-  for (let index = 0; index < 90; index++) history = appendResourceSample(history, snapshot(index));
-  assert.equal(history.length, RESOURCE_HISTORY_LIMIT);
-  assert.equal(history[0]?.elapsedMillis, 30);
-  assert.equal('children' in history[0]!, false);
+function state(samples: ResourceSample[], overrides: Partial<ResourceMonitorState> = {}): ResourceMonitorState {
+  return {
+    revision: 1, live: false, startedAt: 1_000, sampleCount: samples.length, error: '',
+    samples, peaks: { privateBytes: 500, heapBytes: 400, cpuPercent: 12.5, nonpagedPoolBytes: 900 },
+    averageCpuPercent: 8, snapshot: null, ...overrides,
+  };
+}
+
+test('series summaries use known endpoints and monotonic elapsed time', () => {
+  const samples = [sample(), sample({ elapsedMillis: 6_000, privateBytes: null }), sample({ elapsedMillis: 11_000, privateBytes: 200 })];
+  assert.deepEqual(summarizeSeries(samples, value => value.privateBytes), { start: 100, current: 200, delta: 100, perMinute: 600 });
+  assert.equal(summarizeSeries([sample()], value => value.privateBytes).perMinute, null);
+  assert.equal(summarizeSeries([], value => value.privateBytes).delta, null);
 });
 
-test('CPU is measured between samples and never crosses process identity', () => {
-  const first = snapshot(1_000), next = snapshot(6_000);
-  assert.equal(processCPUPercent(first.main, undefined, 0, 4), null);
-  assert.equal(processCPUPercent(next.main, first.main, 5_000, 4), 12.5);
-  assert.equal(processCPUPercent({ ...next.main, createdAt: 99 }, first.main, 5_000, 4), null);
+test('session summary keeps the launch baseline, average cadence and exact peaks', () => {
+  const samples = [sample(), sample({ elapsedMillis: 61_000, intervalMillis: 60_000, privateBytes: 300 })];
+  const summary = summarizeSession(state(samples, { sampleCount: 3, averageCpuPercent: 7.5 }));
+  assert.ok(summary);
+  assert.equal(summary.elapsedMillis, 60_000);
+  assert.equal(summary.averageIntervalMillis, 30_000);
+  assert.equal(summary.private.delta, 200);
+  assert.equal(summary.heap.delta, 0);
+  assert.equal(summary.averageCpuPercent, 7.5);
+  assert.equal(summary.peakPrivateBytes, 500);
+  assert.equal(summary.peakHeapBytes, 400);
+  assert.equal(summary.peakCpuPercent, 12.5);
+  assert.equal(summary.peakNonpagedPoolBytes, 900);
+  assert.equal(summarizeSession(state([])), null);
 });
 
-test('pool growth uses elapsed time, not wall clock or application attribution', () => {
-  const first = snapshot(1_000), next = snapshot(6_000);
-  next.capturedAt = 0;
-  const history = appendResourceSample(appendResourceSample([], first), next);
-  assert.equal(poolGrowthPerMinute(history), 60_000);
-  assert.equal(poolGrowthPerMinute(history.slice(0, 1)), null);
+test('formats memory, deltas and session durations for display', () => {
   assert.equal(formatMemory(null), '—');
   assert.equal(formatMemory(1024 ** 3), '1.0 GiB');
+  assert.equal(formatMemory(512 * 1024 ** 2), '512.0 MiB');
+  assert.equal(formatDelta(1024 ** 2), '+1.0 MiB');
+  assert.equal(formatDelta(-(1024 ** 2)), '−1.0 MiB');
+  assert.equal(formatDelta(null), '—');
+  assert.equal(formatDuration(59_400), '59 秒');
+  assert.equal(formatDuration(90_000), '1 分 30 秒');
+  assert.equal(formatDuration(3_600_000), '1 时 0 分');
 });
