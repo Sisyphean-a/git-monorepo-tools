@@ -303,9 +303,7 @@ export namespace snapshot {
 	    baseUrl: string;
 	    model: string;
 	    maxDiffChars: number;
-	    generateThree: boolean;
 	    stagedOnly: boolean;
-	    promptTemplate: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AICommitSettings(source);
@@ -317,9 +315,7 @@ export namespace snapshot {
 	        this.baseUrl = source["baseUrl"];
 	        this.model = source["model"];
 	        this.maxDiffChars = source["maxDiffChars"];
-	        this.generateThree = source["generateThree"];
 	        this.stagedOnly = source["stagedOnly"];
-	        this.promptTemplate = source["promptTemplate"];
 	    }
 	}
 	export class PullResult {
@@ -525,7 +521,6 @@ export namespace snapshot {
 	    repoDetails: Record<string, RepoDetail>;
 	    selectedRepoId: string;
 	    pullResults: PullResult[];
-	    commitCandidates: Record<string, Array<CommitCandidate>>;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSnapshot(source);
@@ -539,7 +534,6 @@ export namespace snapshot {
 	        this.repoDetails = this.convertValues(source["repoDetails"], RepoDetail, true);
 	        this.selectedRepoId = source["selectedRepoId"];
 	        this.pullResults = this.convertValues(source["pullResults"], PullResult);
-	        this.commitCandidates = this.convertValues(source["commitCandidates"], Array<CommitCandidate>, true);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -560,31 +554,8 @@ export namespace snapshot {
 		    return a;
 		}
 	}
-	export class CommitCandidate {
-	    id: string;
-	    style: string;
-	    icon: string;
-	    title: string;
-	    body: string;
-	    full: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new CommitCandidate(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.style = source["style"];
-	        this.icon = source["icon"];
-	        this.title = source["title"];
-	        this.body = source["body"];
-	        this.full = source["full"];
-	    }
-	}
 	export class RepoSnapshotUpdate {
 	    repo: RepoDetail;
-	    commitCandidates: CommitCandidate[];
 	    scannedAt: string;
 	
 	    static createFrom(source: any = {}) {
@@ -594,7 +565,6 @@ export namespace snapshot {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.repo = this.convertValues(source["repo"], RepoDetail);
-	        this.commitCandidates = this.convertValues(source["commitCandidates"], CommitCandidate);
 	        this.scannedAt = source["scannedAt"];
 	    }
 	
@@ -652,7 +622,6 @@ export namespace snapshot {
 		    return a;
 		}
 	}
-	
 	export class CommitDetail {
 	    hash: string;
 	    shortHash: string;

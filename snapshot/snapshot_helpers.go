@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -29,57 +28,6 @@ func buildPullResult(repo Repo, repoPath string) PullResult {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repoPath, Result: "uptodate", Detail: "本地领先远端 " + strconv.Itoa(repo.Ahead) + " 个提交", Commits: repo.Ahead}
 	}
 	return PullResult{ID: repo.ID, Name: repo.Name, Path: repoPath, Result: "uptodate", Detail: "工作区干净，已与远端同步"}
-}
-
-func buildCommitCandidates(files []FileChange) []CommitCandidate {
-	staged := []FileChange{}
-	for _, file := range files {
-		if file.Staged {
-			staged = append(staged, file)
-		}
-	}
-	if len(staged) == 0 {
-		return nil
-	}
-	scopes := topScopes(staged)
-	summary := strings.Join(scopes, ", ")
-	total := len(staged)
-	scope := scopes[0]
-	return []CommitCandidate{
-		{ID: "emoji", Style: "表情风格", Icon: "✨", Title: "feat(" + scope + "): 更新 " + summary, Body: "基于 " + strconv.Itoa(total) + " 个暂存文件生成", Full: "✨ feat(" + scope + "): 更新 " + summary},
-		{ID: "short", Style: "标准短句", Icon: "📝", Title: scope + ": 更新 " + strconv.Itoa(total) + " 个暂存文件", Body: "基于 " + strconv.Itoa(total) + " 个暂存文件生成", Full: scope + ": 更新 " + strconv.Itoa(total) + " 个暂存文件"},
-		{ID: "conventional", Style: "约定式提交", Icon: "📐", Title: "chore(" + scope + "): 更新暂存区改动", Body: "基于 " + strconv.Itoa(total) + " 个暂存文件生成", Full: "chore(" + scope + "): 更新暂存区改动"},
-	}
-}
-
-func topScopes(files []FileChange) []string {
-	counter := map[string]int{}
-	for _, file := range files {
-		scope := strings.Split(file.Path, "/")[0]
-		if scope == "" {
-			scope = "repo"
-		}
-		counter[scope]++
-	}
-	type pair struct {
-		key   string
-		value int
-	}
-	pairs := make([]pair, 0, len(counter))
-	for key, value := range counter {
-		pairs = append(pairs, pair{key: key, value: value})
-	}
-	slices.SortFunc(pairs, func(left, right pair) int {
-		if left.value != right.value {
-			return right.value - left.value
-		}
-		return strings.Compare(left.key, right.key)
-	})
-	scopes := make([]string, 0, min(3, len(pairs)))
-	for i := 0; i < min(3, len(pairs)); i++ {
-		scopes = append(scopes, pairs[i].key)
-	}
-	return scopes
 }
 
 func uniquePathCount(files []FileChange) int {
@@ -128,14 +76,6 @@ func orderedPullResults(items []repoSnapshot) []PullResult {
 	return results
 }
 
-func orderedCandidates(items []repoSnapshot) map[string][]CommitCandidate {
-	candidates := map[string][]CommitCandidate{}
-	for _, item := range items {
-		candidates[item.repo.ID] = item.commitCandidates
-	}
-	return candidates
-}
-
 func normalizePath(value string) string {
 	return strings.ReplaceAll(value, "\\", "/")
 }
@@ -178,14 +118,6 @@ func filterNonEmpty(lines []string) []string {
 		}
 	}
 	return filtered
-}
-
-func extractShortstat(line, pattern string) int {
-	match := regexp.MustCompile(pattern).FindStringSubmatch(line)
-	if len(match) < 2 {
-		return 0
-	}
-	return toNumber(match[1])
 }
 
 func toNumber(value string) int {

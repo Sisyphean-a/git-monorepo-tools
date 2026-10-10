@@ -30,7 +30,6 @@ var (
 	openClipboard              = syscall.NewLazyDLL("user32.dll").NewProc("OpenClipboard")
 	closeClipboard             = syscall.NewLazyDLL("user32.dll").NewProc("CloseClipboard")
 	getClipboardData           = syscall.NewLazyDLL("user32.dll").NewProc("GetClipboardData")
-	enumClipboardFormats       = syscall.NewLazyDLL("user32.dll").NewProc("EnumClipboardFormats")
 	globalLock                 = syscall.NewLazyDLL("kernel32.dll").NewProc("GlobalLock")
 	globalUnlock               = syscall.NewLazyDLL("kernel32.dll").NewProc("GlobalUnlock")
 	globalSize                 = syscall.NewLazyDLL("kernel32.dll").NewProc("GlobalSize")
@@ -208,19 +207,6 @@ func readClipboardMemory(address, size uintptr, format, codePage uint32) (string
 		return decodeClipboardUTF16(units), nil
 	}
 	return decodeClipboardBytes(bytes, codePage)
-}
-
-func listOpenClipboardFormats() []uint32 {
-	formats := make([]uint32, 0, 8)
-	var current uintptr
-	for {
-		next, _, _ := enumClipboardFormats.Call(current)
-		if next == 0 {
-			return formats
-		}
-		formats = append(formats, uint32(next))
-		current = next
-	}
 }
 
 func decodeClipboardUTF16(units []uint16) string {

@@ -29,10 +29,9 @@ type repoEntry struct {
 }
 
 type repoSnapshot struct {
-	repo             Repo
-	detail           RepoDetail
-	commitCandidates []CommitCandidate
-	pullResult       PullResult
+	repo       Repo
+	detail     RepoDetail
+	pullResult PullResult
 }
 
 func NewService(projectRoot string) *Service {
@@ -84,13 +83,12 @@ func (s *Service) buildSnapshot(request Request, pullResults []PullResult) (AppS
 	}
 
 	return AppSnapshot{
-		ScannedAt:        formatDateTime(scanTime),
-		Categories:       uniqueCategories(ordered),
-		Repos:            orderedRepos(ordered),
-		RepoDetails:      orderedDetailsMap(ordered),
-		SelectedRepoID:   selectedID,
-		PullResults:      results,
-		CommitCandidates: orderedCandidates(ordered),
+		ScannedAt:      formatDateTime(scanTime),
+		Categories:     uniqueCategories(ordered),
+		Repos:          orderedRepos(ordered),
+		RepoDetails:    orderedDetailsMap(ordered),
+		SelectedRepoID: selectedID,
+		PullResults:    results,
 	}, nil
 }
 
@@ -247,9 +245,8 @@ func (executor gitExecutor) buildRepoUpdate(repoID, repoPath, category string, r
 		return RepoSnapshotUpdate{}, fmt.Errorf("仓库路径与标识不匹配：%s", repoPath)
 	}
 	return RepoSnapshotUpdate{
-		Repo:             snapshot.detail,
-		CommitCandidates: snapshot.commitCandidates,
-		ScannedAt:        formatDateTime(scanTime),
+		Repo:      snapshot.detail,
+		ScannedAt: formatDateTime(scanTime),
 	}, nil
 }
 
@@ -291,10 +288,9 @@ func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, sca
 	}
 
 	return repoSnapshot{
-		repo:             repo,
-		detail:           detail,
-		commitCandidates: buildCommitCandidates(files),
-		pullResult:       buildPullResult(repo, repoPath),
+		repo:       repo,
+		detail:     detail,
+		pullResult: buildPullResult(repo, repoPath),
 	}, nil
 }
 

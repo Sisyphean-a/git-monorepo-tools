@@ -28,7 +28,7 @@ function repo(id: string, modified: number, path = `/repo/${id}`): RepoDetail {
   };
 }
 
-test('mergeRepoSnapshotUpdate replaces only target repo fields and candidates', () => {
+test('mergeRepoSnapshotUpdate replaces only target repo fields', () => {
   const snapshot: AppSnapshot = {
     scannedAt: 'old-scan',
     categories: ['测试'],
@@ -39,10 +39,6 @@ test('mergeRepoSnapshotUpdate replaces only target repo fields and candidates', 
     },
     selectedRepoId: 'repo-a',
     pullResults: [],
-    commitCandidates: {
-      'repo-a': [],
-      'repo-b': [{ id: 'old', style: '', icon: '', title: '', body: '', full: '' }],
-    },
   };
   const update: RepoSnapshotUpdate = {
     repo: {
@@ -52,22 +48,18 @@ test('mergeRepoSnapshotUpdate replaces only target repo fields and candidates', 
       stagedCount: 1,
       files: [{ id: 'a', status: 'M', path: 'a.txt', additions: 1, deletions: 0, size: '1 KB', staged: true }],
     },
-    commitCandidates: [{ id: 'new', style: '', icon: '', title: '', body: '', full: '' }],
     scannedAt: 'merged-scan',
   };
 
   const next = mergeRepoSnapshotUpdate(snapshot, update);
   const repoA = next.repoDetails['repo-a'];
   const repoB = next.repoDetails['repo-b'];
-  const repoBCandidates = next.commitCandidates['repo-b'];
   assert.ok(repoA);
   assert.ok(repoB);
-  assert.ok(repoBCandidates);
 
   assert.equal(next.scannedAt, 'old-scan');
   assert.equal(repoB.modified, 3);
   assert.equal(repoA.modified, 0);
-  assert.equal(repoBCandidates[0]?.id, 'new');
   assert.deepEqual(next.repos.map(item => item.id), ['repo-a', 'repo-b']);
   assert.equal('files' in next.repos[1]!, false);
 });
@@ -78,12 +70,11 @@ test('mergeRepoSnapshotUpdate preserves reading data and stable file identities'
   current.history = [{ hash: 'abc', shortHash: 'abc', author: 'A', time: 'now', message: 'keep', additions: 1, deletions: 0, parents: 1, parentHashes: [], refs: [], files: 1 }];
   current.historyTotal = 1;
   const snapshot: AppSnapshot = {
-    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [], commitCandidates: { 'repo-a': [] },
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [],
   };
 
   const next = mergeRepoSnapshotUpdate(snapshot, {
     repo: { ...repo('repo-a', 1), scannedAt: 'new', files: current.files.map(file => ({ ...file })) },
-    commitCandidates: [],
     scannedAt: 'new',
   }, 'background');
 
@@ -99,12 +90,11 @@ test('background HEAD changes invalidate history without an app interaction', ()
   current.history = [{ hash: 'old-head', shortHash: 'old', author: 'A', time: 'now', message: 'old', additions: 0, deletions: 0, parents: 1, parentHashes: [], refs: [], files: 0 }];
   current.historyRevision = 'head-old-head';
   const snapshot: AppSnapshot = {
-    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [], commitCandidates: { 'repo-a': [] },
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [],
   };
 
   const next = mergeRepoSnapshotUpdate(snapshot, {
     repo: { ...repo('repo-a', 0), headRevision: 'new-head' },
-    commitCandidates: [],
     scannedAt: 'background',
   }, 'background');
 
@@ -118,12 +108,11 @@ test('interaction updates invalidate history reading data', () => {
   current.historyTotal = 1;
   current.historyRevision = 'old';
   const snapshot: AppSnapshot = {
-    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [], commitCandidates: { 'repo-a': [] },
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [],
   };
 
   const next = mergeRepoSnapshotUpdate(snapshot, {
     repo: repo('repo-a', 0),
-    commitCandidates: [],
     scannedAt: 'same-second',
   }, 'interaction', 'interaction-2');
 
@@ -135,12 +124,11 @@ test('mergeRepoSnapshotUpdate replaces changed file summaries',  () => {
   const current = repo('repo-a', 1);
   current.files = [{ id: 'a', status: 'M', path: 'a.txt', additions: 1, deletions: 0, size: '1 KB', staged: false }];
   const snapshot: AppSnapshot = {
-    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [], commitCandidates: { 'repo-a': [] },
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [],
   };
 
   const next = mergeRepoSnapshotUpdate(snapshot, {
     repo: { ...repo('repo-a', 1), files: [{ ...current.files[0]!, additions: 2 }] },
-    commitCandidates: [],
     scannedAt: 'new',
   });
 
@@ -152,12 +140,11 @@ test('mergeRepoSnapshotUpdate replaces a changed previous file size', () => {
   const current = repo('repo-a', 1);
   current.files = [{ id: 'a', status: 'M', path: 'a.png', additions: 1, deletions: 0, size: '2 KB', previousSize: '1 KB', staged: false }];
   const snapshot: AppSnapshot = {
-    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [], commitCandidates: { 'repo-a': [] },
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [],
   };
 
   const next = mergeRepoSnapshotUpdate(snapshot, {
     repo: { ...repo('repo-a', 1), files: [{ ...current.files[0]!, previousSize: '3 KB' }] },
-    commitCandidates: [],
     scannedAt: 'new',
   }, 'background');
 
@@ -172,12 +159,11 @@ test('mergeRepoSnapshotUpdate preserves file objects while applying a changed or
     { id: 'b', status: 'M', path: 'b.txt', additions: 1, deletions: 0, size: '1 KB', staged: false },
   ];
   const snapshot: AppSnapshot = {
-    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [], commitCandidates: { 'repo-a': [] },
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [],
   };
 
   const next = mergeRepoSnapshotUpdate(snapshot, {
     repo: { ...repo('repo-a', 2), files: [current.files[1]!, current.files[0]!] },
-    commitCandidates: [],
     scannedAt: 'new',
   }, 'background');
 
@@ -193,7 +179,6 @@ test('mergeSidebarRepoUpdate updates only sidebar summary fields', () => {
       lastScan: 'new',
       scannedAt: 'new',
     },
-    commitCandidates: [],
     scannedAt: 'sidebar-scan',
   };
 
@@ -220,7 +205,6 @@ test('mergeSnapshotPreservingInteractions keeps interaction-updated repos while 
     repoDetails: { 'repo-a': currentRepoA, 'repo-old': repo('repo-old', 1) },
     selectedRepoId: 'repo-a',
     pullResults: [],
-    commitCandidates: { 'repo-a': [{ id: 'interaction-only', style: '', icon: '', title: '', body: '', full: '' }] },
   };
   const snapshotRepoA = repo('repo-a', 0);
   const next: AppSnapshot = {
@@ -230,7 +214,6 @@ test('mergeSnapshotPreservingInteractions keeps interaction-updated repos while 
     repoDetails: { 'repo-a': snapshotRepoA, 'repo-b': repo('repo-b', 0) },
     selectedRepoId: 'repo-a',
     pullResults: [],
-    commitCandidates: { 'repo-a': [], 'repo-b': [] },
   };
   const versions = new Map([['repo-a', 7], ['repo-old', 8]]);
 
@@ -240,7 +223,6 @@ test('mergeSnapshotPreservingInteractions keeps interaction-updated repos while 
   assert.deepEqual(merged.repos.map(item => item.id), ['repo-a', 'repo-b']);
   assert.equal(merged.repoDetails['repo-a']?.modified, 5);
   assert.equal(merged.repoDetails['repo-a']?.files[0]?.id, 'a');
-  assert.equal(merged.commitCandidates['repo-a']?.[0]?.id, 'interaction-only');
   assert.equal(merged.repoDetails['repo-b']?.modified, 0);
   assert.equal('repo-old' in merged.repoDetails, false);
 });
@@ -254,7 +236,6 @@ test('mergeSnapshotPreservingInteractions ignores interactions that predate the 
     repoDetails: { 'repo-a': current },
     selectedRepoId: 'repo-a',
     pullResults: [],
-    commitCandidates: { 'repo-a': [] },
   };
   const nextRepo = repo('repo-a', 0);
   const next: AppSnapshot = {
@@ -264,7 +245,6 @@ test('mergeSnapshotPreservingInteractions ignores interactions that predate the 
     repoDetails: { 'repo-a': nextRepo },
     selectedRepoId: 'repo-a',
     pullResults: [],
-    commitCandidates: { 'repo-a': [] },
   };
 
   const merged = mergeSnapshotPreservingInteractions(next, currentSnapshot, new Map([['repo-a', 2]]), 5);
@@ -282,7 +262,6 @@ test('mergeSnapshotPreservingInteractions returns the snapshot when no current s
     repoDetails: { 'repo-a': nextRepo },
     selectedRepoId: 'repo-a',
     pullResults: [],
-    commitCandidates: { 'repo-a': [] },
   };
 
   assert.equal(mergeSnapshotPreservingInteractions(next, null, new Map([['repo-a', 7]]), 1), next);
@@ -300,11 +279,6 @@ test('mergeRepoSnapshotUpdate keeps sidebar order stable when repo status change
     },
     selectedRepoId: 'repo-a',
     pullResults: [],
-    commitCandidates: {
-      'repo-a': [],
-      'repo-b': [],
-      'repo-c': [],
-    },
   };
 
   const next = mergeRepoSnapshotUpdate(snapshot, {
@@ -313,7 +287,6 @@ test('mergeRepoSnapshotUpdate keeps sidebar order stable when repo status change
       lastScan: 'new',
       scannedAt: 'new',
     },
-    commitCandidates: [],
     scannedAt: 'new-scan',
   });
 

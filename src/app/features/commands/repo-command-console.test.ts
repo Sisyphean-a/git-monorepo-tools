@@ -14,8 +14,8 @@ function createConsoleStore() {
 
 test('sessions of different repos do not overwrite each other', () => {
   const { store, updateRepo } = createConsoleStore();
-  const projectA = createCommandConsoleSession('A', updateRepo('A'), '组合', '生成 → 提交');
-  const projectB = createCommandConsoleSession('B', updateRepo('B'), '自定义命令', 'npm test');
+  const projectA = createCommandConsoleSession(updateRepo('A'), '组合', '生成 → 提交');
+  const projectB = createCommandConsoleSession(updateRepo('B'), '自定义命令', 'npm test');
 
   projectA.appendLine('> 生成');
   projectA.appendLine('已生成');
@@ -32,9 +32,9 @@ test('sessions of different repos do not overwrite each other', () => {
 
 test('an older command cannot overwrite a newer command console of the same repo', () => {
   const { store, updateRepo } = createConsoleStore();
-  const older = createCommandConsoleSession('A', updateRepo('A'), '旧组合', '生成 → 提交');
+  const older = createCommandConsoleSession(updateRepo('A'), '旧组合', '生成 → 提交');
   older.appendLine('旧步骤开始');
-  const newer = createCommandConsoleSession('A', updateRepo('A'), '新命令', 'npm test');
+  const newer = createCommandConsoleSession(updateRepo('A'), '新命令', 'npm test');
 
   older.appendLine('旧步骤结束');
   older.finish('success');
@@ -46,7 +46,7 @@ test('an older command cannot overwrite a newer command console of the same repo
 
 test('clearing the console prevents a running command from reopening it', () => {
   const { store, updateRepo } = createConsoleStore();
-  const session = createCommandConsoleSession('A', updateRepo('A'), '命令', 'npm test');
+  const session = createCommandConsoleSession(updateRepo('A'), '命令', 'npm test');
 
   store['A'] = null;
   session.appendLine('late output');
@@ -57,12 +57,12 @@ test('clearing the console prevents a running command from reopening it', () => 
 
 test('switching projects keeps each repo output retained (no reset on project change)', () => {
   const { store, updateRepo } = createConsoleStore();
-  const projectA = createCommandConsoleSession('A', updateRepo('A'), '组合', '生成 → 提交');
+  const projectA = createCommandConsoleSession(updateRepo('A'), '组合', '生成 → 提交');
   projectA.appendLine('A 的输出内容');
   projectA.finish('success');
 
   // 切换到项目 B，A 的会话仍然保留在 A 的槽位
-  const projectB = createCommandConsoleSession('B', updateRepo('B'), '自定义命令', 'npm test');
+  const projectB = createCommandConsoleSession(updateRepo('B'), '自定义命令', 'npm test');
   projectB.appendLine('B 的输出内容');
 
   assert.equal(store['A']?.output, 'A 的输出内容');
@@ -71,7 +71,7 @@ test('switching projects keeps each repo output retained (no reset on project ch
 
 test('command output keeps only the tail once it exceeds the cap and marks itself truncated', () => {
   const { store, updateRepo } = createConsoleStore();
-  const session = createCommandConsoleSession('A', updateRepo('A'), '命令', 'npm test');
+  const session = createCommandConsoleSession(updateRepo('A'), '命令', 'npm test');
 
   const head = 'a'.repeat(MAX_COMMAND_OUTPUT_CHARS);
   const tail = 'tail-data';
@@ -95,7 +95,7 @@ test('command output truncation does not split a UTF-16 surrogate pair', () => {
 
 test('truncation flag survives later writes without growing the output', () => {
   const { store, updateRepo } = createConsoleStore();
-  const session = createCommandConsoleSession('A', updateRepo('A'), '命令', 'npm test');
+  const session = createCommandConsoleSession(updateRepo('A'), '命令', 'npm test');
 
   session.write('x'.repeat(MAX_COMMAND_OUTPUT_CHARS + 1));
   session.write('more output');

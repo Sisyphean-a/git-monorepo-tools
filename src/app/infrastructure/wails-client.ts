@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, CommitDetail, FileChange, FileDiff, PullResult, RepoCommandResult, RepoFileContent, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, RepoTreeEntry, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
+import type { AppSettings, AppSnapshot, CommitDetail, FileChange, FileDiff, RepoCommandResult, RepoFileContent, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, RepoTreeEntry, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
 import type {
   BatchResponse,
   CommitDetailRequest,

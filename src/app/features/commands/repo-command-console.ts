@@ -90,7 +90,6 @@ export function resolveCommandConsoleAction(
 }
 
 export function createCommandConsoleSession(
-  repoId: string,
   updateConsole: (updater: CommandConsoleUpdater) => void,
   title: string,
   command: string,

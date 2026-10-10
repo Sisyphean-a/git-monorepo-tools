@@ -50,13 +50,11 @@ type RepoCommandResult struct {
 }
 
 type AICommitSettings struct {
-	APIKey         string `json:"apiKey"`
-	BaseURL        string `json:"baseUrl"`
-	Model          string `json:"model"`
-	MaxDiffChars   int    `json:"maxDiffChars"`
-	GenerateThree  bool   `json:"generateThree"`
-	StagedOnly     bool   `json:"stagedOnly"`
-	PromptTemplate string `json:"promptTemplate"`
+	APIKey       string `json:"apiKey"`
+	BaseURL      string `json:"baseUrl"`
+	Model        string `json:"model"`
+	MaxDiffChars int    `json:"maxDiffChars"`
+	StagedOnly   bool   `json:"stagedOnly"`
 }
 
 type GitProxySettings struct {
@@ -78,19 +76,17 @@ type WorkspaceBootstrap struct {
 }
 
 type AppSnapshot struct {
-	ScannedAt        string                       `json:"scannedAt"`
-	Categories       []string                     `json:"categories"`
-	Repos            []Repo                       `json:"repos"`
-	RepoDetails      map[string]RepoDetail        `json:"repoDetails"`
-	SelectedRepoID   string                       `json:"selectedRepoId"`
-	PullResults      []PullResult                 `json:"pullResults"`
-	CommitCandidates map[string][]CommitCandidate `json:"commitCandidates"`
+	ScannedAt      string                `json:"scannedAt"`
+	Categories     []string              `json:"categories"`
+	Repos          []Repo                `json:"repos"`
+	RepoDetails    map[string]RepoDetail `json:"repoDetails"`
+	SelectedRepoID string                `json:"selectedRepoId"`
+	PullResults    []PullResult          `json:"pullResults"`
 }
 
 type RepoSnapshotUpdate struct {
-	Repo             RepoDetail        `json:"repo"`
-	CommitCandidates []CommitCandidate `json:"commitCandidates"`
-	ScannedAt        string            `json:"scannedAt"`
+	Repo      RepoDetail `json:"repo"`
+	ScannedAt string     `json:"scannedAt"`
 }
 
 type Repo struct {
@@ -143,15 +139,6 @@ type PullResult struct {
 	Result  string `json:"result"`
 	Detail  string `json:"detail"`
 	Commits int    `json:"commits,omitempty"`
-}
-
-type CommitCandidate struct {
-	ID    string `json:"id"`
-	Style string `json:"style"`
-	Icon  string `json:"icon"`
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	Full  string `json:"full"`
 }
 
 type CommitSummary struct {

@@ -59,7 +59,6 @@ function buildProgressiveErrorUpdate(
       status: 'error',
       scanError: message,
     },
-    commitCandidates: [],
     scannedAt,
   };
 }

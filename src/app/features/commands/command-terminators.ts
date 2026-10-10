@@ -21,5 +21,3 @@ export function createCommandTerminators() {
     },
   };
 }
-
-export type CommandTerminators = ReturnType<typeof createCommandTerminators>;

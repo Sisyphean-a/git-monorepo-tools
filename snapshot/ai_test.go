@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestEnsureAISettingsDoesNotRequirePromptTemplate(t *testing.T) {
+func TestEnsureAISettingsAcceptsMinimalSettings(t *testing.T) {
 	settings := AICommitSettings{
 		APIKey:       "sk-test",
 		BaseURL:      "https://api.deepseek.com",
@@ -22,7 +22,7 @@ func TestEnsureAISettingsDoesNotRequirePromptTemplate(t *testing.T) {
 	}
 
 	if err := ensureAISettings(settings); err != nil {
-		t.Fatalf("expected settings to pass without prompt template, got %v", err)
+		t.Fatalf("expected minimal settings to pass, got %v", err)
 	}
 }
 

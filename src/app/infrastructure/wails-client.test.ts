@@ -54,7 +54,6 @@ test('fetchSnapshot can opt into remote refresh after page load', async () => {
         repoDetails: {},
         selectedRepoId: '',
         pullResults: [],
-        commitCandidates: {},
       };
     },
     MutateRepo: async () => {
@@ -392,9 +391,7 @@ test('generateCommitMessage uses dedicated binding', async () => {
         baseUrl: 'https://api.deepseek.com',
         model: 'deepseek-chat',
         maxDiffChars: 8000,
-        generateThree: false,
         stagedOnly: true,
-        promptTemplate: '',
       },
       gitBehavior: {
         autoScanEnabled: true,
@@ -465,7 +462,6 @@ test('mutateRepo accepts discard-all action', async () => {
           historyTotal: 0,
           historyHasMore: false,
         },
-        commitCandidates: [],
         scannedAt: '',
       };
     },
@@ -795,7 +791,6 @@ test('refreshRepo uses dedicated binding', async () => {
           historyTotal: 0,
           historyHasMore: false,
         },
-        commitCandidates: [],
         scannedAt: 'now',
       };
     },

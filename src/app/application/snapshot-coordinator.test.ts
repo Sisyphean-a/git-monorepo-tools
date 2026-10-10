@@ -15,9 +15,7 @@ const settings = (concurrency: number): AppSettings => ({
     baseUrl: '',
     model: '',
     maxDiffChars: 2000,
-    generateThree: false,
     stagedOnly: true,
-    promptTemplate: '',
   },
   gitBehavior: {
     autoScanEnabled: true,
@@ -47,7 +45,6 @@ const snapshot = (label: string): AppSnapshot => ({
   repoDetails: {},
   selectedRepoId: '',
   pullResults: [],
-  commitCandidates: {},
 });
 
 test('repo-owned foreground errors remain rejected without contaminating or clearing global errors', async () => {
@@ -183,7 +180,7 @@ test('keeps a repo interaction completed during a full refresh after an earlier 
   const updateRepo = (modified: number) => {
     versions.set('repo-a', ++repoUpdateRevision);
     current = mergeRepoSnapshotUpdate(current, {
-      repo: repo(modified), commitCandidates: [], scannedAt: 'now',
+      repo: repo(modified), scannedAt: 'now',
     }, 'interaction', `interaction-${repoUpdateRevision}`);
   };
 

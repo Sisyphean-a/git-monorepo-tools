@@ -10,7 +10,6 @@ export function buildBootstrapSnapshot(bootstrap: WorkspaceBootstrap): AppSnapsh
     ),
     selectedRepoId: bootstrap.selectedRepoId,
     pullResults: [],
-    commitCandidates: {},
   };
 }
 

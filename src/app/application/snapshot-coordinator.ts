@@ -32,8 +32,6 @@ export type ProgressiveSnapshotLease = {
   reportError: (message: string | null) => boolean;
 };
 
-export type SnapshotCoordinator = ReturnType<typeof createSnapshotCoordinator>;
-
 export function createSnapshotCoordinator(options: SnapshotCoordinatorOptions) {
   const refreshQueue: RefreshEntry[] = [];
   let activeRefresh: Promise<void> | null = null;

@@ -68,15 +68,6 @@ export interface PullResult {
   commits?: number;
 }
 
-export interface CommitCandidate {
-  id: string;
-  style: string;
-  icon: string;
-  title: string;
-  body: string;
-  full: string;
-}
-
 export interface ScanRootSetting {
   path: string;
   category: string;
@@ -87,9 +78,7 @@ export interface AICommitSettings {
   baseUrl: string;
   model: string;
   maxDiffChars: number;
-  generateThree: boolean;
   stagedOnly: boolean;
-  promptTemplate: string;
 }
 
 export interface GitProxySettings {
@@ -166,32 +155,7 @@ export interface RepoDetail extends Repo {
 
 export interface RepoSnapshotUpdate {
   repo: RepoDetail;
-  commitCandidates: CommitCandidate[];
   scannedAt: string;
-}
-
-export type GitOperationStatus = 'success' | 'skipped' | 'failed' | 'noop';
-
-export interface GitOperationResult {
-  repoId: string;
-  repoName: string;
-  operation: 'pull' | 'push' | 'commit' | 'stage' | 'unstage' | 'scan';
-  status: GitOperationStatus;
-  message: string;
-  stdout?: string;
-  stderr?: string;
-  startedAt: number;
-  endedAt: number;
-}
-
-export interface BatchGitOperationResult {
-  operation: 'pullAll' | 'pushAll';
-  total: number;
-  success: number;
-  skipped: number;
-  failed: number;
-  noop: number;
-  items: GitOperationResult[];
 }
 
 export interface RepoCommandResult {
@@ -258,7 +222,6 @@ export interface AppSnapshot {
   repoDetails: Record<string, RepoDetail>;
   selectedRepoId: string;
   pullResults: PullResult[];
-  commitCandidates: Record<string, CommitCandidate[]>;
 }
 
 export type SettingsTab = 'repositories' | 'ai-commit' | 'git-behavior' | 'terminal-operations';

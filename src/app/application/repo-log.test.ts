@@ -14,9 +14,7 @@ const settings: AppSettings = {
     baseUrl: '',
     model: '',
     maxDiffChars: 2000,
-    generateThree: false,
     stagedOnly: true,
-    promptTemplate: '',
   },
   gitBehavior: {
     autoScanEnabled: true,

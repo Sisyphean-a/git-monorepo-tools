@@ -27,10 +27,6 @@ export function mergeRepoSnapshotUpdate(
     repos,
     repoDetails,
     selectedRepoId: snapshot.selectedRepoId || nextRepo.id,
-    commitCandidates: {
-      ...snapshot.commitCandidates,
-      [nextRepo.id]: update.commitCandidates,
-    },
   };
 }
 
@@ -62,13 +58,10 @@ export function mergeSnapshotPreservingInteractions(
     return detail ? toRepoSummary(detail) : repo;
   });
   const repoDetails = { ...next.repoDetails };
-  const commitCandidates = { ...next.commitCandidates };
   for (const [repoId, detail] of preserved) {
     repoDetails[repoId] = detail;
-    const candidates = current.commitCandidates[repoId];
-    if (candidates) commitCandidates[repoId] = candidates;
   }
-  return { ...next, repos, repoDetails, commitCandidates };
+  return { ...next, repos, repoDetails };
 }
 
 export function toRepoSummary(repo: Repo): Repo {

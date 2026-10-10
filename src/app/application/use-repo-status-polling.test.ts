@@ -12,11 +12,11 @@ function pollingFixture() {
     id: 'repo', name: 'repo', branch: 'main', path: 'E:/repo', remote: '—', category: 'test',
     modified: 0, ahead: 0, behind: 0, conflicts: 0, status: 'clean' as const, lastScan: '',
   };
-  const update = { repo: { ...repo, files: [], history: [], historyTotal: 0, historyHasMore: false, stagedCount: 0, unstagedCount: 0, scannedAt: '' }, commitCandidates: [], scannedAt: '' };
+  const update = { repo: { ...repo, files: [], history: [], historyTotal: 0, historyHasMore: false, stagedCount: 0, unstagedCount: 0, scannedAt: '' }, scannedAt: '' };
   const config: PollingConfig = {
     backend: { refreshRepo: async () => { requests++; return update; } },
     settings: DEFAULT_SETTINGS,
-    snapshot: { repos: [repo], repoDetails: { repo: update.repo }, scannedAt: '', categories: [], selectedRepoId: 'repo', pullResults: [], commitCandidates: {} },
+    snapshot: { repos: [repo], repoDetails: { repo: update.repo }, scannedAt: '', categories: [], selectedRepoId: 'repo', pullResults: [] },
     selectedRepoId: 'repo',
     windowActive: true,
     startupScanActive: false,

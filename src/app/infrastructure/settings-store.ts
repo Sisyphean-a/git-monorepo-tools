@@ -16,9 +16,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-chat',
     maxDiffChars: 8000,
-    generateThree: false,
     stagedOnly: true,
-    promptTemplate: 'You generate a single Git commit message from repository changes.\n\nRequirements:\n- Output JSON only: {"message":"..."}.\n- The message must be Simplified Chinese.\n- The message must be one line.\n- Prefer Conventional Commits style: type(scope): summary.\n- Keep it specific and concise.\n- Do not mention AI, JSON, prompt, or file counts unless they are essential.\n- If the changes span multiple areas, omit scope instead of guessing.\n- If you cannot infer a precise type, use chore.',
   },
   gitBehavior: {
     autoScanEnabled: true,
@@ -96,9 +94,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   draft.aiCommit.baseUrl = sanitizeText(aiCommit.baseUrl, draft.aiCommit.baseUrl);
   draft.aiCommit.model = sanitizeText(aiCommit.model, draft.aiCommit.model);
   draft.aiCommit.maxDiffChars = sanitizeNumber(aiCommit.maxDiffChars, draft.aiCommit.maxDiffChars, [2000, 4000, 8000, 12000, 20000]);
-  draft.aiCommit.generateThree = sanitizeBoolean(aiCommit.generateThree, draft.aiCommit.generateThree);
   draft.aiCommit.stagedOnly = sanitizeBoolean(aiCommit.stagedOnly, draft.aiCommit.stagedOnly);
-  draft.aiCommit.promptTemplate = sanitizeText(aiCommit.promptTemplate, draft.aiCommit.promptTemplate);
 
   draft.gitBehavior.autoScanEnabled = sanitizeBoolean(gitBehavior.autoScanEnabled, draft.gitBehavior.autoScanEnabled);
   draft.gitBehavior.autoScanIntervalSeconds = sanitizeNumber(gitBehavior.autoScanIntervalSeconds, draft.gitBehavior.autoScanIntervalSeconds, [30, 60, 120, 300]);

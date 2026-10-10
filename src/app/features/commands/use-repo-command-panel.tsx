@@ -127,7 +127,6 @@ export function useRepoCommandPanel({
     action: BuiltInCommandAction,
     getMessage: () => string,
     setMessage: (message: string) => void,
-    isActive: () => boolean,
   ) => {
     if (action === 'stage-all') {
       await onMutateRepo(repo.id, 'stage-all', repoActionBody());
@@ -168,7 +167,6 @@ export function useRepoCommandPanel({
         return Promise.resolve();
       });
       const session = createCommandConsoleSession(
-        repo.id,
         updateRepoConsole(repo.id),
         combo.label,
         formatComboSummary(combo.actions),
@@ -191,7 +189,6 @@ export function useRepoCommandPanel({
             action,
             comboMessage.getMessage,
             comboMessage.setMessage,
-            isActive,
           );
           if (result) session.appendLine(result);
         }
@@ -208,9 +205,9 @@ export function useRepoCommandPanel({
   };
 
   const runCustomCommand = (scope: 'global' | 'project', command: CustomCommandButton) => {
-    triggerBusyAction(`${scope}-command:${command.id}`, async isActive => {
+    triggerBusyAction(`${scope}-command:${command.id}`, async () => {
       const streamId = `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const session = createCommandConsoleSession(repo.id, updateRepoConsole(repo.id), command.label, command.command);
+      const session = createCommandConsoleSession(updateRepoConsole(repo.id), command.label, command.command);
       let terminateRequested = false;
       terminators.register(repo.id, () => {
         terminateRequested = true;
@@ -282,7 +279,7 @@ export function useRepoCommandPanel({
     onClick: () => triggerBusyAction(key, async isActive => {
       await executeBuiltInAction(action, () => commitMessage, value => {
         if (isActive()) setCommitMessage(value);
-      }, isActive);
+      });
     }),
     disabled,
     ...extras,

@@ -268,20 +268,6 @@ func parseCommitDetail(output string) (CommitDetail, error) {
 	}, nil
 }
 
-func applyCommitDetailStats(detail *CommitDetail, output string) {
-	for _, line := range filterNonEmpty(strings.Split(output, "\n")) {
-		additions, deletions, ok := parseNumstatLine(line)
-		if !ok {
-			continue
-		}
-		parts := strings.Split(line, "\t")
-		detail.Additions += additions
-		detail.Deletions += deletions
-		detail.Files++
-		detail.FilesChanged = append(detail.FilesChanged, normalizePath(parts[2]))
-	}
-}
-
 func parseHistoryCommit(line string) (CommitSummary, bool) {
 	parts := strings.Split(line, "\x1f")
 	if len(parts) < 7 {
