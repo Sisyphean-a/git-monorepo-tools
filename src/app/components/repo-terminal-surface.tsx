@@ -21,7 +21,6 @@ import {
   extractTerminalProtocolCommands,
   TerminalProtocolStateMachine,
   type TerminalProtocolSnapshot,
-  type TerminalProtocolTransition,
 } from './terminal-protocol-observer';
 import { createTerminalLinkProvider } from './terminal-link-provider';
 import { scheduleTerminalImeFocusReset } from './terminal-ime-focus';
@@ -108,23 +107,19 @@ export function RepoTerminalSurface({
     setInputTrace(current => appendTraceEntry(current, entry));
   }, []);
 
-  const applyProtocolTransition = useCallback((transition: TerminalProtocolTransition) => {
-    if (transition.snapshotChanged) {
+  const publishProtocolSnapshotChange = useCallback((changed: boolean) => {
+    if (changed) {
       setProtocolSnapshot(protocolStateMachineRef.current.getSnapshot());
     }
-    for (const effect of transition.effects) {
-      terminalRef.current?.write(effect.data);
-      recordInputTrace('xterm 输出', effect.trace, effect.data);
-    }
-  }, [recordInputTrace]);
+  }, []);
 
   const resetProtocolStateMachine = useCallback(() => {
-    applyProtocolTransition(protocolStateMachineRef.current.reset());
-  }, [applyProtocolTransition]);
+    publishProtocolSnapshotChange(protocolStateMachineRef.current.reset());
+  }, [publishProtocolSnapshotChange]);
 
   const observeProtocolOutput = useCallback((chunk: string) => {
-    applyProtocolTransition(protocolStateMachineRef.current.observeOutput(chunk));
-  }, [applyProtocolTransition]);
+    publishProtocolSnapshotChange(protocolStateMachineRef.current.observeOutput(chunk));
+  }, [publishProtocolSnapshotChange]);
 
   const clearInputTrace = useCallback(() => {
     setInputTrace([]);
@@ -155,11 +150,10 @@ export function RepoTerminalSurface({
   }, [observeProtocolOutput, recordInputTrace]);
 
   const handleTerminalExit = useCallback((nextExitCode: number) => {
-    applyProtocolTransition(protocolStateMachineRef.current.endSession());
     setStatus(current => current === 'failed' ? 'failed' : 'exited');
     setExitCode(nextExitCode);
     outputWriterRef.current?.enqueue(`\r\n\x1b[90m[process exited ${nextExitCode}]\x1b[0m\r\n`);
-  }, [applyProtocolTransition]);
+  }, []);
 
   const handleTerminalDeliveryFailure = useCallback((message: string) => {
     setStatus('failed');
@@ -517,7 +511,7 @@ export function RepoTerminalSurface({
     xtermViewport?.addEventListener('scroll', scrollGuard, { passive: true });
 
     const inputDisposable = terminal.onData(data => {
-      applyProtocolTransition(protocolStateMachineRef.current.observeTerminalInput(data));
+      publishProtocolSnapshotChange(protocolStateMachineRef.current.observeTerminalInput(data));
       const capturePasteData = terminalPasteDataRef.current;
       if (capturePasteData) {
         capturePasteData(data);
@@ -527,7 +521,7 @@ export function RepoTerminalSurface({
       void enqueueTerminalInput(data, 'xterm 输出').catch(() => undefined);
     });
     const parsedDisposable = terminal.onWriteParsed(() => {
-      applyProtocolTransition(protocolStateMachineRef.current.observeXtermParsed(terminal.modes));
+      publishProtocolSnapshotChange(protocolStateMachineRef.current.observeXtermParsed(terminal.modes));
     });
 
     return () => {

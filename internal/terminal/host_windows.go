@@ -11,16 +11,14 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"unsafe"
 
-	"github.com/charmbracelet/x/conpty"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
 type conptyHost struct {
-	pty     *conpty.ConPty
+	pty     *windowsPty
 	process windows.Handle
 	job     windows.Handle
 
@@ -66,16 +64,13 @@ func newTerminalHost(repoPath string, cols, rows int) (terminalHost, string, err
 		return nil, "", err
 	}
 
-	pty, err := conpty.New(cols, rows, 0)
+	pty, err := newWindowsPty(cols, rows)
 	if err != nil {
 		return nil, "", fmt.Errorf("创建 ConPTY 失败: %w", err)
 	}
 
 	argv := append([]string{shellPath}, shellArgs...)
-	_, processHandle, err := pty.Spawn(shellPath, argv, &syscall.ProcAttr{
-		Dir: workingDir,
-		Env: processEnvironment,
-	})
+	processHandle, err := pty.spawn(shellPath, argv, workingDir, processEnvironment)
 	if err != nil {
 		_ = pty.Close()
 		return nil, "", fmt.Errorf("启动终端进程失败: %w", err)

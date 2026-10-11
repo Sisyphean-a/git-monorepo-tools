@@ -2,6 +2,7 @@
 id: 003
 title: Pi Windows 终端的协议交付与观测
 status: accepted
+superseded-by: 004（仅 ConPTY 前提与本地补回鼠标模式这一子决定；其余决定继续有效）
 date: 2026-08-04
 scope: workspace
 ---
@@ -17,7 +18,7 @@ Pi 会在启动输出中开启 bracketed paste 并请求增强键盘协议。会
 - Go `Manager` 拥有后端会话，从登记到移除；它在发送退出事件前关闭输出批次，保证尾部原始输出先交付。
 - `TerminalWorkspace` 独占 Wails 终端事件并按 `sessionId` 暂存绑定竞态中的完整输出与退出码。单会话缓存上限 1 MiB；溢出显式失败且不回放部分流，最后一个表面释放后停止为该会话缓存。
 - Windows Pi 输入只由集中规则表处理：`Shift+Enter`/`Ctrl+J` 为 LF、`Ctrl+Backspace` 为 `Ctrl+W`。普通终端粘贴走应用剪贴板路径；只有观察到 Pi 的 OSC 0 标题（`π` 或 `π - <非空名称>`）、已确认 bracketed paste 和已请求或已协商增强键盘时，`Ctrl+V`、`Alt+V` 和右键的文本粘贴才绕过 xterm 的 bracketed-paste 编码，将所有行结束符规范为原始 LF 并作为一次输入队列写入。Pi 将 LF 识别为新行而非提交。应用粘贴先读取图片，确认无图片后才读取文本；图片直接由隐藏的 STA 数据对象读取器导出临时 PNG，不用 Win32 格式枚举作前置判断，因为延迟渲染和注册格式会产生假阴性。文本使用专用 Go Win32 读取器；WebView 剪贴板 promise、浏览器 `paste` 事件和 Wails runtime 文本剪贴板不作为交付路径。空值、超时和读取失败均显式失败，不发送原始 `Ctrl+V`。Pi 随后的普通输出可暂时处于“等待 xterm 处理”，但已确认的模式仍有效，不得在此窗口退回旧粘贴路径；Pi 的 cmd/npm 子进程也会在同一 PTY 短暂改写 OSC 0 标题，不能据此撤销已确认的 Pi 身份；只有关闭 bracketed paste 或增强键盘、出现不完整 Pi 标题或终止会话后才恢复普通路径。完整修饰键不匹配或非 Windows 时保持 xterm 透传。
-- 协议观察器只消费输出副本。xterm 仍接收完全相同的后端字节；观察器以 `onWriteParsed` 的公开 modes 确认受控粘贴，并以 `onData` 的协商响应确认增强键盘。跨输出块保留的尾部只能用于补全未完成的控制序列，不能将已完整处理的 Pi 键盘请求重新降级为“等待响应”。Windows ConPTY 对 Pi 0.84.1 会丢弃鼠标模式开启字节、却保留备用屏幕、受控粘贴和增强键盘字节；只有这四项形成 Pi 全屏指纹且未观测到鼠标模式时，`RepoTerminalSurface` 才额外向本地 xterm 写入 Pi 原本应输出的鼠标模式。该补偿绝不改写后端输出或伪造滚轮事件，Pi 离开备用屏幕或终端进程退出时必须关闭本地模式。
+- 协议观察器只消费输出副本。xterm 仍接收完全相同的后端字节；观察器以 `onWriteParsed` 的公开 modes 确认受控粘贴，并以 `onData` 的协商响应确认增强键盘。跨输出块保留的尾部只能用于补全未完成的控制序列，不能将已完整处理的 Pi 键盘请求重新降级为“等待响应”。Windows ConPTY 对 Pi 0.84.1 会丢弃鼠标模式开启字节、却保留备用屏幕、受控粘贴和增强键盘字节；只有这四项形成 Pi 全屏指纹且未观测到鼠标模式时，`RepoTerminalSurface` 才额外向本地 xterm 写入 Pi 原本应输出的鼠标模式。该补偿绝不改写后端输出或伪造滚轮事件，Pi 离开备用屏幕或终端进程退出时必须关闭本地模式。2026-10-11 更正：Windows 10 22H2 的 inbox 实现同样丢弃备用屏幕字节，该指纹不再成立，鼠标协议改由随包现代 ConPTY 交付（见 [ADR-004](004-windows-embedded-terminal-modern-conpty.md)），该补偿已随内嵌终端切换到随包现代 ConPTY 一并删除，诊断弹窗与 LF 粘贴路径不受影响。
 - 生命周期与协议正确性由脚本化 host、假 Wails 运行时和纯函数测试覆盖。真实 Windows ConPTY 测试仅在 `integration` 标签下作为烟测。
 
 ## 备选与后果

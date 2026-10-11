@@ -12,8 +12,8 @@ const PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE = '\x1b[?1006l\x1b[?1004l\x1b[?1003l\
 test('observes split Pi startup controls without changing their delivery', () => {
   const machine = new TerminalProtocolStateMachine();
 
-  assert.equal(machine.observeOutput('\x1b[?20').snapshotChanged, true);
-  assert.equal(machine.observeOutput('04h\x1b[>1;2u').snapshotChanged, true);
+  assert.equal(machine.observeOutput('\x1b[?20'), true);
+  assert.equal(machine.observeOutput('04h\x1b[>1;2u'), true);
   assert.deepEqual(machine.getSnapshot(), {
     delivery: 'pending-xterm',
     bracketedPasteRequested: true,
@@ -26,7 +26,7 @@ test('observes split Pi startup controls without changing their delivery', () =>
     sgrMouseRequested: null,
   });
 
-  assert.equal(machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' }).snapshotChanged, true);
+  assert.equal(machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' }), true);
   assert.deepEqual(machine.getSnapshot(), {
     delivery: 'delivered',
     bracketedPasteRequested: true,
@@ -100,8 +100,8 @@ test('marks a keyboard negotiation complete only after xterm sends its response'
 
   machine.observeOutput('\x1b[>1u');
   machine.observeXtermParsed({ bracketedPasteMode: false, mouseTrackingMode: 'none' });
-  assert.equal(machine.observeTerminalInput('plain input').snapshotChanged, false);
-  assert.equal(machine.observeTerminalInput('\x1b[?1u').snapshotChanged, true);
+  assert.equal(machine.observeTerminalInput('plain input'), false);
+  assert.equal(machine.observeTerminalInput('\x1b[?1u'), true);
   assert.equal(machine.getSnapshot().keyboard, 'negotiated');
 });
 
@@ -126,56 +126,7 @@ test('tracks Pi fullscreen alternate-screen and mouse controls', () => {
   assert.equal(machine.getSnapshot().sgrMouseRequested, false);
 });
 
-test('enables Pi fullscreen mouse compatibility only when ConPTY omitted mouse controls', () => {
-  const machine = new TerminalProtocolStateMachine();
 
-  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
-  const activation = machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
-  assert.deepEqual(activation.effects, [{
-    type: 'write-xterm',
-    data: PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
-    trace: 'Windows ConPTY 兼容：已补回 Pi 被丢弃的鼠标协议',
-  }]);
-
-  machine.reset();
-  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h');
-  const nativeMouse = machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'any' });
-  assert.deepEqual(nativeMouse.effects, []);
-});
-
-test('disables local mouse compatibility after Pi exits fullscreen', () => {
-  const machine = new TerminalProtocolStateMachine();
-
-  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
-  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
-  machine.observeOutput('\x1b[?1049l');
-  const deactivation = machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'any' });
-
-  assert.deepEqual(deactivation.effects, [{
-    type: 'write-xterm',
-    data: PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
-    trace: 'Windows ConPTY 兼容：Pi 已退出全屏，已关闭本地鼠标协议',
-  }]);
-  assert.deepEqual(machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' }).effects, []);
-});
-
-test('disables local mouse compatibility when the terminal session ends', () => {
-  const machine = new TerminalProtocolStateMachine();
-
-  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
-  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
-
-  assert.deepEqual(machine.endSession().effects, [{
-    type: 'write-xterm',
-    data: PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
-    trace: 'Windows ConPTY 兼容：终端进程已退出，已关闭本地鼠标协议',
-  }]);
-  assert.deepEqual(
-    machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' }).effects,
-    [],
-  );
-  assert.deepEqual(machine.endSession().effects, []);
-});
 
 test('extracts combined fullscreen protocol commands for the input trace', () => {
   assert.equal(
@@ -203,7 +154,7 @@ test('tracks explicit protocol shutdown and resets between terminal sessions', (
     mouseTrackingEnabled: 'none',
     sgrMouseRequested: null,
   });
-  assert.equal(machine.reset().snapshotChanged, true);
+  assert.equal(machine.reset(), true);
   assert.deepEqual(machine.getSnapshot(), {
     delivery: 'waiting',
     bracketedPasteRequested: null,
@@ -215,13 +166,4 @@ test('tracks explicit protocol shutdown and resets between terminal sessions', (
     mouseTrackingEnabled: null,
     sgrMouseRequested: null,
   });
-});
-
-test('reset clears active compatibility without writing to an already reset xterm', () => {
-  const machine = new TerminalProtocolStateMachine();
-
-  machine.observeOutput('\x1b[>1u\x1b[?1049h\x1b[?2004h');
-  machine.observeXtermParsed({ bracketedPasteMode: true, mouseTrackingMode: 'none' });
-  assert.deepEqual(machine.reset().effects, []);
-  assert.deepEqual(machine.endSession().effects, []);
 });

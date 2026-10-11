@@ -19,20 +19,6 @@ export interface TerminalModeSnapshot {
   readonly mouseTrackingMode: TerminalMouseTrackingMode;
 }
 
-export interface TerminalProtocolEffect {
-  readonly type: 'write-xterm';
-  readonly data: string;
-  readonly trace: string;
-}
-
-export interface TerminalProtocolTransition {
-  readonly snapshotChanged: boolean;
-  readonly effects: readonly TerminalProtocolEffect[];
-}
-
-const PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE = '\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1004h\x1b[?1006h';
-const PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE = '\x1b[?1006l\x1b[?1004l\x1b[?1003l\x1b[?1002l\x1b[?1000l';
-
 const BRACKETED_PASTE_COMMAND = /\x1b\[\?2004([hl])/g;
 const KEYBOARD_PROTOCOL_COMMAND = /\x1b\[>([0-9;]*)u/g;
 const KEYBOARD_PROTOCOL_RESPONSE = /\x1b\[\?([0-9;]*)u/g;
@@ -42,50 +28,39 @@ const OBSERVED_DEC_PRIVATE_MODES = new Set(['9', '1000', '1002', '1003', '1004',
 // Retain enough of a split OSC 0 title to cover Windows extended paths.
 const PROTOCOL_TAIL_LENGTH = 4096;
 
+const EMPTY_PROTOCOL_SNAPSHOT: TerminalProtocolSnapshot = Object.freeze({
+  delivery: 'waiting',
+  bracketedPasteRequested: null,
+  bracketedPasteEnabled: null,
+  keyboard: 'unknown',
+  piTitle: false,
+  alternateScreenRequested: null,
+  mouseTrackingRequested: null,
+  mouseTrackingEnabled: null,
+  sgrMouseRequested: null,
+});
+
 /**
- * Flow: owns Pi protocol observation and the local compatibility effects caused by state transitions.
- * Guarantee: it never transforms, suppresses, routes, or directly writes terminal output.
+ * Flow: owns Pi protocol observation.
+ * Guarantee: it never transforms, suppresses, routes, or writes terminal output; every observer
+ * returns only whether the published snapshot changed.
  */
 export class TerminalProtocolStateMachine {
   private outputTail = '';
-  private sessionEnded = false;
-  private piFullscreenMouseCompatibilityActive = false;
-  private state: TerminalProtocolSnapshot = {
-    delivery: 'waiting',
-    bracketedPasteRequested: null,
-    bracketedPasteEnabled: null,
-    keyboard: 'unknown',
-    piTitle: false,
-    alternateScreenRequested: null,
-    mouseTrackingRequested: null,
-    mouseTrackingEnabled: null,
-    sgrMouseRequested: null,
-  };
+  private state: TerminalProtocolSnapshot = EMPTY_PROTOCOL_SNAPSHOT;
 
   getSnapshot(): TerminalProtocolSnapshot {
     return this.state;
   }
 
-  reset(): TerminalProtocolTransition {
+  reset(): boolean {
     this.outputTail = '';
-    this.sessionEnded = false;
-    this.piFullscreenMouseCompatibilityActive = false;
-    return this.transition(this.replace({
-      delivery: 'waiting',
-      bracketedPasteRequested: null,
-      bracketedPasteEnabled: null,
-      keyboard: 'unknown',
-      piTitle: false,
-      alternateScreenRequested: null,
-      mouseTrackingRequested: null,
-      mouseTrackingEnabled: null,
-      sgrMouseRequested: null,
-    }));
+    return this.replace(EMPTY_PROTOCOL_SNAPSHOT);
   }
 
-  observeOutput(chunk: string): TerminalProtocolTransition {
+  observeOutput(chunk: string): boolean {
     if (!chunk) {
-      return this.transition(false);
+      return false;
     }
 
     const tailLength = this.outputTail.length;
@@ -146,7 +121,7 @@ export class TerminalProtocolStateMachine {
     }
 
     this.outputTail = output.slice(-PROTOCOL_TAIL_LENGTH);
-    return this.transition(this.replace({
+    return this.replace({
       ...this.state,
       delivery: 'pending-xterm',
       bracketedPasteRequested,
@@ -155,34 +130,33 @@ export class TerminalProtocolStateMachine {
       alternateScreenRequested,
       mouseTrackingRequested,
       sgrMouseRequested,
-    }));
+    });
   }
 
-  observeXtermParsed(modes: TerminalModeSnapshot): TerminalProtocolTransition {
+  observeXtermParsed(modes: TerminalModeSnapshot): boolean {
     if (this.state.delivery === 'waiting') {
-      return this.transition(false);
+      return false;
     }
-    const snapshotChanged = this.replace({
+    return this.replace({
       ...this.state,
       delivery: 'delivered',
       bracketedPasteEnabled: modes.bracketedPasteMode,
       mouseTrackingEnabled: modes.mouseTrackingMode,
     });
-    return this.transition(snapshotChanged, this.reconcilePiFullscreenMouse());
   }
 
-  observeTerminalInput(data: string): TerminalProtocolTransition {
+  observeTerminalInput(data: string): boolean {
     if (!KEYBOARD_PROTOCOL_RESPONSE.test(data)) {
-      return this.transition(false);
+      return false;
     }
     KEYBOARD_PROTOCOL_RESPONSE.lastIndex = 0;
-    return this.transition(this.replace({
+    return this.replace({
       ...this.state,
       keyboard: 'negotiated',
-    }));
+    });
   }
 
-  usesPiLineFeedPaste() {
+  usesPiLineFeedPaste(): boolean {
     // Pi remains identifiable while later output waits for xterm's asynchronous parser.
     // ConPTY strips bracketed-paste delimiters and modified-key CSI, but raw LF survives.
     return this.state.piTitle
@@ -191,62 +165,8 @@ export class TerminalProtocolStateMachine {
       && (this.state.keyboard === 'requested' || this.state.keyboard === 'negotiated');
   }
 
-  endSession(): TerminalProtocolTransition {
-    this.sessionEnded = true;
-    if (!this.piFullscreenMouseCompatibilityActive) {
-      return this.transition(false);
-    }
-    this.piFullscreenMouseCompatibilityActive = false;
-    return this.transition(false, [{
-      type: 'write-xterm',
-      data: PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
-      trace: 'Windows ConPTY 兼容：终端进程已退出，已关闭本地鼠标协议',
-    }]);
-  }
-
-  private reconcilePiFullscreenMouse(): readonly TerminalProtocolEffect[] {
-    if (this.sessionEnded) {
-      return [];
-    }
-    if (this.piFullscreenMouseCompatibilityActive) {
-      if (this.state.alternateScreenRequested !== false) {
-        return [];
-      }
-      this.piFullscreenMouseCompatibilityActive = false;
-      return [{
-        type: 'write-xterm',
-        data: PI_FULLSCREEN_MOUSE_DISABLE_SEQUENCE,
-        trace: 'Windows ConPTY 兼容：Pi 已退出全屏，已关闭本地鼠标协议',
-      }];
-    }
-    if (!needsPiFullscreenMouseCompatibility(this.state)) {
-      return [];
-    }
-    this.piFullscreenMouseCompatibilityActive = true;
-    return [{
-      type: 'write-xterm',
-      data: PI_FULLSCREEN_MOUSE_ENABLE_SEQUENCE,
-      trace: 'Windows ConPTY 兼容：已补回 Pi 被丢弃的鼠标协议',
-    }];
-  }
-
-  private transition(
-    snapshotChanged: boolean,
-    effects: readonly TerminalProtocolEffect[] = [],
-  ): TerminalProtocolTransition {
-    return { snapshotChanged, effects };
-  }
-
-  private replace(next: TerminalProtocolSnapshot) {
-    if (this.state.delivery === next.delivery
-      && this.state.bracketedPasteRequested === next.bracketedPasteRequested
-      && this.state.bracketedPasteEnabled === next.bracketedPasteEnabled
-      && this.state.keyboard === next.keyboard
-      && this.state.piTitle === next.piTitle
-      && this.state.alternateScreenRequested === next.alternateScreenRequested
-      && this.state.mouseTrackingRequested === next.mouseTrackingRequested
-      && this.state.mouseTrackingEnabled === next.mouseTrackingEnabled
-      && this.state.sgrMouseRequested === next.sgrMouseRequested) {
+  private replace(next: TerminalProtocolSnapshot): boolean {
+    if (sameProtocolSnapshot(this.state, next)) {
       return false;
     }
     this.state = Object.freeze(next);
@@ -254,12 +174,16 @@ export class TerminalProtocolStateMachine {
   }
 }
 
-function needsPiFullscreenMouseCompatibility(snapshot: TerminalProtocolSnapshot) {
-  return snapshot.delivery === 'delivered'
-    && snapshot.alternateScreenRequested === true
-    && snapshot.bracketedPasteRequested === true
-    && snapshot.mouseTrackingRequested === null
-    && (snapshot.keyboard === 'requested' || snapshot.keyboard === 'negotiated');
+function sameProtocolSnapshot(left: TerminalProtocolSnapshot, right: TerminalProtocolSnapshot) {
+  return left.delivery === right.delivery
+    && left.bracketedPasteRequested === right.bracketedPasteRequested
+    && left.bracketedPasteEnabled === right.bracketedPasteEnabled
+    && left.keyboard === right.keyboard
+    && left.piTitle === right.piTitle
+    && left.alternateScreenRequested === right.alternateScreenRequested
+    && left.mouseTrackingRequested === right.mouseTrackingRequested
+    && left.mouseTrackingEnabled === right.mouseTrackingEnabled
+    && left.sgrMouseRequested === right.sgrMouseRequested;
 }
 
 export function extractTerminalProtocolCommands(chunk: string) {
