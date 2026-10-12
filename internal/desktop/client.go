@@ -38,11 +38,20 @@ func (Client) OpenFolder(targetPath string) error {
 }
 
 func (Client) OpenLocalPath(targetPath string) error {
-	path, err := ensureOpenableDesktopPath(targetPath)
+	path, _, err := ensureOpenableDesktopPath(targetPath)
 	if err != nil {
 		return err
 	}
 	return startDetached("explorer.exe", toWindowsPath(path))
+}
+
+// RevealInExplorer 在系统文件管理器中定位目标：目录直接打开，文件打开所在目录并选中该文件。
+func (Client) RevealInExplorer(targetPath string) error {
+	path, info, err := ensureOpenableDesktopPath(targetPath)
+	if err != nil {
+		return err
+	}
+	return startCommand(newExplorerRevealCommand(path, info.IsDir()))
 }
 
 func (Client) OpenTerminal(targetPath string) error {
@@ -117,6 +126,15 @@ func newWorkingDirCommand(command string, workingDir string, args ...string) *ex
 	return cmd
 }
 
+// Rule: 目录在资源管理器中直接打开，文件要求定位并选中，避免转交给系统默认程序。
+func newExplorerRevealCommand(targetPath string, isDir bool) *exec.Cmd {
+	winPath := toWindowsPath(targetPath)
+	if isDir {
+		return exec.Command("explorer.exe", winPath)
+	}
+	return exec.Command("explorer.exe", "/select,"+winPath)
+}
+
 func ensureDesktopPath(targetPath string) (string, error) {
 	trimmed := strings.TrimSpace(targetPath)
 	if trimmed == "" {
@@ -125,19 +143,20 @@ func ensureDesktopPath(targetPath string) (string, error) {
 	return trimmed, nil
 }
 
-func ensureOpenableDesktopPath(targetPath string) (string, error) {
+func ensureOpenableDesktopPath(targetPath string) (string, os.FileInfo, error) {
 	path, err := ensureDesktopPath(targetPath)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if !filepath.IsAbs(path) {
-		return "", errors.New("本地链接必须是绝对路径")
+		return "", nil, errors.New("本地链接必须是绝对路径")
 	}
 	path = filepath.Clean(path)
-	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("本地链接不可打开：%w", err)
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("本地链接不可打开：%w", err)
 	}
-	return path, nil
+	return path, info, nil
 }
 
 func toWindowsPath(targetPath string) string {

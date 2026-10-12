@@ -99,6 +99,35 @@ func TestReadResourcesDoNotCacheFailedReads(t *testing.T) {
 	}
 }
 
+func TestReadResourcesSkipUntrackedFilesDeletedAfterStatus(t *testing.T) {
+	repoPath := filepath.Join(t.TempDir(), "repo")
+	initTestRepo(t, repoPath)
+	service := NewService(repoPath)
+	t.Cleanup(func() { _ = service.Close() })
+	repoID := repoIDForPath(repoPath)
+	service.SetReadActivity(repoID, false)
+	executor := service.gitExecutor(Request{RepoPath: repoPath, RepoCategory: "test"})
+
+	// Rule: status 之后被删除的未跟踪文件（如 Vite 的 .timestamp-*.mjs 临时配置）不算读取失败，直接丢弃该条目。
+	changes, err := executor.buildUntrackedChanges(repoPath, []string{"?? gone.txt"}, nil)
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("status 后消失的未跟踪文件必须跳过：%+v / %v", changes, err)
+	}
+
+	filePath := filepath.Join(repoPath, "race.txt")
+	if err := os.WriteFile(filePath, []byte("one\ntwo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service.fileStats.readLines = func(string) (int, os.FileInfo, error) { return 0, nil, os.ErrNotExist }
+	changes, err = executor.buildUntrackedChanges(repoPath, []string{"?? race.txt"}, nil)
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("stat 与读取之间被删除的未跟踪文件必须跳过：%+v / %v", changes, err)
+	}
+	if len(service.fileStats.repo(repoID).files) != 0 {
+		t.Fatal("已消失的未跟踪文件不得进入行数缓存")
+	}
+}
+
 func TestReadResourcesReportUnreadableFilesAsScanErrors(t *testing.T) {
 	repoPath := t.TempDir()
 	initTestRepo(t, repoPath)

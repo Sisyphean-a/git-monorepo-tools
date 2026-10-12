@@ -28,7 +28,6 @@ interface RepoFilesTabProps {
   position?: RepoFilePosition;
   onPositionChange: (position: RepoFilePosition) => void;
   onFileTreeWidthChange: (width: number) => void;
-  onOpenFolder: () => void;
   onError: (error: unknown, fallback: string) => void;
 }
 
@@ -58,7 +57,7 @@ function loadFilePreviewRenderer() {
   return rendererPromise;
 }
 
-export function RepoFilesTab({ repo, settings, active, position, onPositionChange, onFileTreeWidthChange, onOpenFolder, onError }: RepoFilesTabProps) {
+export function RepoFilesTab({ repo, settings, active, position, onPositionChange, onFileTreeWidthChange, onError }: RepoFilesTabProps) {
   const backend = useAppBackend();
   const windowActive = useWindowActivity();
   const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true });
@@ -367,6 +366,11 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
     }
   };
 
+  // Rule: 右键菜单作用于被点击的条目，不重复仓库根目录的“文件夹”按钮。
+  const revealTreeEntry = (entry: RepoTreeEntry) => {
+    void backend.revealInExplorer(treeEntryCopyValues(repo.path, entry).absolutePath).catch(error => onError(error, '在资源管理器中打开失败'));
+  };
+
   const contextValues = contextMenu ? treeEntryCopyValues(repo.path, contextMenu.entry) : null;
 
   const handlePreviewClick = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -407,7 +411,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
       {contextMenu && contextValues && active && (
         <div role="menu" aria-label={`${contextMenu.entry.name} 操作`} onPointerDown={event => event.stopPropagation()} style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: 40, width: 208, padding: '4px 0', background: C.panel2, border: `1px solid ${C.borderLight}`, borderRadius: 8, boxShadow: '0 12px 30px rgba(0,0,0,0.4)' }}>
           {[
-            { label: '在资源管理器中打开', action: onOpenFolder },
+            { label: '在资源管理器中打开', action: () => revealTreeEntry(contextMenu.entry) },
             { label: '复制文件名称', action: () => copyTreeEntry(contextValues.name) },
             { label: '复制文件相对路径', action: () => copyTreeEntry(contextValues.relativePath) },
             { label: '复制文件绝对路径', action: () => copyTreeEntry(contextValues.absolutePath) },

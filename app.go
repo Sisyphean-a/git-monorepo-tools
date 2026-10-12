@@ -41,6 +41,7 @@ type desktopGateway interface {
 	PickFolder(context.Context) (string, error)
 	OpenFolder(string) error
 	OpenLocalPath(string) error
+	RevealInExplorer(string) error
 	OpenTerminal(string) error
 	OpenConflicts(string) error
 	ReadClipboardImagePath() (string, error)
@@ -230,6 +231,10 @@ func (a *App) OpenFolder(path string) error {
 
 func (a *App) OpenLocalPath(path string) error {
 	return a.desktop.OpenLocalPath(path)
+}
+
+func (a *App) RevealInExplorer(path string) error {
+	return a.desktop.RevealInExplorer(path)
 }
 
 func (a *App) OpenTerminal(path string) error {

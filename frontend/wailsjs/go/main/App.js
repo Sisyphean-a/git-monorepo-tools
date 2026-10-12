@@ -106,6 +106,10 @@ export function RestartTerminalSession(arg1, arg2, arg3) {
   return window['go']['main']['App']['RestartTerminalSession'](arg1, arg2, arg3);
 }
 
+export function RevealInExplorer(arg1) {
+  return window['go']['main']['App']['RevealInExplorer'](arg1);
+}
+
 export function RunBatch(arg1, arg2) {
   return window['go']['main']['App']['RunBatch'](arg1, arg2);
 }

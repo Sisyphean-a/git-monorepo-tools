@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -463,7 +464,11 @@ func (executor gitExecutor) buildUntrackedChanges(repoPath string, entries []str
 		}
 		seen[id] = true
 		absolute := filepath.Join(repoPath, filepath.FromSlash(filePath))
-		info, _ := os.Stat(absolute)
+		info, statErr := os.Stat(absolute)
+		// Rule: status 之后文件被删除（如 Vite 的 .timestamp-*.mjs 临时配置）不是读取失败，也不产生变更条目。
+		if errors.Is(statErr, os.ErrNotExist) {
+			continue
+		}
 		sizeBytes := int64(0)
 		if info != nil && !info.IsDir() {
 			sizeBytes = info.Size()
@@ -474,6 +479,10 @@ func (executor gitExecutor) buildUntrackedChanges(repoPath string, entries []str
 		}
 		if !stats.matches(info, now) {
 			lines, readInfo, err := executor.fileStats.readFile(absolute)
+			// stat 与读取之间文件被删除时按同一规则处理。
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			stats = untrackedFileStats{lines: lines}
 			if err != nil && readError == nil {
 				readError = fmt.Errorf("读取未跟踪文件 %s 失败：%w", filePath, err)

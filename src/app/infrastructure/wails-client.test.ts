@@ -23,6 +23,7 @@ import {
   readClipboardText,
   resizeTerminal,
   restartTerminalSession,
+  revealInExplorer,
   runRepoCommand,
   setReadActivity,
   stopRepoCommand,
@@ -276,6 +277,9 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
     OpenLocalPath: async (path: string) => {
       calls.push(`OpenLocalPath:${path}`);
     },
+    RevealInExplorer: async (path: string) => {
+      calls.push(`RevealInExplorer:${path}`);
+    },
     OpenTerminal: async (path: string) => {
       calls.push(`OpenTerminal:${path}`);
     },
@@ -293,6 +297,7 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
   try {
     await invokeLocalRepoAction('open-folder', '/repo/a');
     await openLocalPath('C:/repo/report.txt');
+    await revealInExplorer('C:/repo/src/main.ts');
     await invokeLocalRepoAction('open-terminal', '/repo/b');
     await invokeLocalRepoAction('open-conflicts', '/repo/c');
   } finally {
@@ -305,6 +310,7 @@ test('invokeLocalRepoAction does not trigger snapshot fetch', async () => {
   assert.deepEqual(calls, [
     'OpenFolder:/repo/a',
     'OpenLocalPath:C:/repo/report.txt',
+    'RevealInExplorer:C:/repo/src/main.ts',
     'OpenTerminal:/repo/b',
     'OpenConflicts:/repo/c',
   ]);

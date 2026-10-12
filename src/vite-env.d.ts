@@ -138,6 +138,7 @@ interface Window {
         ) => Promise<string>;
         OpenFolder: (path: string) => Promise<void>;
         OpenLocalPath?: (path: string) => Promise<void>;
+        RevealInExplorer?: (path: string) => Promise<void>;
         OpenTerminal: (path: string) => Promise<void>;
         OpenConflicts: (path: string) => Promise<void>;
         PickFolder: () => Promise<string>;

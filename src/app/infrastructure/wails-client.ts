@@ -93,6 +93,7 @@ type WailsBindings = {
   ) => Promise<string>;
   OpenFolder: (path: string) => Promise<void>;
   OpenLocalPath?: (path: string) => Promise<void>;
+  RevealInExplorer?: (path: string) => Promise<void>;
   OpenTerminal: (path: string) => Promise<void>;
   OpenConflicts: (path: string) => Promise<void>;
   PickFolder: () => Promise<string>;
@@ -319,6 +320,14 @@ export async function openLocalPath(path: string) {
   return binding(path);
 }
 
+export async function revealInExplorer(path: string) {
+  const binding = getWailsBindings().RevealInExplorer;
+  if (typeof binding !== 'function') {
+    throw new Error('Wails 资源管理器定位绑定不可用');
+  }
+  return binding(path);
+}
+
 export async function invokeLocalRepoAction(action: LocalRepoAction, path: string) {
   const binding = getWailsBindings();
   if (action === 'open-folder') {
@@ -383,5 +392,6 @@ export const wailsClient: WorkspaceBackend & RepoInteractionBackend & ResourceMo
   resizeTerminal,
   invokeLocalRepoAction,
   openLocalPath,
+  revealInExplorer,
   pickFolder,
 };

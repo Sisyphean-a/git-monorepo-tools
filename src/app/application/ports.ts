@@ -54,6 +54,7 @@ export interface WorkspaceBackend {
   stopRepoCommand(streamId: string): Promise<void>;
   invokeLocalRepoAction(action: LocalRepoAction, path: string): Promise<void>;
   openLocalPath(path: string): Promise<void>;
+  revealInExplorer(path: string): Promise<void>;
   pickFolder(): Promise<string | null>;
 }
 
