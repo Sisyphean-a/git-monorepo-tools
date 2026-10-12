@@ -74,7 +74,8 @@ type Snapshot struct {
 	System        SystemMemory    `json:"system"`
 }
 
-// Sample 是历史序列中的一次轻量采样，只保留数值与可比对的时间基准。
+// Sample 是一次采样的数值载体，也是历史序列中的一个点：写入历史时先并入等宽时间桶，读出的数值是桶内按覆盖时长加权的平均值。
+// IntervalMillis 是该点覆盖的单调毫秒时长：原始采样是与上一次采样的间隔，历史点是桶内样本间隔之和，尾部未填满的桶更短。
 type Sample struct {
 	CapturedAt        int64    `json:"capturedAt"`
 	ElapsedMillis     uint64   `json:"elapsedMillis"`
@@ -88,7 +89,7 @@ type Sample struct {
 	FilePoolBytes     *uint64  `json:"filePoolBytes"`
 }
 
-// Peak 由原始采样直接更新，不受历史降采样影响，保证峰值精确。
+// Peak 由原始采样直接更新，不受历史分桶平均影响，保证峰值精确。
 type Peak struct {
 	PrivateBytes      *uint64  `json:"privateBytes"`
 	HeapBytes         uint64   `json:"heapBytes"`
@@ -115,7 +116,7 @@ const (
 	LiveSampleInterval    = 5 * time.Second
 	// PanelLease 是面板观察的续租窗口：状态读取会刷新它，停止读取后自动回到后台节奏。
 	PanelLease = 3 * LiveSampleInterval
-	// HistoryLimit 是算法意义上的上限：降采样后样本数减半，覆盖时长随时间翻倍。
+	// HistoryLimit 是历史点的上限：桶数超过它时把桶宽翻倍并整体重新分桶，覆盖时长随运行期翻倍。
 	HistoryLimit = 240
 )
 

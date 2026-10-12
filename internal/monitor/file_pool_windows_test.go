@@ -83,7 +83,7 @@ func TestFilePoolParsingRejectsMissingAndIncompleteData(t *testing.T) {
 
 func TestFilePoolSamplerUsesActualIntervalsAndResetsAfterPartialFailure(t *testing.T) {
 	sampler := NewSampler(nil)
-	times := []uint64{1_000, 6_000, 11_000, 14_000, 16_000}
+	times := []uint64{30_000, 60_000, 90_000, 150_000, 180_000}
 	counts := []*uint64{pointer(uint64(100)), nil, pointer(uint64(150)), pointer(uint64(200)), pointer(uint64(100))}
 	index := 0
 	sampler.read = func(bool) (Snapshot, error) {
@@ -114,17 +114,18 @@ func TestFilePoolSamplerUsesActualIntervalsAndResetsAfterPartialFailure(t *testi
 			continue
 		}
 		file := state.Snapshot.System.FilePool
+		// 每个样本独占一个时间桶时，历史点仍是该桶内按覆盖时长加权的平均值。
 		if last.FilePoolCount == nil || *last.FilePoolCount != file.Count || last.FilePoolBytes == nil || *last.FilePoolBytes != file.Bytes {
-			t.Fatal("history must retain raw File counters")
+			t.Fatal("history must retain File counters")
 		}
 		if index <= 3 {
 			if file.NetPerSecond != nil {
 				t.Fatal("first sample or interrupted File query must have no rate")
 			}
 		} else {
-			want := 50.0 / 3
+			want := 50.0 / 60
 			if index == 5 {
-				want = -50
+				want = -100.0 / 30
 			}
 			if file.NetPerSecond == nil || math.Abs(*file.NetPerSecond-want) > 1e-9 {
 				t.Fatalf("rate must use actual monotonic seconds, got %v, want %v", file.NetPerSecond, want)
@@ -141,26 +142,35 @@ func TestFilePoolSamplerUsesActualIntervalsAndResetsAfterPartialFailure(t *testi
 	}
 }
 
-func TestFilePoolHistoryKeepsRawEndpointsDuringDecimation(t *testing.T) {
-	samples := []Sample{}
+func TestFilePoolHistoryKeepsUnknownsAndWeightsKnownSamples(t *testing.T) {
+	history := newHistory()
+	step := history.width
 	for index := range HistoryLimit * 20 {
-		samples = appendSample(samples, Sample{ElapsedMillis: uint64(index), FilePoolCount: pointer(uint64(index)), FilePoolBytes: pointer(uint64(index * 400))})
+		// 全部样本取同一数值：分桶与重分桶都必须原样保持，不得漂移。
+		history.add(Sample{ElapsedMillis: uint64(index) * step, IntervalMillis: step, FilePoolCount: pointer(uint64(1_000)), FilePoolBytes: pointer(uint64(400_000))})
 	}
-	last := samples[len(samples)-1]
-	if len(samples) > HistoryLimit || *samples[0].FilePoolCount != 0 || *last.FilePoolCount != HistoryLimit*20-1 || *last.FilePoolBytes != (HistoryLimit*20-1)*400 {
-		t.Fatal("File history lost raw endpoints or exceeded its existing bound")
+	samples := history.samples()
+	if len(samples) > HistoryLimit {
+		t.Fatal("File history exceeded its existing bound")
 	}
-	merged := mergeSamples(Sample{FilePoolCount: pointer(uint64(100)), FilePoolBytes: pointer(uint64(400))}, Sample{FilePoolCount: pointer(uint64(200)), FilePoolBytes: pointer(uint64(800))})
-	if *merged.FilePoolCount != 150 || *merged.FilePoolBytes != 600 {
-		t.Fatal("File intermediate samples must average counts and bytes independently")
-	}
-	for _, values := range [][3]uint64{{1_001, 1_001, 1_001}, {1, 2, 1}, {^uint64(0), ^uint64(0), ^uint64(0)}} {
-		merged := mergeSamples(Sample{FilePoolCount: pointer(values[0])}, Sample{FilePoolCount: pointer(values[1])})
-		if merged.FilePoolCount == nil || *merged.FilePoolCount != values[2] {
-			t.Fatal("averaging File counts must preserve identical odd values and avoid overflow")
+	for index, sample := range samples {
+		if sample.FilePoolCount == nil || *sample.FilePoolCount != 1_000 || sample.FilePoolBytes == nil || *sample.FilePoolBytes != 400_000 {
+			t.Fatalf("identical File values must survive bucketing at %d: %+v", index, sample)
 		}
 	}
-	if unknown := mergeSamples(Sample{}, Sample{}); unknown.FilePoolCount != nil || unknown.FilePoolBytes != nil {
-		t.Fatal("decimation must not turn unknown File data into zero")
+	// Rule: 未知样本不参与平均，也不占用时长权重；只有全部未知时历史点保持 null。
+	mixed := newBucket(Sample{IntervalMillis: 1_000, FilePoolCount: pointer(uint64(100)), FilePoolBytes: pointer(uint64(40_000))})
+	mixed = mergeBuckets(mixed, newBucket(Sample{ElapsedMillis: 1_000, IntervalMillis: 1_000}))
+	if sample := mixed.sample(); sample.FilePoolCount == nil || *sample.FilePoolCount != 100 || sample.FilePoolBytes == nil || *sample.FilePoolBytes != 40_000 {
+		t.Fatalf("unknown File data must not dilute the average: %+v", sample)
+	}
+	if unknown := newBucket(Sample{}).sample(); unknown.FilePoolCount != nil || unknown.FilePoolBytes != nil {
+		t.Fatal("bucketing must not turn unknown File data into zero")
+	}
+	// Guarantee: 饱和的累计计数不得回绕。
+	saturated := newBucket(Sample{IntervalMillis: 1_000, FilePoolCount: pointer(^uint64(0))})
+	saturated = mergeBuckets(saturated, newBucket(Sample{ElapsedMillis: 1_000, IntervalMillis: 1_000, FilePoolCount: pointer(^uint64(0))}))
+	if value := saturated.sample().FilePoolCount; value == nil || *value != ^uint64(0) {
+		t.Fatalf("saturated counters must not wrap: %v", value)
 	}
 }

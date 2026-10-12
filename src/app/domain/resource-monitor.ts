@@ -44,7 +44,7 @@ export interface ResourceSnapshot {
   system: { totalBytes: number; availableBytes: number; pagedPoolBytes: number; nonpagedPoolBytes: number; filePool: FilePool | null; filePoolError?: string };
 }
 
-// Sample 是后端采样器返回的轻量历史点；intervalMillis 是它与上一点之间的单调毫秒间隔。
+// Sample 是后端采样器返回的历史点；intervalMillis 是该点覆盖的单调毫秒时长，等宽时间桶聚合后等于桶内样本间隔之和，末尾未填满的桶更短。
 export interface ResourceSample {
   capturedAt: number;
   elapsedMillis: number;
@@ -65,7 +65,7 @@ export interface ResourcePeaks {
   nonpagedPoolBytes: number;
 }
 
-// State 覆盖应用从打开到关闭的采样视图：后台低频、面板打开时高频，历史由后端降采样但有界。
+// State 覆盖应用从打开到关闭的采样视图：后台低频、面板打开时高频，历史由后端按等宽时间桶聚合但有界。
 export interface ResourceMonitorState {
   revision: number;
   live: boolean;
@@ -149,7 +149,7 @@ export interface SessionSummary {
   peakNonpagedPoolBytes: number;
 }
 
-// Rule: 峰值来自后端对全部原始采样的统计，不受历史降采样影响；启动基线由历史首点保留。
+// Rule: 峰值来自后端对全部原始采样的统计，不受历史分桶平均影响；首个历史点来自启动基线所在的桶。
 export function summarizeSession(state: ResourceMonitorState): SessionSummary | null {
   const first = state.samples[0], last = state.samples.at(-1);
   if (!first || !last) return null;

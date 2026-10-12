@@ -84,10 +84,12 @@ func TestAppResourceMonitorSamplesFromStartupToShutdown(t *testing.T) {
 	if !state.Live {
 		t.Fatal("state reads must keep the panel observation window active")
 	}
-	// Guarantee: 面板关闭只降低采样频率，启动基线与本次会话历史都保留。
+	// Guarantee: 面板关闭只降低采样频率，启动基线与本次会话历史都保留；首点是启动基线所在的桶，时间戳取桶内最新样本。
 	app.monitor.SetLive(false)
 	closed := app.monitor.State()
-	if closed.Live || closed.StartedAt != launch.StartedAt || len(closed.Samples) < len(launch.Samples) || closed.Samples[0].ElapsedMillis != launch.Samples[0].ElapsedMillis {
+	if closed.Live || closed.StartedAt != launch.StartedAt || len(closed.Samples) < len(launch.Samples) ||
+		closed.Samples[0].ElapsedMillis < launch.Samples[0].ElapsedMillis ||
+		closed.Samples[len(closed.Samples)-1].ElapsedMillis < launch.Samples[len(launch.Samples)-1].ElapsedMillis {
 		t.Fatalf("panel close dropped session history: %+v", closed)
 	}
 	// Guarantee: 重新打开面板时，下一次状态读取会激活观察窗口并立即采样，不必等到下一个后台周期。

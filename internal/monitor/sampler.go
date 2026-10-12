@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"math"
 	"sync"
 	"time"
 )
@@ -18,7 +19,7 @@ type Sampler struct {
 	revision       int64
 	sampleCount    int64
 	lastError      string
-	samples        []Sample
+	history        history
 	peaks          Peak
 	cpuWeightedSum float64
 	cpuWeight      float64
@@ -34,7 +35,7 @@ func NewSampler(readTerminals func() []TerminalScope) *Sampler {
 		interval:     DefaultSampleInterval,
 		liveInterval: LiveSampleInterval,
 		panelLease:   PanelLease,
-		samples:      []Sample{},
+		history:      newHistory(),
 		read: func(live bool) (Snapshot, error) {
 			var scopes []TerminalScope
 			if live && readTerminals != nil {
@@ -122,7 +123,7 @@ func (s *Sampler) State() State {
 	defer s.mu.Unlock()
 	state := State{
 		Revision: s.revision, Live: s.liveLocked(), StartedAt: s.startedAt, SampleCount: s.sampleCount,
-		Error: s.lastError, Peaks: s.peaks, Samples: append([]Sample{}, s.samples...),
+		Error: s.lastError, Peaks: s.peaks, Samples: s.history.samples(),
 	}
 	if s.cpuWeight > 0 {
 		state.AverageCPUPercent = pointer(s.cpuWeightedSum / s.cpuWeight)
@@ -214,7 +215,7 @@ func (s *Sampler) capture(live bool) {
 		sample.FilePoolBytes = pointer(file.Bytes)
 	}
 	s.sampleCount++
-	s.samples = appendSample(s.samples, sample)
+	s.history.add(sample)
 	s.recordPeak(sample)
 	s.recordCPU(sample)
 }
@@ -242,57 +243,171 @@ func (s *Sampler) recordCPU(sample Sample) {
 	s.cpuWeight += float64(sample.IntervalMillis)
 }
 
-// Rule: 超过上限时对中间样本做一次减半降采样：首样本（启动基线）与最新样本（当前值）始终保持原始值，
-// 中间样本两两合并，内存量取平均，CPU 按区间时长加权，时间戳取较新值；样本数随即减半，覆盖时长随运行期翻倍。
-func appendSample(samples []Sample, sample Sample) []Sample {
-	next := append(append([]Sample{}, samples...), sample)
-	if len(next) <= HistoryLimit {
-		return next
-	}
-	return decimateSamples(next)
+// Rule: 历史按等宽时间桶聚合，而不是按样本顺序逐段降采样：每个点代表一个宽度相同的桶（尾部未填满的桶更短），
+// 桶内数值按各样本覆盖的时长加权平均，因此后台 30 秒与面板 5 秒两种采样频率落在同一组点上，不会出现旧数据被反复平均、新数据保持原始的分段曲线。
+// 桶数超过上限时把桶宽翻倍并整体重新分桶，分辨率对整段历史同时下降，样本数减半、覆盖时长随运行期翻倍。
+type history struct {
+	width   uint64
+	buckets []bucket
 }
 
-func decimateSamples(samples []Sample) []Sample {
-	merged := []Sample{samples[0]}
-	for index := 1; index+1 < len(samples)-1; index += 2 {
-		merged = append(merged, mergeSamples(samples[index], samples[index+1]))
-	}
-	if (len(samples)-2)%2 == 1 {
-		merged = append(merged, samples[len(samples)-2])
-	}
-	return append(merged, samples[len(samples)-1])
+func newHistory() history {
+	return history{width: uint64(DefaultSampleInterval / time.Millisecond)}
 }
 
-func mergeSamples(older, newer Sample) Sample {
-	merged := Sample{
-		CapturedAt:        newer.CapturedAt,
-		ElapsedMillis:     newer.ElapsedMillis,
-		IntervalMillis:    older.IntervalMillis + newer.IntervalMillis,
-		PrivateBytes:      averageBytes(older.PrivateBytes, newer.PrivateBytes),
-		HeapBytes:         (older.HeapBytes + newer.HeapBytes) / 2,
-		PagedPoolBytes:    (older.PagedPoolBytes + newer.PagedPoolBytes) / 2,
-		NonpagedPoolBytes: (older.NonpagedPoolBytes + newer.NonpagedPoolBytes) / 2,
-		FilePoolCount:     averageBytes(older.FilePoolCount, newer.FilePoolCount),
-		FilePoolBytes:     averageBytes(older.FilePoolBytes, newer.FilePoolBytes),
+// bucket 是一个等宽时间桶的累加值；时间戳取桶内最新样本，使曲线右端对齐当前时刻。
+type bucket struct {
+	CapturedAt     int64
+	ElapsedMillis  uint64
+	IntervalMillis uint64
+	Private        weighted
+	Heap           weighted
+	CPU            weighted
+	Paged          weighted
+	Nonpaged       weighted
+	FileCount      weighted
+	FileBytes      weighted
+}
+
+// weighted 按覆盖时长累加一个指标：未知样本既不进入平均值也不占用时长权重，避免把缺失当成零；
+// fallback 保留最近一个已知值，让还没有任何覆盖时长的桶（只有启动基线）仍然给出原始数值。
+type weighted struct {
+	sum      float64
+	weight   uint64
+	fallback float64
+	known    bool
+}
+
+func (w *weighted) add(value float64, weight uint64) {
+	w.sum += value * float64(weight)
+	w.weight += weight
+	w.fallback, w.known = value, true
+}
+
+func (w *weighted) addOptional(value *uint64, weight uint64) {
+	if value != nil {
+		w.add(float64(*value), weight)
 	}
-	if merged.IntervalMillis > 0 && older.CPUPercent != nil && newer.CPUPercent != nil {
-		percent := (*older.CPUPercent*float64(older.IntervalMillis) + *newer.CPUPercent*float64(newer.IntervalMillis)) / float64(merged.IntervalMillis)
-		merged.CPUPercent = &percent
-	} else if newer.CPUPercent != nil {
-		merged.CPUPercent = newer.CPUPercent
+}
+
+func (w *weighted) addOptionalPercent(value *float64, weight uint64) {
+	if value != nil {
+		w.add(*value, weight)
+	}
+}
+
+// Flow: 合并直接相加总和与权重，不在平均值之上再平均；已知值以较新的桶为准。
+func (w *weighted) merge(older weighted) {
+	w.sum += older.sum
+	w.weight += older.weight
+	if !w.known && older.known {
+		w.fallback, w.known = older.fallback, true
+	}
+}
+
+func (w weighted) mean() (float64, bool) {
+	if w.weight > 0 {
+		return w.sum / float64(w.weight), true
+	}
+	return w.fallback, w.known
+}
+
+// Flow: 把样本并入它所属的时间桶：仍是最后一个桶的跨度就继续累加，否则新开一个桶；桶数超过上限时先整体加宽。
+// Rule: 样本覆盖的区间是它与上一次采样之间的时间，统一记入本次采样所属的桶。
+func (h *history) add(sample Sample) {
+	index := sample.ElapsedMillis / h.width
+	last := len(h.buckets) - 1
+	if last >= 0 && h.buckets[last].ElapsedMillis/h.width == index {
+		h.buckets[last] = mergeBuckets(h.buckets[last], newBucket(sample))
 	} else {
-		merged.CPUPercent = older.CPUPercent
+		h.buckets = append(h.buckets, newBucket(sample))
 	}
+	if len(h.buckets) > HistoryLimit {
+		h.widen()
+	}
+}
+
+// Flow: 桶数超过上限时把桶宽翻倍并按新宽度重新分组；分组沿用已累加的总和与权重，平均值不因重分桶而改变。
+func (h *history) widen() {
+	h.width *= 2
+	merged := make([]bucket, 0, len(h.buckets)/2+1)
+	for _, current := range h.buckets {
+		if last := len(merged) - 1; last >= 0 && merged[last].ElapsedMillis/h.width == current.ElapsedMillis/h.width {
+			merged[last] = mergeBuckets(merged[last], current)
+			continue
+		}
+		merged = append(merged, current)
+	}
+	h.buckets = merged
+}
+
+// Flow: 把桶还原成前端使用的序列；数值取桶内的加权平均值，始终未知的指标保持 null。
+func (h *history) samples() []Sample {
+	samples := make([]Sample, 0, len(h.buckets))
+	for _, current := range h.buckets {
+		samples = append(samples, current.sample())
+	}
+	return samples
+}
+
+func newBucket(sample Sample) bucket {
+	current := bucket{CapturedAt: sample.CapturedAt, ElapsedMillis: sample.ElapsedMillis, IntervalMillis: sample.IntervalMillis}
+	current.Private.addOptional(sample.PrivateBytes, sample.IntervalMillis)
+	current.Heap.add(float64(sample.HeapBytes), sample.IntervalMillis)
+	current.CPU.addOptionalPercent(sample.CPUPercent, sample.IntervalMillis)
+	current.Paged.add(float64(sample.PagedPoolBytes), sample.IntervalMillis)
+	current.Nonpaged.add(float64(sample.NonpagedPoolBytes), sample.IntervalMillis)
+	current.FileCount.addOptional(sample.FilePoolCount, sample.IntervalMillis)
+	current.FileBytes.addOptional(sample.FilePoolBytes, sample.IntervalMillis)
+	return current
+}
+
+func mergeBuckets(older, newer bucket) bucket {
+	merged := newer
+	merged.IntervalMillis += older.IntervalMillis
+	merged.Private.merge(older.Private)
+	merged.Heap.merge(older.Heap)
+	merged.CPU.merge(older.CPU)
+	merged.Paged.merge(older.Paged)
+	merged.Nonpaged.merge(older.Nonpaged)
+	merged.FileCount.merge(older.FileCount)
+	merged.FileBytes.merge(older.FileBytes)
 	return merged
 }
 
-func averageBytes(left, right *uint64) *uint64 {
-	if left == nil {
-		return right
+func (b bucket) sample() Sample {
+	sample := Sample{CapturedAt: b.CapturedAt, ElapsedMillis: b.ElapsedMillis, IntervalMillis: b.IntervalMillis}
+	if value, known := b.Private.mean(); known {
+		sample.PrivateBytes = pointer(roundedBytes(value))
 	}
-	if right == nil {
-		return left
+	if value, known := b.Heap.mean(); known {
+		sample.HeapBytes = roundedBytes(value)
 	}
-	average := *left/2 + *right/2 + (*left%2+*right%2)/2
-	return &average
+	if value, known := b.CPU.mean(); known {
+		sample.CPUPercent = pointer(value)
+	}
+	if value, known := b.Paged.mean(); known {
+		sample.PagedPoolBytes = roundedBytes(value)
+	}
+	if value, known := b.Nonpaged.mean(); known {
+		sample.NonpagedPoolBytes = roundedBytes(value)
+	}
+	if value, known := b.FileCount.mean(); known {
+		sample.FilePoolCount = pointer(roundedBytes(value))
+	}
+	if value, known := b.FileBytes.mean(); known {
+		sample.FilePoolBytes = pointer(roundedBytes(value))
+	}
+	return sample
+}
+
+// Guarantee: 浮点累加可能略超出 uint64 上限，转换前先夹紧，避免饱和计数值回绕成 0。
+func roundedBytes(value float64) uint64 {
+	if value <= 0 {
+		return 0
+	}
+	if value >= math.MaxUint64 {
+		return math.MaxUint64
+	}
+	return uint64(math.Round(value))
 }
