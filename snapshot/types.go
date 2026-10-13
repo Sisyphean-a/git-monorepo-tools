@@ -89,21 +89,29 @@ type RepoSnapshotUpdate struct {
 	ScannedAt string     `json:"scannedAt"`
 }
 
+type RemoteCheck struct {
+	Status    string `json:"status"`
+	CheckedAt string `json:"checkedAt"`
+	Error     string `json:"error,omitempty"`
+}
+
 type Repo struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Branch       string `json:"branch"`
-	HeadRevision string `json:"headRevision"`
-	Path         string `json:"path"`
-	Remote       string `json:"remote"`
-	Category     string `json:"category"`
-	Modified     int    `json:"modified"`
-	Ahead        int    `json:"ahead"`
-	Behind       int    `json:"behind"`
-	Conflicts    int    `json:"conflicts"`
-	Status       string `json:"status"`
-	ScanError    string `json:"scanError,omitempty"`
-	LastScan     string `json:"lastScan"`
+	ID           string       `json:"id"`
+	Name         string       `json:"name"`
+	Branch       string       `json:"branch"`
+	HeadRevision string       `json:"headRevision"`
+	RefsRevision string       `json:"refsRevision,omitempty"`
+	Path         string       `json:"path"`
+	Remote       string       `json:"remote"`
+	Category     string       `json:"category"`
+	Modified     int          `json:"modified"`
+	Ahead        int          `json:"ahead"`
+	Behind       int          `json:"behind"`
+	Conflicts    int          `json:"conflicts"`
+	Status       string       `json:"status"`
+	ScanError    string       `json:"scanError,omitempty"`
+	LastScan     string       `json:"lastScan"`
+	RemoteCheck  *RemoteCheck `json:"remoteCheck,omitempty"`
 }
 
 type RepoDetail struct {
@@ -133,12 +141,13 @@ type FileChange struct {
 }
 
 type PullResult struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Result  string `json:"result"`
-	Detail  string `json:"detail"`
-	Commits int    `json:"commits,omitempty"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Path        string       `json:"path"`
+	Result      string       `json:"result"`
+	Detail      string       `json:"detail"`
+	Commits     int          `json:"commits,omitempty"`
+	RemoteCheck *RemoteCheck `json:"remoteCheck,omitempty"`
 }
 
 type CommitSummary struct {

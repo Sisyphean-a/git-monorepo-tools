@@ -1,9 +1,9 @@
-import type { AppSnapshot, FileChange, Repo, RepoDetail, RepoSnapshotUpdate } from './types.js';
+import type { AppSnapshot, FileChange, RemoteCheck, Repo, RepoDetail, RepoSnapshotUpdate } from './types.js';
 
 export type RepoUpdateMode = 'interaction' | 'background';
 
 export type SnapshotApplyContext = {
-  /** 完整快照 fetch 开始时的交互版本；版本更高的仓库以本地交互结果为准，避免旧快照回退前台操作。 */
+  /** 后台读取开始时的交互版本；版本更高的仓库以本地交互结果为准，避免迟到结果回退前台操作。 */
   preserveInteractionsSince: number;
 };
 
@@ -42,13 +42,20 @@ export function mergeSnapshotPreservingInteractions(
   interactionVersions: ReadonlyMap<string, number>,
   preserveInteractionsSince: number,
 ): AppSnapshot {
-  if (!current || interactionVersions.size === 0) return next;
+  if (!current) return next;
   const preserved = new Map<string, RepoDetail>();
   for (const repo of next.repos) {
     const version = interactionVersions.get(repo.id);
     const detail = current.repoDetails[repo.id];
     if (version !== undefined && version > preserveInteractionsSince && detail) {
       preserved.set(repo.id, detail);
+    } else {
+      const incoming = next.repoDetails[repo.id];
+      if (incoming) {
+        const merged = mergeRepoDetail(detail, incoming, 'background', next.scannedAt);
+        if (merged.history !== incoming.history || merged.historyRevision !== incoming.historyRevision
+          || merged.files !== incoming.files || merged.remoteCheck !== incoming.remoteCheck) preserved.set(repo.id, merged);
+      }
     }
   }
   if (preserved.size === 0) return next;
@@ -70,6 +77,7 @@ export function toRepoSummary(repo: Repo): Repo {
     name: repo.name,
     branch: repo.branch,
     headRevision: repo.headRevision,
+    refsRevision: repo.refsRevision,
     path: repo.path,
     remote: repo.remote,
     category: repo.category,
@@ -80,23 +88,32 @@ export function toRepoSummary(repo: Repo): Repo {
     status: repo.status,
     scanError: repo.scanError,
     lastScan: repo.lastScan,
+    remoteCheck: repo.remoteCheck,
   };
+}
+
+export function mergeRemoteCheck(current: Repo | undefined, incoming: Repo): RemoteCheck | undefined {
+  // Rule: 本地读取不拥有远端检查结果；分支或远端名称变化后不沿用旧结果。
+  return incoming.remoteCheck ?? (current?.branch === incoming.branch && current.remote === incoming.remote ? current.remoteCheck : undefined);
 }
 
 function mergeRepoDetail(current: RepoDetail | undefined, incoming: RepoDetail, mode: RepoUpdateMode, revision: string): RepoDetail {
   if (!current) return { ...incoming, historyRevision: revision };
   const headChanged = Boolean(current.headRevision && incoming.headRevision && current.headRevision !== incoming.headRevision);
+  const refsChanged = Boolean(incoming.refsRevision && current.refsRevision !== incoming.refsRevision);
+  const backgroundHistoryRevision = refsChanged
+    ? `refs-${incoming.refsRevision}:head-${incoming.headRevision ?? ''}`
+    : headChanged ? `head-${incoming.headRevision}` : current.historyRevision;
   const next = {
     ...incoming,
+    remoteCheck: mergeRemoteCheck(current, incoming),
     files: reconcileFiles(current.files, incoming.files),
-    historyRevision: mode === 'background'
-      ? headChanged ? `head-${incoming.headRevision}` : current.historyRevision
-      : revision,
+    historyRevision: mode === 'background' ? backgroundHistoryRevision : revision,
   };
-  if (mode === 'interaction' || headChanged) return next;
+  if (mode === 'interaction' || headChanged || refsChanged) return next;
   return {
     ...next,
-    // Equivalent background status snapshots do not own history. Preserve the active reading session.
+    // Rule: 等价后台状态快照不拥有历史数据，保留当前阅读会话。
     history: current.history,
     historyTotal: current.historyTotal,
     historyHasMore: current.historyHasMore,

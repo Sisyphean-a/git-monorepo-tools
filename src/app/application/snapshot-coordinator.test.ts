@@ -1,8 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSnapshotCoordinator } from './snapshot-coordinator.js';
+import { createSnapshotCoordinator as createCoordinator } from './snapshot-coordinator.js';
 import { mergeRepoSnapshotUpdate, mergeSnapshotPreservingInteractions } from '../domain/repo-snapshot-merge.js';
-import type { AppSettings, AppSnapshot, RepoDetail } from '../domain/types.js';
+import type { AppSettings, AppSnapshot, RepoDetail, RepoSnapshotUpdate } from '../domain/types.js';
+
+type CoordinatorOptions = Parameters<typeof createCoordinator>[0];
+
+function createSnapshotCoordinator(options: Omit<CoordinatorOptions, 'refreshRepo' | 'applyRepoUpdate'> & Partial<Pick<CoordinatorOptions, 'refreshRepo' | 'applyRepoUpdate'>>) {
+  return createCoordinator({
+    refreshRepo: async () => { throw new Error('本地刷新不应访问远端'); },
+    applyRepoUpdate: () => {},
+    ...options,
+  });
+}
 
 const settings = (concurrency: number): AppSettings => ({
   scanRoots: [],
@@ -86,7 +96,7 @@ test('coalesces queued refreshes and keeps latest settings', async () => {
 
   assert.deepEqual(calls, [
     { concurrency: 1, refreshRemotes: false },
-    { concurrency: 5, refreshRemotes: true },
+    { concurrency: 5, refreshRemotes: false },
   ]);
   assert.deepEqual(applied, ['refresh-1', 'refresh-5']);
 });
@@ -282,6 +292,133 @@ test('invalidates progressive scan writes as soon as normal refresh is queued', 
 
   assert.deepEqual(applied, ['bootstrap', 'manual-refresh']);
   assert.deepEqual(errors, [null]);
+});
+
+const repoDetail = (id: string, behind = 0): RepoDetail => ({
+  id, name: id, branch: 'main', path: `/repos/${id}`, remote: 'origin', category: 'test',
+  modified: 0, ahead: 0, behind, conflicts: 0, status: 'clean', lastScan: 'now',
+  files: [], stagedCount: 0, unstagedCount: 0, scannedAt: 'now',
+  history: [], historyTotal: 0, historyHasMore: false,
+});
+
+const repoSnapshot = (...repos: RepoDetail[]): AppSnapshot => ({
+  ...snapshot('local-discovery'),
+  repos,
+  repoDetails: Object.fromEntries(repos.map(repo => [repo.id, repo])),
+  selectedRepoId: repos[0]?.id ?? '',
+});
+
+const nextTurn = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test('remote refresh publishes each completed repo while a slow repo is still pending', async () => {
+  const slow = deferred<void>();
+  const updates: RepoSnapshotUpdate[] = [];
+  const calls: string[] = [];
+  let active = 0;
+  let maxActive = 0;
+  let settled = false;
+  const nextSettings = settings(2);
+  nextSettings.gitBehavior.proxy = { enabled: true, host: 'proxy.test', port: 2080 };
+  const coordinator = createSnapshotCoordinator({
+    readRepoUpdateRevision: () => 0,
+    fetchSnapshot: async (receivedSettings, options) => {
+      assert.equal(receivedSettings, nextSettings);
+      assert.equal(options?.refreshRemotes, false);
+      return repoSnapshot(repoDetail('slow'), repoDetail('fast'), repoDetail('third'));
+    },
+    applySnapshot: next => calls.push(`snapshot:${next.repos.length}`),
+    refreshRepo: async (id, receivedSettings, options, target) => {
+      assert.equal(receivedSettings, nextSettings);
+      assert.equal(options?.refreshRemotes, true);
+      assert.deepEqual(target, { path: `/repos/${id}`, category: 'test' });
+      calls.push(`fetch:${id}`);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      if (id === 'slow') await slow.promise;
+      active -= 1;
+      return { repo: repoDetail(id, 3), scannedAt: 'remote' };
+    },
+    applyRepoUpdate: update => updates.push(update),
+  });
+  const refresh = coordinator.requestRefresh(nextSettings, { refreshRemotes: true });
+  void refresh.then(() => { settled = true; });
+  await nextTurn();
+
+  assert.equal(settled, false);
+  assert.deepEqual(updates.map(update => update.repo.id), ['fast', 'third']);
+  assert.equal(updates[0]?.repo.behind, 3);
+  assert.equal(calls[0], 'snapshot:3');
+  assert.equal(maxActive, 2);
+  slow.resolve();
+  await refresh;
+  assert.deepEqual(updates.map(update => update.repo.id), ['fast', 'third', 'slow']);
+  assert.equal(calls.filter(call => call.startsWith('snapshot:')).length, 1);
+});
+
+test('local-only refresh replaces the discovered repo list without fetching remotes', async () => {
+  let current = repoSnapshot(repoDetail('removed'));
+  let remoteCalls = 0;
+  const coordinator = createSnapshotCoordinator({
+    readRepoUpdateRevision: () => 0,
+    fetchSnapshot: async () => repoSnapshot(repoDetail('discovered')),
+    applySnapshot: next => { current = next; },
+    refreshRepo: async id => {
+      remoteCalls += 1;
+      return { repo: repoDetail(id), scannedAt: 'remote' };
+    },
+    applyRepoUpdate: () => {},
+  });
+  await coordinator.requestRefresh(settings(2), { refreshRemotes: false });
+  assert.deepEqual(current.repos.map(repo => repo.id), ['discovered']);
+  assert.equal(remoteCalls, 0);
+});
+
+test('remote failures publish a repo error without holding back successful repos', async () => {
+  const updates: RepoSnapshotUpdate[] = [];
+  const coordinator = createSnapshotCoordinator({
+    readRepoUpdateRevision: () => 0,
+    fetchSnapshot: async () => repoSnapshot(repoDetail('broken'), repoDetail('healthy')),
+    applySnapshot: () => {},
+    refreshRepo: async id => {
+      if (id === 'broken') throw 'proxy connection failed';
+      return { repo: repoDetail(id, 2), scannedAt: 'remote' };
+    },
+    applyRepoUpdate: update => updates.push(update),
+  });
+  await coordinator.requestRefresh(settings(2), { refreshRemotes: true });
+  assert.equal(updates.find(update => update.repo.id === 'healthy')?.repo.behind, 2);
+  assert.equal(updates.find(update => update.repo.id === 'broken')?.repo.status, 'error');
+  assert.equal(updates.find(update => update.repo.id === 'broken')?.repo.scanError, 'proxy connection failed');
+});
+
+test('remote repo writes carry the request revision so later interactions stay authoritative', async () => {
+  const gate = deferred<void>();
+  let revision = 0;
+  const versions = new Map<string, number>();
+  let current = repoSnapshot(repoDetail('repo-a'), repoDetail('repo-b'));
+  const coordinator = createSnapshotCoordinator({
+    readRepoUpdateRevision: () => revision,
+    fetchSnapshot: async () => current,
+    applySnapshot: next => { current = next; },
+    refreshRepo: async id => {
+      await gate.promise;
+      return { repo: repoDetail(id, 4), scannedAt: 'remote' };
+    },
+    applyRepoUpdate: (update, context) => {
+      if ((versions.get(update.repo.id) ?? 0) > context.preserveInteractionsSince) return;
+      current = mergeRepoSnapshotUpdate(current, update, 'background');
+    },
+  });
+  const refresh = coordinator.requestRefresh(settings(2), { refreshRemotes: true });
+  await nextTurn();
+  await coordinator.runTask(async () => undefined, () => {
+    versions.set('repo-a', ++revision);
+    current = mergeRepoSnapshotUpdate(current, { repo: repoDetail('repo-a', 0), scannedAt: 'interaction' });
+  });
+  gate.resolve();
+  await refresh;
+  assert.equal(current.repoDetails['repo-a']?.behind, 0);
+  assert.equal(current.repoDetails['repo-b']?.behind, 4);
 });
 
 function deferred<T>() {

@@ -3,11 +3,18 @@ export type FileStatus = 'A' | 'M' | 'D' | 'R';
 export type RepoMutationAction = 'stage-all' | 'unstage-all' | 'stage-file' | 'unstage-file' | 'commit' | 'pull' | 'push' | 'discard-all';
 export type BuiltInCommandAction = 'stage-all' | 'unstage-all' | 'generate' | 'commit' | 'pull' | 'push' | 'refresh';
 
+export interface RemoteCheck {
+  status: 'success' | 'error';
+  checkedAt: string;
+  error?: string;
+}
+
 export interface Repo {
   id: string;
   name: string;
   branch: string;
   headRevision?: string;
+  refsRevision?: string;
   path: string;
   remote: string;
   category: string;
@@ -18,6 +25,7 @@ export interface Repo {
   status: RepoStatus;
   scanError?: string;
   lastScan: string;
+  remoteCheck?: RemoteCheck;
 }
 
 export interface FileChange {
@@ -66,6 +74,7 @@ export interface PullResult {
   result: 'pulled' | 'pushed' | 'skipped' | 'failed' | 'uptodate';
   detail: string;
   commits?: number;
+  remoteCheck?: RemoteCheck;
 }
 
 export interface ScanRootSetting {

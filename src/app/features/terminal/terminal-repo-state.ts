@@ -1,3 +1,19 @@
+export function collectEmptyTerminalClosures(
+  openedRepoIds: readonly string[],
+  activeRepoId: string,
+  visible: boolean,
+  contentfulRepoIds: ReadonlySet<string>,
+  closingRepoIds: ReadonlySet<string>,
+): ReadonlySet<string> {
+  let next: Set<string> | undefined;
+  for (const repoId of openedRepoIds) {
+    if ((!visible || repoId !== activeRepoId) && !contentfulRepoIds.has(repoId) && !closingRepoIds.has(repoId)) {
+      (next ??= new Set(closingRepoIds)).add(repoId);
+    }
+  }
+  return next ?? closingRepoIds;
+}
+
 export function retainExistingRepoIds<T>(
   current: string[],
   repoDetails: Readonly<Record<string, T>>,

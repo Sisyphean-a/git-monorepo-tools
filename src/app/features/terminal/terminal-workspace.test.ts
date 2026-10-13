@@ -244,7 +244,7 @@ test('releases independent sessions, including a session that starts after dispo
   runtime.createTerminalSession = async () => delayed;
   const delayedSession = workspace.createSurfaceSession(true, emptySurfaceHandlers());
   const starting = delayedSession.start({ repoId: 'repo-b', repoPath: 'E:/repo-b' });
-  await delayedSession.release();
+  const releasingIndependent = delayedSession.release();
   resolveStart({
     sessionId: 'term-delayed',
     repoId: 'repo-b',
@@ -254,6 +254,7 @@ test('releases independent sessions, including a session that starts after dispo
   });
 
   assert.equal(await starting, null);
+  await releasingIndependent;
   assert.deepEqual(runtime.closedSessionIDs, [independentSession.sessionId, 'term-delayed']);
 
   let resolveDefaultStart!: (session: TerminalSessionInfo) => void;
@@ -263,7 +264,7 @@ test('releases independent sessions, including a session that starts after dispo
   runtime.ensureTerminalSession = async () => delayedDefaultStart;
   const delayedDefault = workspace.createSurfaceSession(false, emptySurfaceHandlers());
   const startingDefault = delayedDefault.start({ repoId: 'repo-c', repoPath: 'E:/repo-c' });
-  await delayedDefault.release();
+  const releasingDefault = delayedDefault.release();
   resolveDefaultStart({
     sessionId: 'term-default-delayed',
     repoId: 'repo-c',
@@ -273,6 +274,7 @@ test('releases independent sessions, including a session that starts after dispo
   });
 
   assert.equal(await startingDefault, null);
+  await releasingDefault;
   runtime.emit('repo-terminal-output', { sessionId: 'term-default-delayed', chunk: 'must not cache after release' });
   const abandonedOutput: string[] = [];
   const abandonedSubscription = workspace.subscribeSession(chunk => abandonedOutput.push(chunk), () => {});
@@ -291,6 +293,68 @@ test('can close a default session when its surface is released for automatic cle
   assert.ok(session);
   await surface.release(true);
   assert.deepEqual(runtime.closedSessionIDs, [session.sessionId]);
+  workspace.dispose();
+});
+
+test('automatic cleanup closes a default session that finishes starting after leaving', async () => {
+  const runtime = createRuntime();
+  let finishStart!: (session: TerminalSessionInfo) => void;
+  runtime.ensureTerminalSession = () => new Promise(resolve => { finishStart = resolve; });
+  const workspace = new TerminalWorkspace(runtime);
+  const surface = workspace.createSurfaceSession(false, emptySurfaceHandlers());
+  const starting = surface.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
+  let closed = false;
+  const closing = surface.release(true).then(() => { closed = true; });
+  await Promise.resolve();
+  assert.equal(closed, false);
+  finishStart({ sessionId: 'late-default', repoId: 'repo-a', repoPath: 'E:/repo-a', shell: 'powershell', startedAt: 1 });
+  assert.equal(await starting, null);
+  await closing;
+  assert.deepEqual(runtime.closedSessionIDs, ['late-default']);
+  workspace.dispose();
+});
+
+test('automatic cleanup waits for a replacement and closes only the new session', async () => {
+  const runtime = createRuntime();
+  const workspace = new TerminalWorkspace(runtime);
+  const surface = workspace.createSurfaceSession(false, emptySurfaceHandlers());
+  await surface.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
+  let finishRestart!: (session: TerminalSessionInfo) => void;
+  runtime.restartTerminalSession = () => new Promise(resolve => { finishRestart = resolve; });
+  const restarting = surface.restart('repo-a', 80, 24);
+  const closing = surface.release(true);
+  finishRestart({ sessionId: 'replacement', repoId: 'repo-a', repoPath: 'E:/repo-a', shell: 'powershell', startedAt: 2 });
+  assert.equal(await restarting, null);
+  await closing;
+  assert.deepEqual(runtime.closedSessionIDs, ['replacement']);
+  workspace.dispose();
+});
+
+test('cleanup preserves both restart and old-session close failures', async () => {
+  const runtime = createRuntime();
+  const workspace = new TerminalWorkspace(runtime);
+  const surface = workspace.createSurfaceSession(false, emptySurfaceHandlers());
+  await surface.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' });
+  runtime.restartTerminalSession = async () => { throw new Error('restart failed'); };
+  runtime.closeTerminalSession = async () => { throw new Error('old close failed'); };
+  const restarting = assert.rejects(surface.restart('repo-a', 80, 24), /restart failed.*old close failed/);
+  const closing = assert.rejects(surface.release(true), /restart failed.*old close failed/);
+  await Promise.all([restarting, closing]);
+  workspace.dispose();
+});
+
+test('automatic cleanup retains close failures from late sessions', async () => {
+  const runtime = createRuntime();
+  let finishStart!: (session: TerminalSessionInfo) => void;
+  runtime.ensureTerminalSession = () => new Promise(resolve => { finishStart = resolve; });
+  const failure = new Error('close failed');
+  runtime.closeTerminalSession = async () => { throw failure; };
+  const workspace = new TerminalWorkspace(runtime);
+  const surface = workspace.createSurfaceSession(false, emptySurfaceHandlers());
+  const starting = assert.rejects(surface.start({ repoId: 'repo-a', repoPath: 'E:/repo-a' }), error => error === failure);
+  const closing = assert.rejects(surface.release(true), error => error === failure);
+  finishStart({ sessionId: 'late-failure', repoId: 'repo-a', repoPath: 'E:/repo-a', shell: 'powershell', startedAt: 1 });
+  await Promise.all([starting, closing]);
   workspace.dispose();
 });
 

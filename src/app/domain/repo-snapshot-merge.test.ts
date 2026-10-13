@@ -28,6 +28,44 @@ function repo(id: string, modified: number, path = `/repo/${id}`): RepoDetail {
   };
 }
 
+test('local polls and complete local snapshots preserve remote failure feedback until a successful remote check', () => {
+  const current = {
+    ...repo('repo-a', 0),
+    remoteCheck: { status: 'error' as const, checkedAt: '2026-10-13 10:00:00', error: 'Fetch timeout' },
+  };
+  const snapshot: AppSnapshot = {
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [],
+  };
+  const local = { repo: repo('repo-a', 1), scannedAt: 'local' };
+  const polled = mergeRepoSnapshotUpdate(snapshot, local, 'background');
+  assert.equal(polled.repoDetails['repo-a']?.status, 'changed');
+  assert.deepEqual(polled.repoDetails['repo-a']?.remoteCheck, current.remoteCheck);
+  assert.deepEqual(polled.repos[0]?.remoteCheck, current.remoteCheck);
+  const sidebar = mergeSidebarRepoUpdate({ ...snapshot, repos: [current] }, local);
+  assert.deepEqual(sidebar.repos[0]?.remoteCheck, current.remoteCheck);
+  const nextLocal: AppSnapshot = { ...snapshot, repos: [local.repo], repoDetails: { 'repo-a': local.repo } };
+  const complete = mergeSnapshotPreservingInteractions(nextLocal, snapshot, new Map(), 0);
+  assert.deepEqual(complete.repoDetails['repo-a']?.remoteCheck, current.remoteCheck);
+  assert.equal(complete.repoDetails['repo-a']?.modified, 1);
+  const success = mergeRepoSnapshotUpdate(polled, {
+    repo: { ...repo('repo-a', 0), remoteCheck: { status: 'success', checkedAt: '2026-10-13 10:01:00' } },
+    scannedAt: 'remote',
+  }, 'background');
+  assert.equal(success.repoDetails['repo-a']?.remoteCheck?.status, 'success');
+  assert.equal(success.repoDetails['repo-a']?.remoteCheck?.error, undefined);
+});
+
+test('remote check feedback does not leak to another branch or upstream', () => {
+  const current = { ...repo('repo-a', 0), remoteCheck: { status: 'error' as const, checkedAt: 'old', error: 'Fetch timeout' } };
+  const snapshot: AppSnapshot = {
+    scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [],
+  };
+  for (const change of [{ branch: 'other' }, { remote: 'upstream' }]) {
+    const next = mergeRepoSnapshotUpdate(snapshot, { repo: { ...repo('repo-a', 0), ...change }, scannedAt: 'local' }, 'background');
+    assert.equal(next.repoDetails['repo-a']?.remoteCheck, undefined);
+  }
+});
+
 test('mergeRepoSnapshotUpdate replaces only target repo fields', () => {
   const snapshot: AppSnapshot = {
     scannedAt: 'old-scan',
@@ -100,6 +138,33 @@ test('background HEAD changes invalidate history without an app interaction', ()
 
   assert.deepEqual(next.repoDetails['repo-a']?.history, []);
   assert.equal(next.repoDetails['repo-a']?.historyRevision, 'head-new-head');
+});
+
+test('reference changes refresh history even when HEAD and ahead/behind counts are unchanged', () => {
+  const current = { ...repo('repo-a', 0), headRevision: 'same-head', refsRevision: 'old-refs', historyRevision: 'old-reading' };
+  current.history = [{ hash: 'old', shortHash: 'old', author: 'A', time: 'now', message: 'old', additions: 0, deletions: 0, parents: 1, parentHashes: [], refs: [], files: 0 }];
+  const snapshot: AppSnapshot = { scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [] };
+  const incoming = { ...repo('repo-a', 0), headRevision: 'same-head', refsRevision: 'new-refs' };
+  const updated = mergeRepoSnapshotUpdate(snapshot, { repo: incoming, scannedAt: 'fetch' }, 'background');
+  assert.notEqual(updated.repoDetails['repo-a']?.historyRevision, current.historyRevision);
+  assert.deepEqual(updated.repoDetails['repo-a']?.history, []);
+  const complete = mergeSnapshotPreservingInteractions({ ...snapshot, repos: [incoming], repoDetails: { 'repo-a': incoming } }, snapshot, new Map(), 0);
+  assert.notEqual(complete.repoDetails['repo-a']?.historyRevision, current.historyRevision);
+  assert.deepEqual(complete.repoDetails['repo-a']?.history, []);
+});
+
+test('unchanged references preserve history across polls and complete local snapshots', () => {
+  const current = { ...repo('repo-a', 0), headRevision: 'same-head', refsRevision: 'same-refs', historyRevision: 'keep-reading' };
+  current.history = [{ hash: 'old', shortHash: 'old', author: 'A', time: 'now', message: 'keep', additions: 0, deletions: 0, parents: 1, parentHashes: [], refs: [], files: 0 }];
+  const snapshot: AppSnapshot = { scannedAt: 'old', categories: [], repos: [current], repoDetails: { 'repo-a': current }, selectedRepoId: 'repo-a', pullResults: [] };
+  const incoming = { ...repo('repo-a', 1), headRevision: 'same-head', refsRevision: 'same-refs' };
+  const updated = mergeRepoSnapshotUpdate(snapshot, { repo: incoming, scannedAt: 'local' }, 'background');
+  const complete = mergeSnapshotPreservingInteractions({ ...snapshot, repos: [incoming], repoDetails: { 'repo-a': incoming } }, snapshot, new Map(), 0);
+  for (const result of [updated, complete]) {
+    assert.equal(result.repoDetails['repo-a']?.historyRevision, 'keep-reading');
+    assert.equal(result.repoDetails['repo-a']?.history, current.history);
+    assert.equal(result.repoDetails['repo-a']?.modified, 1);
+  }
 });
 
 test('interaction updates invalidate history reading data', () => {
@@ -249,7 +314,7 @@ test('mergeSnapshotPreservingInteractions ignores interactions that predate the 
 
   const merged = mergeSnapshotPreservingInteractions(next, currentSnapshot, new Map([['repo-a', 2]]), 5);
 
-  assert.equal(merged, next);
+  assert.equal(merged.scannedAt, 'full-scan');
   assert.equal(merged.repoDetails['repo-a']?.modified, 0);
 });
 

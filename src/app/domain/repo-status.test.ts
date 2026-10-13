@@ -17,6 +17,7 @@ function createRepo(overrides: Partial<Repo> = {}): Repo {
     conflicts: 0,
     status: 'clean',
     lastScan: '2026-07-01 10:00:00',
+    remoteCheck: { status: 'success', checkedAt: '2026-07-01 10:00:00' },
     ...overrides,
   };
 }
@@ -24,4 +25,7 @@ function createRepo(overrides: Partial<Repo> = {}): Repo {
 test('shouldShowCleanIndicator only marks truly clean repos', () => {
   assert.equal(shouldShowCleanIndicator(createRepo()), true);
   assert.equal(shouldShowCleanIndicator(createRepo({ status: 'error', scanError: 'git status failed' })), false);
+  assert.equal(shouldShowCleanIndicator(createRepo({ remoteCheck: undefined })), false);
+  assert.equal(shouldShowCleanIndicator(createRepo({ remoteCheck: { status: 'error', checkedAt: 'now', error: 'Fetch timeout' } })), false);
+  assert.equal(shouldShowCleanIndicator(createRepo({ remote: '—', remoteCheck: undefined })), true);
 });

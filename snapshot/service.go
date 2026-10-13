@@ -253,10 +253,15 @@ func (executor gitExecutor) buildRepoUpdate(repoID, repoPath, category string, r
 func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, scanTime time.Time, refreshRemotes bool) (repoSnapshot, error) {
 	repoPath := normalizePath(entry.repoPath)
 	repoName := filepath.Base(repoPath)
-	parsed, statusErr := executor.loadRepoStatus(repoPath, refreshRemotes)
+	parsed, remoteCheck, statusErr := executor.loadRepoStatus(repoPath, refreshRemotes)
+	// Failure: Fetch 错误归属远端检查，不把已成功读取的本地状态标为扫描失败。
+	if remoteCheck != nil && remoteCheck.Status == "error" {
+		statusErr = nil
+	}
 	files, filesErr := executor.buildFileChanges(repoPath, parsed.entries)
+	refsRevision, refsErr := executor.readHistoryRefsRevision(repoPath)
 	scanError := ""
-	if err := firstGitError(statusErr, filesErr); err != nil {
+	if err := firstGitError(statusErr, filesErr, refsErr); err != nil {
 		scanError = err.Error()
 	}
 	modified := uniquePathCount(files)
@@ -266,6 +271,7 @@ func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, sca
 		Name:         repoName,
 		Branch:       parsed.branch,
 		HeadRevision: parsed.headRevision,
+		RefsRevision: refsRevision,
 		Path:         repoPath,
 		Remote:       parsed.remote,
 		Category:     entry.category,
@@ -276,6 +282,7 @@ func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, sca
 		Status:       repoStatus(scanError, parsed.conflicts, modified),
 		ScanError:    scanError,
 		LastScan:     formatTime(scanTime),
+		RemoteCheck:  remoteCheck,
 	}
 
 	detail := RepoDetail{

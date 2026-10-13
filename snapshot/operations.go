@@ -21,6 +21,9 @@ func (s *Service) MutateRepo(repoID, action string, request Request, body RepoAc
 	if err != nil {
 		return RepoSnapshotUpdate{}, fmt.Errorf("操作已完成，但刷新仓库状态失败：%w", err)
 	}
+	if action == "pull" && update.Repo.RemoteCheck == nil {
+		update.Repo.RemoteCheck = &RemoteCheck{Status: "success", CheckedAt: formatDateTime(time.Now())}
+	}
 	return update, nil
 }
 
@@ -195,16 +198,38 @@ func (executor gitExecutor) executePullAll(repo RepoDetail, strategy string) Pul
 	if repo.Remote == "—" {
 		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：当前分支没有 upstream"}
 	}
+	parsed, check, err := executor.readStatusAfterRemoteSync(repo.Path)
+	result := PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, RemoteCheck: check}
+	if err != nil {
+		result.Result = "failed"
+		result.Detail = "检查远端及仓库状态失败：" + err.Error()
+		return result
+	}
+	repo.Remote, repo.Ahead, repo.Behind = parsed.remote, parsed.ahead, parsed.behind
+	repo.Modified, repo.Conflicts = len(parsed.entries), parsed.conflicts
+	// Rule: Fetch 期间工作树或跟踪分支可能变化，拉取前再次校验安全条件。
+	if err := ensurePullReady(repo); err != nil {
+		result.Result, result.Detail = "failed", err.Error()
+		return result
+	}
 	if repo.Ahead > 0 && repo.Behind > 0 {
-		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "skipped", Detail: "跳过：当前分支与远端已分叉"}
+		result.Result, result.Detail = "skipped", "跳过：当前分支与远端已分叉"
+		return result
 	}
 	if repo.Behind == 0 {
-		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "uptodate", Detail: "工作区干净，已与远端同步"}
+		result.Result, result.Detail = "uptodate", "远端已检查，工作区干净，已与远端同步"
+		if repo.Ahead > 0 {
+			result.Result = "skipped"
+			result.Detail = fmt.Sprintf("无需 Pull：本地领先 %d 个提交，可执行 Push", repo.Ahead)
+		}
+		return result
 	}
 	if _, err := executor.runGit(repo.Path, pullArgs(strategy)); err != nil {
-		return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "failed", Detail: err.Error()}
+		result.Result, result.Detail = "failed", err.Error()
+		return result
 	}
-	return PullResult{ID: repo.ID, Name: repo.Name, Path: repo.Path, Result: "pulled", Detail: fmt.Sprintf("已拉取 %d 个提交", repo.Behind), Commits: repo.Behind}
+	result.Result, result.Detail, result.Commits = "pulled", fmt.Sprintf("已拉取 %d 个提交", repo.Behind), repo.Behind
+	return result
 }
 
 func (executor gitExecutor) executePushAll(repo RepoDetail, strategy string) PullResult {

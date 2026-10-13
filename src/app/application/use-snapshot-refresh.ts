@@ -2,29 +2,34 @@ import { useEffect, useRef, useState } from 'react';
 import { createSnapshotCoordinator, type ForegroundTaskOptions } from './snapshot-coordinator';
 import { readErrorMessage } from './repo-action-error';
 import type { SnapshotApplyContext } from '../domain/repo-snapshot-merge';
-import type { AppSettings, AppSnapshot } from '../domain/types';
+import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types';
 import type { SnapshotFetchOptions, WorkspaceBackend } from './ports';
 
 interface SnapshotRefreshConfig {
   settings: AppSettings;
   applySnapshot: (snapshot: AppSnapshot, context?: SnapshotApplyContext) => void;
+  applyRepoUpdate: (update: RepoSnapshotUpdate, context?: SnapshotApplyContext) => void;
   reportError: (message: string | null) => void;
   fetchSnapshot: WorkspaceBackend['fetchSnapshot'];
+  refreshRepo: WorkspaceBackend['refreshRepo'];
   readRepoUpdateRevision: () => number;
   skipInitialRefresh?: boolean;
   windowActive: boolean;
 }
 
 export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
-  const { settings, applySnapshot, reportError, fetchSnapshot, readRepoUpdateRevision, skipInitialRefresh = false } = config;
+  const { settings, applySnapshot, applyRepoUpdate, reportError, fetchSnapshot, refreshRepo, readRepoUpdateRevision, skipInitialRefresh = false } = config;
   const settingsRef = useRef(settings);
   const applySnapshotRef = useRef(applySnapshot);
+  const applyRepoUpdateRef = useRef(applyRepoUpdate);
   const reportErrorRef = useRef(reportError);
   const refreshCountRef = useRef(0);
   const [refreshing, setRefreshing] = useState(false);
   const coordinatorRef = useRef(createSnapshotCoordinator({
     applySnapshot: (snapshot, context) => applySnapshotRef.current(snapshot, context),
     fetchSnapshot,
+    refreshRepo,
+    applyRepoUpdate: (update, context) => applyRepoUpdateRef.current(update, context),
     readRepoUpdateRevision,
     reportError: message => reportErrorRef.current(message),
   }));
@@ -35,8 +40,9 @@ export function useSnapshotRefresh(config: SnapshotRefreshConfig) {
 
   useEffect(() => {
     applySnapshotRef.current = applySnapshot;
+    applyRepoUpdateRef.current = applyRepoUpdate;
     reportErrorRef.current = reportError;
-  }, [applySnapshot, reportError]);
+  }, [applySnapshot, applyRepoUpdate, reportError]);
 
   // Flow: 所有完整刷新统一计数，界面据此显示“扫描中”，不再只反映手动扫描按钮。
   const trackRefresh = <T,>(promise: Promise<T>) => {

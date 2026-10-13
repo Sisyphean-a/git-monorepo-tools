@@ -44,7 +44,7 @@ interface RepoTerminalSurfaceProps {
   createIndependentSession?: boolean;
   closeRequested?: boolean;
   onContentChange?: (hasContent: boolean) => void;
-  onClosed?: () => void;
+  onClosed?: (error?: unknown) => void;
 }
 
 export function RepoTerminalSurface({
@@ -125,20 +125,30 @@ export function RepoTerminalSurface({
     setInputTrace([]);
   }, []);
 
+  const publishTerminalContent = useCallback(() => {
+    const hasContent = commandTrackerRef.current.hasContent;
+    if (hasContentRef.current !== hasContent) {
+      hasContentRef.current = hasContent;
+      onContentChange?.(hasContent);
+    }
+  }, [onContentChange]);
+
+  const recordTerminalContent = useCallback((data: string) => {
+    // Guarantee: 先记录排队中的输入，避免离开页签时误关尚未写入后端的草稿。
+    commandTrackerRef.current.recordWrittenInput(data);
+    publishTerminalContent();
+  }, [publishTerminalContent]);
+
   const writeTerminalInput = useCallback(async (targetSessionId: string, data: string, source: string) => {
     recordInputTrace('写入终端', source, data);
     try {
       await terminalWorkspace.writeInput(targetSessionId, data);
-      if (!hasContentRef.current && commandTrackerRef.current.recordWrittenInput(data)) {
-        hasContentRef.current = true;
-        onContentChange?.(true);
-      }
       recordInputTrace('后端写入完成', `${source}；Wails 写入调用已成功返回`, data);
     } catch (inputError) {
       recordInputTrace('终端写入失败', `${source}；${describeTerminalInputError(inputError)}`, data);
       throw inputError;
     }
-  }, [onContentChange, recordInputTrace, terminalWorkspace]);
+  }, [recordInputTrace, terminalWorkspace]);
 
   const handleTerminalOutput = useCallback((chunk: string) => {
     observeProtocolOutput(chunk);
@@ -171,7 +181,12 @@ export function RepoTerminalSurface({
       return;
     }
     closeRequestedRef.current = true;
-    void surfaceSession.release(true).finally(() => onClosed?.());
+    terminalRef.current?.blur();
+    if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
+    if (imeFocusFrameRef.current !== null) cancelAnimationFrame(imeFocusFrameRef.current);
+    resizeFrameRef.current = null;
+    imeFocusFrameRef.current = null;
+    void surfaceSession.release(true).then(() => onClosed?.(), closeError => onClosed?.(closeError));
   }, [closeRequested, onClosed, surfaceSession]);
 
   const showToast = (text: string) => {
@@ -209,12 +224,13 @@ export function RepoTerminalSurface({
   };
 
   const scheduleResize = () => {
-    if (!active) return;
+    if (!active || closeRequestedRef.current) return;
     if (resizeFrameRef.current !== null) {
       cancelAnimationFrame(resizeFrameRef.current);
     }
     resizeFrameRef.current = requestAnimationFrame(() => {
       resizeFrameRef.current = null;
+      if (closeRequestedRef.current) return;
       const fitAddon = fitAddonRef.current;
       const session = surfaceSession.getSession();
       if (!fitAddon) return;
@@ -248,6 +264,7 @@ export function RepoTerminalSurface({
       recordInputTrace('终端写入失败', `${source}；${error.message}`, data);
       return Promise.reject(error);
     }
+    recordTerminalContent(data);
     const write = queueTerminalInput(
       inputQueueRef.current,
       input => writeTerminalInput(session.sessionId, input, source),
@@ -293,6 +310,10 @@ export function RepoTerminalSurface({
       if (!session) {
         return;
       }
+      if (resetTerminal) {
+        commandTrackerRef.current.reset();
+        publishTerminalContent();
+      }
       setShellLabel(session.shell);
       setStatus('running');
       scheduleResize();
@@ -323,8 +344,7 @@ export function RepoTerminalSurface({
         return;
       }
       commandTrackerRef.current.reset();
-      hasContentRef.current = false;
-      onContentChange?.(false);
+      publishTerminalContent();
       setShellLabel(replacement.shell);
       setStatus('running');
       scheduleResize();
@@ -373,6 +393,8 @@ export function RepoTerminalSurface({
         return Promise.resolve(false);
       }
 
+      const finishPendingInput = commandTrackerRef.current.retainPendingInput();
+      publishTerminalContent();
       const paste = inputQueueRef.current.then(async () => {
         const usePiLineFeedPaste = shortcutPlatform.toLowerCase().startsWith('win')
           && protocolStateMachineRef.current.usesPiLineFeedPaste();
@@ -382,18 +404,24 @@ export function RepoTerminalSurface({
           getClipboardImagePath: terminalWorkspace.readClipboardImagePath,
           getClipboardText: terminalWorkspace.readClipboardText,
           transformPastedText: text => transformClipboardText(terminal, text, usePiLineFeedPaste),
-          writeInput: data => writeTerminalInput(
-            session.sessionId,
-            data,
-            usePiLineFeedPaste
-              ? `Pi 换行兼容剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`
-              : `剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`,
-          ),
+          writeInput: data => {
+            recordTerminalContent(data);
+            return writeTerminalInput(
+              session.sessionId,
+              data,
+              usePiLineFeedPaste
+                ? `Pi 换行兼容剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`
+                : `剪贴板${source === 'keyboard' ? '快捷键' : '右键菜单'}`,
+            );
+          },
         });
         if (pasted) {
           terminal.focus();
         }
         return pasted;
+      }).finally(() => {
+        finishPendingInput();
+        publishTerminalContent();
       });
       inputQueueRef.current = paste.then(
         () => undefined,
@@ -510,6 +538,18 @@ export function RepoTerminalSurface({
     viewportRef.current.addEventListener('contextmenu', contextMenuHandler);
     xtermViewport?.addEventListener('scroll', scrollGuard, { passive: true });
 
+    const textarea = terminal.textarea;
+    const handleCompositionStart = () => {
+      commandTrackerRef.current.beginComposition();
+      publishTerminalContent();
+    };
+    const handleCompositionEnd = (event: CompositionEvent) => {
+      commandTrackerRef.current.endComposition(event.data);
+      publishTerminalContent();
+    };
+    textarea?.addEventListener('compositionstart', handleCompositionStart);
+    textarea?.addEventListener('compositionend', handleCompositionEnd);
+
     const inputDisposable = terminal.onData(data => {
       publishProtocolSnapshotChange(protocolStateMachineRef.current.observeTerminalInput(data));
       const capturePasteData = terminalPasteDataRef.current;
@@ -525,7 +565,7 @@ export function RepoTerminalSurface({
     });
 
     return () => {
-      void surfaceSession.release().catch(() => undefined);
+      void surfaceSession.release(!hasContentRef.current).catch(closeError => onClosed?.(closeError));
       if (toastTimerRef.current !== null) {
         window.clearTimeout(toastTimerRef.current);
         toastTimerRef.current = null;
@@ -540,6 +580,8 @@ export function RepoTerminalSurface({
       }
       viewportRef.current?.removeEventListener('contextmenu', contextMenuHandler);
       xtermViewport?.removeEventListener('scroll', scrollGuard);
+      textarea?.removeEventListener('compositionstart', handleCompositionStart);
+      textarea?.removeEventListener('compositionend', handleCompositionEnd);
       inputDisposable.dispose();
       parsedDisposable.dispose();
       linkProviderDisposable.dispose();

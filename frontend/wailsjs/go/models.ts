@@ -325,6 +325,7 @@ export namespace snapshot {
 	    result: string;
 	    detail: string;
 	    commits?: number;
+	    remoteCheck?: RemoteCheck;
 	
 	    static createFrom(source: any = {}) {
 	        return new PullResult(source);
@@ -338,7 +339,26 @@ export namespace snapshot {
 	        this.result = source["result"];
 	        this.detail = source["detail"];
 	        this.commits = source["commits"];
+	        this.remoteCheck = this.convertValues(source["remoteCheck"], RemoteCheck);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class CommitSummary {
 	    hash: string;
@@ -411,6 +431,7 @@ export namespace snapshot {
 	    name: string;
 	    branch: string;
 	    headRevision: string;
+	    refsRevision?: string;
 	    path: string;
 	    remote: string;
 	    category: string;
@@ -421,6 +442,7 @@ export namespace snapshot {
 	    status: string;
 	    scanError?: string;
 	    lastScan: string;
+	    remoteCheck?: RemoteCheck;
 	    files: FileChange[];
 	    stagedCount: number;
 	    unstagedCount: number;
@@ -439,6 +461,7 @@ export namespace snapshot {
 	        this.name = source["name"];
 	        this.branch = source["branch"];
 	        this.headRevision = source["headRevision"];
+	        this.refsRevision = source["refsRevision"];
 	        this.path = source["path"];
 	        this.remote = source["remote"];
 	        this.category = source["category"];
@@ -449,6 +472,7 @@ export namespace snapshot {
 	        this.status = source["status"];
 	        this.scanError = source["scanError"];
 	        this.lastScan = source["lastScan"];
+	        this.remoteCheck = this.convertValues(source["remoteCheck"], RemoteCheck);
 	        this.files = this.convertValues(source["files"], FileChange);
 	        this.stagedCount = source["stagedCount"];
 	        this.unstagedCount = source["unstagedCount"];
@@ -476,11 +500,28 @@ export namespace snapshot {
 		    return a;
 		}
 	}
+	export class RemoteCheck {
+	    status: string;
+	    checkedAt: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteCheck(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = source["status"];
+	        this.checkedAt = source["checkedAt"];
+	        this.error = source["error"];
+	    }
+	}
 	export class Repo {
 	    id: string;
 	    name: string;
 	    branch: string;
 	    headRevision: string;
+	    refsRevision?: string;
 	    path: string;
 	    remote: string;
 	    category: string;
@@ -491,6 +532,7 @@ export namespace snapshot {
 	    status: string;
 	    scanError?: string;
 	    lastScan: string;
+	    remoteCheck?: RemoteCheck;
 	
 	    static createFrom(source: any = {}) {
 	        return new Repo(source);
@@ -502,6 +544,7 @@ export namespace snapshot {
 	        this.name = source["name"];
 	        this.branch = source["branch"];
 	        this.headRevision = source["headRevision"];
+	        this.refsRevision = source["refsRevision"];
 	        this.path = source["path"];
 	        this.remote = source["remote"];
 	        this.category = source["category"];
@@ -512,7 +555,26 @@ export namespace snapshot {
 	        this.status = source["status"];
 	        this.scanError = source["scanError"];
 	        this.lastScan = source["lastScan"];
+	        this.remoteCheck = this.convertValues(source["remoteCheck"], RemoteCheck);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class AppSnapshot {
 	    scannedAt: string;
@@ -826,6 +888,7 @@ export namespace snapshot {
 		    return a;
 		}
 	}
+	
 	
 	
 	

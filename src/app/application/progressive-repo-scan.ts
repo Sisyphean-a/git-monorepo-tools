@@ -21,7 +21,11 @@ export async function loadProgressiveRepoUpdate(request: ProgressiveRepoScanRequ
       { path: target.path, category: target.category },
     );
   } catch (error) {
-    return buildProgressiveErrorUpdate(target, scannedAt, error, request.fallbackDetail);
+    const update = buildProgressiveErrorUpdate(target, scannedAt, error, request.fallbackDetail);
+    if (request.refreshRemotes) {
+      update.repo.remoteCheck = { status: 'error', checkedAt: new Date().toISOString(), error: readErrorMessage(error) };
+    }
+    return update;
   }
 }
 

@@ -48,9 +48,12 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     sidebar.applySidebarRepoUpdate(update);
     setSelectedRepoId(current => current || update.repo.id);
   };
-  const applyBackgroundRepoUpdate = (update: RepoSnapshotUpdate) => {
+  const applyBackgroundRepoUpdate = (update: RepoSnapshotUpdate, context?: SnapshotApplyContext) => {
     const currentSnapshot = snapshotRef.current;
-    const next = currentSnapshot ? mergeRepoSnapshotUpdate(currentSnapshot, update, 'background') : currentSnapshot;
+    if (!currentSnapshot?.repoDetails[update.repo.id]) return;
+    // Rule: 迟到的远端结果不能覆盖同仓库的新交互结果，也不能恢复已移除的仓库。
+    if (context && (interactionVersionsRef.current.get(update.repo.id) ?? 0) > context.preserveInteractionsSince) return;
+    const next = mergeRepoSnapshotUpdate(currentSnapshot, update, 'background');
     snapshotRef.current = next;
     setSnapshot(next);
     sidebar.applySidebarRepoUpdate(update);
@@ -59,8 +62,10 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
   const refresh = useSnapshotRefresh({
     settings,
     applySnapshot,
+    applyRepoUpdate: applyBackgroundRepoUpdate,
     reportError: setRefreshError,
     fetchSnapshot: backend.fetchSnapshot,
+    refreshRepo: backend.refreshRepo,
     readRepoUpdateRevision: () => interactionRevisionRef.current,
     skipInitialRefresh: true,
     windowActive,

@@ -7,5 +7,6 @@ export function shouldShowCleanIndicator(repo: Repo) {
     && repo.ahead === 0
     && repo.behind === 0
     && repo.conflicts === 0
+    && (repo.remote === '—' || repo.remoteCheck?.status === 'success')
   );
 }

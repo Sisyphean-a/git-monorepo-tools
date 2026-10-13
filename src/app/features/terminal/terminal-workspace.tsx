@@ -438,6 +438,7 @@ export class TerminalSurfaceSession {
   private subscription: TerminalSessionSubscription | null = null;
   private released = false;
   private closeSessionAfterRelease = false;
+  private readonly pendingSessionOperations = new Set<Promise<TerminalSessionInfo | null>>();
 
   constructor(
     private readonly workspace: TerminalWorkspace,
@@ -469,14 +470,16 @@ export class TerminalSurfaceSession {
   }
 
   /**
-   * Flow: this session owns delivery binding, so output that arrives while starting still follows the workspace replay contract.
+   * Flow: 表面会话拥有事件绑定，启动期间的输出仍按工作区规则回放。
    */
   async start(request: TerminalSessionRequest) {
-    this.ensureSubscription();
-    const session = await (this.independent
-      ? this.workspace.createSession(request)
-      : this.workspace.ensureSession(request));
-    return this.acceptSession(session);
+    return this.trackSessionOperation(async () => {
+      this.ensureSubscription();
+      const session = await (this.independent
+        ? this.workspace.createSession(request)
+        : this.workspace.ensureSession(request));
+      return this.acceptSession(session);
+    });
   }
 
   async restart(repoId: string, cols: number, rows: number) {
@@ -485,14 +488,39 @@ export class TerminalSurfaceSession {
       return null;
     }
 
-    this.ensureSubscription();
-    this.subscription?.bindSession('');
-    try {
-      const session = await this.workspace.restartSession(repoId, current.sessionId, cols, rows);
+    return this.trackSessionOperation(async () => {
+      this.ensureSubscription();
+      this.subscription?.bindSession('');
+      // Rule: 重启请求拥有旧会话的替换；释放时只等待替换收尾，不重复关闭旧会话。
+      this.session = null;
+      let session: TerminalSessionInfo;
+      try {
+        session = await this.workspace.restartSession(repoId, current.sessionId, cols, rows);
+      } catch (error) {
+        if (!this.released) {
+          this.session = current;
+          this.subscription?.bindSession(current.sessionId);
+        } else if (this.independent || this.closeSessionAfterRelease) {
+          try {
+            await this.workspace.closeSession(current.sessionId);
+          } catch (closeError) {
+            const reasons = [error, closeError].map(reason => reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : JSON.stringify(reason));
+            throw new Error(`${reasons[0]}；回收旧终端失败：${reasons[1]}`);
+          }
+        }
+        throw error;
+      }
       return this.acceptSession(session);
-    } catch (error) {
-      this.subscription?.bindSession(current.sessionId);
-      throw error;
+    });
+  }
+
+  private async trackSessionOperation(operation: () => Promise<TerminalSessionInfo | null>) {
+    const pending = operation();
+    this.pendingSessionOperations.add(pending);
+    try {
+      return await pending;
+    } finally {
+      this.pendingSessionOperations.delete(pending);
     }
   }
 
@@ -503,9 +531,14 @@ export class TerminalSurfaceSession {
     this.session = null;
     this.subscription?.dispose();
     this.subscription = null;
+    const pending: Promise<unknown>[] = [...this.pendingSessionOperations];
     if (session && (this.independent || closeSession)) {
-      await this.workspace.closeSession(session.sessionId);
+      pending.push(this.workspace.closeSession(session.sessionId));
     }
+    // Guarantee: 等待迟到的创建或重启完成回收，快速返回不得复用即将被关闭的会话。
+    const results = await Promise.allSettled(pending);
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
   }
 
   private ensureSubscription() {

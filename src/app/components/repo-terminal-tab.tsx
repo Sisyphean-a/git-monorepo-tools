@@ -1,38 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { C } from '../theme';
 import type { RepoDetail } from '../domain/types';
 import { RepoTerminalSurface } from './repo-terminal-surface';
-import { retainExistingRepoIds, retainExistingRepoIdSet } from '../features/terminal/terminal-repo-state';
+import { collectEmptyTerminalClosures, retainExistingRepoIds, retainExistingRepoIdSet } from '../features/terminal/terminal-repo-state';
 
 interface RepoTerminalTabProps {
   repoDetails: Record<string, RepoDetail>;
   activeRepoId: string;
   visible: boolean;
   rightClickCopyPaste: boolean;
+  onError: (error: unknown, fallback: string) => void;
 }
 
 interface IndependentTerminalTabProps {
   repo: RepoDetail;
   visible: boolean;
   rightClickCopyPaste: boolean;
+  onError: (error: unknown, fallback: string) => void;
 }
 
-const EMPTY_INACTIVE_TERMINAL_CLOSE_DELAY_MS = 60_000;
-
-export function IndependentTerminalTab({ repo, visible, rightClickCopyPaste }: IndependentTerminalTabProps) {
-  return <RepoTerminalSurface repo={repo} active={visible} rightClickCopyPaste={rightClickCopyPaste} createIndependentSession />;
+export function IndependentTerminalTab({ repo, visible, rightClickCopyPaste, onError }: IndependentTerminalTabProps) {
+  return <RepoTerminalSurface repo={repo} active={visible} rightClickCopyPaste={rightClickCopyPaste} createIndependentSession onClosed={error => {
+    if (error !== undefined) onError(error, `关闭独立终端失败：${repo.name}`);
+  }} />;
 }
 
-export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClickCopyPaste }: RepoTerminalTabProps) {
+export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClickCopyPaste, onError }: RepoTerminalTabProps) {
   const [openedRepoIds, setOpenedRepoIds] = useState<string[]>([]);
   const [contentfulRepoIds, setContentfulRepoIds] = useState<ReadonlySet<string>>(() => new Set());
   const [autoClosingRepoIds, setAutoClosingRepoIds] = useState<ReadonlySet<string>>(() => new Set());
-  const contentfulRepoIdsRef = useRef(contentfulRepoIds);
-
-  useEffect(() => {
-    contentfulRepoIdsRef.current = contentfulRepoIds;
-  }, [contentfulRepoIds]);
-
   useEffect(() => {
     setOpenedRepoIds(current => retainExistingRepoIds(current, repoDetails));
     setContentfulRepoIds(current => retainExistingRepoIdSet(current, repoDetails));
@@ -40,22 +36,8 @@ export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClick
   }, [repoDetails]);
 
   useEffect(() => {
-    const timers = openedRepoIds
-      .filter(repoId => repoId !== activeRepoId && !contentfulRepoIds.has(repoId) && !autoClosingRepoIds.has(repoId))
-      .map(repoId => window.setTimeout(() => {
-        if (contentfulRepoIdsRef.current.has(repoId)) {
-          return;
-        }
-        setAutoClosingRepoIds(current => {
-          if (current.has(repoId)) {
-            return current;
-          }
-          return new Set(current).add(repoId);
-        });
-      }, EMPTY_INACTIVE_TERMINAL_CLOSE_DELAY_MS));
-
-    return () => timers.forEach(timer => window.clearTimeout(timer));
-  }, [activeRepoId, autoClosingRepoIds, contentfulRepoIds, openedRepoIds]);
+    setAutoClosingRepoIds(current => collectEmptyTerminalClosures(openedRepoIds, activeRepoId, visible, contentfulRepoIds, current));
+  }, [activeRepoId, contentfulRepoIds, openedRepoIds, visible]);
 
   const handleContentChange = (repoId: string, hasContent: boolean) => {
     setContentfulRepoIds(current => {
@@ -72,7 +54,8 @@ export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClick
     });
   };
 
-  const handleTerminalClosed = (repoId: string) => {
+  const handleTerminalClosed = (repoId: string, closeError?: unknown) => {
+    if (closeError !== undefined) onError(closeError, `自动关闭空终端失败：${repoDetails[repoId]?.name ?? repoId}`);
     setOpenedRepoIds(current => current.filter(id => id !== repoId));
     setContentfulRepoIds(current => {
       if (!current.has(repoId)) {
@@ -93,9 +76,9 @@ export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClick
   };
 
   useEffect(() => {
-    if (!visible || !repoDetails[activeRepoId]) return;
+    if (!visible || !repoDetails[activeRepoId] || autoClosingRepoIds.has(activeRepoId)) return;
     setOpenedRepoIds(current => current.includes(activeRepoId) ? current : [...current, activeRepoId]);
-  }, [activeRepoId, repoDetails, visible]);
+  }, [activeRepoId, autoClosingRepoIds, openedRepoIds, repoDetails, visible]);
 
   const openedRepos = useMemo(
     () => openedRepoIds.map(repoId => repoDetails[repoId]).filter((repo): repo is RepoDetail => Boolean(repo)),
@@ -122,7 +105,7 @@ export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClick
           rightClickCopyPaste={rightClickCopyPaste}
           closeRequested={autoClosingRepoIds.has(repo.id)}
           onContentChange={hasContent => handleContentChange(repo.id, hasContent)}
-          onClosed={() => handleTerminalClosed(repo.id)}
+          onClosed={error => handleTerminalClosed(repo.id, error)}
         />
       ))}
       {isBooting && (

@@ -52,19 +52,29 @@ func (executor gitExecutor) buildBatchState(entry repoEntry, scanTime time.Time)
 func (executor gitExecutor) buildBatchUpdates(states []batchRepoState, results []PullResult) []RepoSnapshotUpdate {
 	updates := make([]RepoSnapshotUpdate, 0, len(results))
 	for index, result := range results {
-		if result.Result != "pulled" && result.Result != "pushed" {
+		completedOperation := result.Result == "pulled" || result.Result == "pushed"
+		if !completedOperation && result.RemoteCheck == nil {
 			continue
 		}
 		update, err := executor.buildRepoUpdate(result.ID, states[index].entry.repoPath, states[index].entry.category, false)
 		if err != nil {
 			results[index].Result = "failed"
-			results[index].Detail = "操作已完成，但刷新仓库状态失败：" + err.Error() + "\n请先刷新核对状态，不要直接重复操作。"
+			if completedOperation {
+				results[index].Detail = "操作已完成，但刷新仓库状态失败：" + err.Error() + "\n请先刷新核对状态，不要直接重复操作。"
+			} else {
+				results[index].Detail += "\n刷新仓库状态失败：" + err.Error()
+			}
 			continue
 		}
+		update.Repo.RemoteCheck = result.RemoteCheck
 		updates = append(updates, update)
 		if update.Repo.ScanError != "" {
 			results[index].Result = "failed"
-			results[index].Detail = "操作已完成，但刷新仓库状态失败：" + update.Repo.ScanError + "\n请先刷新核对状态，不要直接重复操作。"
+			if completedOperation {
+				results[index].Detail = "操作已完成，但刷新仓库状态失败：" + update.Repo.ScanError + "\n请先刷新核对状态，不要直接重复操作。"
+			} else {
+				results[index].Detail += "\n读取本地状态失败：" + update.Repo.ScanError
+			}
 		}
 	}
 	return updates

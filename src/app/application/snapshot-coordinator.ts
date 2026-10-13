@@ -1,6 +1,7 @@
-import type { AppSettings, AppSnapshot } from '../domain/types.js';
+import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types.js';
 import type { SnapshotApplyContext } from '../domain/repo-snapshot-merge.js';
-import type { SnapshotFetchOptions } from './ports.js';
+import type { SnapshotFetchOptions, WorkspaceBackend } from './ports.js';
+import { loadProgressiveRepoUpdate, normalizeProgressiveConcurrency } from './progressive-repo-scan.js';
 import { readErrorMessage } from './repo-action-error.js';
 
 export interface ForegroundTaskOptions {
@@ -20,6 +21,8 @@ type RefreshEntry = {
 type SnapshotCoordinatorOptions = {
   applySnapshot: (snapshot: AppSnapshot, context?: SnapshotApplyContext) => void;
   fetchSnapshot: (settings: AppSettings, options?: SnapshotFetchOptions) => Promise<AppSnapshot>;
+  refreshRepo: WorkspaceBackend['refreshRepo'];
+  applyRepoUpdate: (update: RepoSnapshotUpdate, context: SnapshotApplyContext) => void;
   readRepoUpdateRevision: () => number;
   reportError?: ErrorReporter;
 };
@@ -172,15 +175,35 @@ async function runRefreshEntry(
   interactionRevision: number,
 ) {
   try {
-    const snapshot = await options.fetchSnapshot(entry.settings, entry.fetchOptions);
-    // Guarantee: 完整快照承载仓库列表组成，必须应用；跨越交互的部分由调用方按交互版本合并回写。
+    const snapshot = await options.fetchSnapshot(entry.settings, { refreshRemotes: false });
+    // Guarantee: 本地快照决定仓库列表组成；远端结果逐仓回写，不等待整批 Fetch 完成。
     options.applySnapshot(snapshot, { preserveInteractionsSince: interactionRevision });
+    if (entry.fetchOptions?.refreshRemotes) await refreshRemoteRepos(snapshot, entry.settings, options);
     options.reportError?.(null);
     entry.waiters.forEach(waiter => waiter.resolve());
   } catch (error) {
     options.reportError?.(formatError(error));
     entry.waiters.forEach(waiter => waiter.reject(error));
   }
+}
+
+async function refreshRemoteRepos(snapshot: AppSnapshot, settings: AppSettings, options: SnapshotCoordinatorOptions) {
+  const targets = snapshot.repos.values();
+  const workers = normalizeProgressiveConcurrency(settings.gitBehavior.concurrency, snapshot.repos.length);
+  await Promise.all(Array.from({ length: workers }, async () => {
+    for (const target of targets) {
+      const preserveInteractionsSince = options.readRepoUpdateRevision();
+      const update = await loadProgressiveRepoUpdate({
+        target,
+        settings,
+        scannedAt: snapshot.scannedAt,
+        refreshRepo: options.refreshRepo,
+        refreshRemotes: true,
+        fallbackDetail: snapshot.repoDetails[target.id],
+      });
+      options.applyRepoUpdate(update, { preserveInteractionsSince });
+    }
+  }));
 }
 
 function createRefreshPromise(entry: RefreshEntry) {

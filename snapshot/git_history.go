@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,7 +12,16 @@ const (
 	emptyTreeHash          = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 )
 
-// Flow: Git determines the all-ref topological order; the returned parent hashes let the UI continue one graph while it appends pages.
+// Rule: 全引用历史的提交与标签由引用集合及 HEAD 归属决定，不能仅用当前 HEAD 或提交数量判定变化。
+func (executor gitExecutor) readHistoryRefsRevision(repoPath string) (string, error) {
+	output, err := executor.runGit(repoPath, []string{"for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)%00%(symref)%00%(HEAD)"})
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(output))), nil
+}
+
+// Flow: Git 决定全引用拓扑顺序，父提交哈希使前端分页追加时保持同一张提交图。
 func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) ([]CommitSummary, bool, error) {
 	if offset < 0 {
 		offset = 0

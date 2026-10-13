@@ -38,22 +38,28 @@ func (executor gitExecutor) readStatus(repoPath string) (parsedStatus, error) {
 	return parseStatus(output), err
 }
 
-func (executor gitExecutor) loadRepoStatus(repoPath string, refreshRemotes bool) (parsedStatus, error) {
+func (executor gitExecutor) loadRepoStatus(repoPath string, refreshRemotes bool) (parsedStatus, *RemoteCheck, error) {
 	if refreshRemotes {
 		return executor.readStatusAfterRemoteSync(repoPath)
 	}
-	return executor.readStatus(repoPath)
+	parsed, err := executor.readStatus(repoPath)
+	return parsed, nil, err
 }
 
-func (executor gitExecutor) readStatusAfterRemoteSync(repoPath string) (parsedStatus, error) {
+func (executor gitExecutor) readStatusAfterRemoteSync(repoPath string) (parsedStatus, *RemoteCheck, error) {
 	parsed, err := executor.readStatus(repoPath)
 	if err != nil || parsed.remote == "—" {
-		return parsed, err
+		return parsed, nil, err
 	}
-	if fetchErr := executor.refreshRemoteWithRetry(repoPath, parsed.remote); fetchErr != nil {
-		return parsed, fetchErr
+	fetchErr := executor.refreshRemoteWithRetry(repoPath, parsed.remote)
+	check := &RemoteCheck{Status: "success", CheckedAt: formatDateTime(time.Now())}
+	if fetchErr != nil {
+		check.Status = "error"
+		check.Error = fetchErr.Error()
+		return parsed, check, fetchErr
 	}
-	return executor.readStatus(repoPath)
+	parsed, err = executor.readStatus(repoPath)
+	return parsed, check, err
 }
 
 func (executor gitExecutor) refreshRemoteWithRetry(repoPath, remote string) error {
