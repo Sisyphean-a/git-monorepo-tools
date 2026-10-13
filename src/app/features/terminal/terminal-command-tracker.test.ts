@@ -1,6 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { TerminalCommandTracker } from './terminal-command-tracker.js';
+import { collectEmptyTerminalClosures } from './terminal-repo-state.js';
+
+const { Terminal } = createRequire(import.meta.url)('@xterm/xterm') as typeof import('@xterm/xterm');
+
+test('real xterm automatic replies do not prevent closing an unused default terminal', async () => {
+  const terminal = new Terminal();
+  const tracker = new TerminalCommandTracker();
+  const replies: string[] = [];
+  try {
+    terminal.onData(data => { replies.push(data); tracker.recordWrittenInput(data); });
+    await new Promise<void>(resolve => terminal.write('\x1b[6n\x1b[c\x1b[>c\x1bP$qm\x1b\\\x1bP$q q\x1b\\', resolve));
+    assert.ok(replies.some(data => data.startsWith('\x1bP')), 'must exercise an actual DCS reply');
+    assert.equal(tracker.hasContent, false);
+    const contentful = tracker.hasContent ? new Set(['repo-a']) : new Set<string>();
+    assert.deepEqual([...collectEmptyTerminalClosures(['repo-a'], 'repo-a', false, contentful, new Set())], ['repo-a']);
+  } finally {
+    terminal.dispose();
+  }
+});
+
+test('control strings ending with ST are ignored without losing a trailing user draft', () => {
+  for (const control of ['\x1bP1$r0m\x1b\\', '\x1b]10;rgb:ffff/ffff/ffff\x1b\\']) {
+    const tracker = new TerminalCommandTracker();
+    tracker.recordWrittenInput(control);
+    assert.equal(tracker.hasContent, false);
+    tracker.recordWrittenInput(`${control}ls`);
+    assert.equal(tracker.hasContent, true);
+    tracker.recordWrittenInput('\x7f\x7f');
+    assert.equal(tracker.hasContent, false);
+  }
+});
 
 test('counts a submitted non-empty command as terminal content', () => {
   const tracker = new TerminalCommandTracker();

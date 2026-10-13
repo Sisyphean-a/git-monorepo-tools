@@ -84,15 +84,20 @@ export class TerminalCommandTracker {
 
 function skipEscapeSequence(data: string, escapeIndex: number) {
   const next = data[escapeIndex + 1];
-  if (next !== '[' && next !== ']') {
+  const controlString = next === ']' || next === 'P' || next === 'X' || next === '^' || next === '_';
+  if (next !== '[' && !controlString) {
     return Math.min(escapeIndex + 1, data.length - 1);
   }
 
   for (let index = escapeIndex + 2; index < data.length; index += 1) {
     const character = data[index] ?? '';
-    if (next === '[' ? character >= '@' && character <= '~' : character === '\x07') {
-      return index;
+    if (next === '[') {
+      if (character >= '@' && character <= '~') return index;
+      continue;
     }
+    // Rule: xterm 的自动状态回复不是用户输入；控制字符串以 ST 结束，OSC 也接受 BEL。
+    if (character === '\x9c' || (next === ']' && character === '\x07')) return index;
+    if (character === '\x1b' && data[index + 1] === '\\') return index + 1;
   }
   return data.length - 1;
 }
