@@ -1,6 +1,7 @@
 import type { AppSettings, AppSnapshot, CommitDetail, FileChange, FileDiff, RepoCommandResult, RepoFileContent, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, RepoTreeEntry, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
 import type {
   BatchResponse,
+  BackgroundTaskBackend,
   CommitDetailRequest,
   FileDiffRequest,
   LocalRepoAction,
@@ -63,6 +64,11 @@ type WailsFileDiffRequest = {
 };
 
 type WailsBindings = {
+  ListBackgroundTasks?: BackgroundTaskBackend['listBackgroundTasks'];
+  StartBackgroundTask?: BackgroundTaskBackend['startBackgroundTask'];
+  StopBackgroundTask?: BackgroundTaskBackend['stopBackgroundTask'];
+  ReadBackgroundTaskLog?: BackgroundTaskBackend['readBackgroundTaskLog'];
+  ForgetBackgroundTask?: BackgroundTaskBackend['forgetBackgroundTask'];
   GetResourceMonitorState?: () => Promise<import('../domain/resource-monitor.js').ResourceMonitorState>;
   SetReadActivity?: (repoId: string, fileBrowserActive: boolean) => Promise<void>;
   GetWorkspaceBootstrap: WailsBootstrapBinding;
@@ -365,7 +371,42 @@ export async function readClipboardText() {
   return binding();
 }
 
-export const wailsClient: WorkspaceBackend & RepoInteractionBackend & ResourceMonitorBackend = {
+export async function listBackgroundTasks() {
+  const binding = getWailsBindings().ListBackgroundTasks;
+  if (!binding) throw new Error('Wails 后台任务列表绑定不可用');
+  return binding();
+}
+
+export async function startBackgroundTask(request: import('../domain/background-task.js').BackgroundTaskRequest) {
+  const binding = getWailsBindings().StartBackgroundTask;
+  if (!binding) throw new Error('Wails 后台任务启动绑定不可用');
+  return binding(request);
+}
+
+export async function stopBackgroundTask(repoId: string, taskId: string) {
+  const binding = getWailsBindings().StopBackgroundTask;
+  if (!binding) throw new Error('Wails 后台任务停止绑定不可用');
+  return binding(repoId, taskId);
+}
+
+export async function readBackgroundTaskLog(repoId: string, taskId: string, runId: number, cursor: number) {
+  const binding = getWailsBindings().ReadBackgroundTaskLog;
+  if (!binding) throw new Error('Wails 后台任务日志绑定不可用');
+  return binding(repoId, taskId, runId, cursor);
+}
+
+export async function forgetBackgroundTask(repoId: string, taskId: string) {
+  const binding = getWailsBindings().ForgetBackgroundTask;
+  if (!binding) throw new Error('Wails 后台任务删除绑定不可用');
+  return binding(repoId, taskId);
+}
+
+export const wailsClient: WorkspaceBackend & RepoInteractionBackend & ResourceMonitorBackend & BackgroundTaskBackend = {
+  listBackgroundTasks,
+  startBackgroundTask,
+  stopBackgroundTask,
+  readBackgroundTaskLog,
+  forgetBackgroundTask,
   fetchResourceMonitorState,
   setReadActivity,
   fetchWorkspaceBootstrap,

@@ -16,6 +16,10 @@ export function createSettingsActions(context: SettingsActionContext) {
   return {
     saveSettings: (value: AppSettings) => saveSettings(context, value),
     setFileTreeWidth: (repoId: string, width: number) => setFileTreeWidth(context, repoId, width),
+    setBackgroundTasks: (repoId: string, tasks: AppSettings['backgroundTasks'][string]) => persistSettings(context, {
+      ...context.settings,
+      backgroundTasks: { ...context.settings.backgroundTasks, [repoId]: tasks },
+    }),
     addScanRoot: (onFolderPicked?: () => void) => addScanRoot(context, onFolderPicked),
     addCategory: (name: string) => addCategory(context, name),
     removeScanRoot: (path: string) => removeScanRoot(context, path),

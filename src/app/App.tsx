@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { BackgroundTasksModal } from './components/background-tasks-modal';
+import { useBackgroundTasks, type BackgroundTaskController } from './features/background-tasks/use-background-tasks';
+import { taskActive } from './domain/background-task';
 import { AddRepoMenu } from './components/add-repo-menu';
 import { AppFrame } from './components/common';
 import { CommandModal } from './components/command-modal';
@@ -24,6 +27,7 @@ type DialogController = ReturnType<typeof useDialogs>;
 
 export default function App() {
   const dialogs = useDialogs();
+  const tasks = useBackgroundTasks(wailsAppBackend);
   const workspace = useWorkspaceController({ backend: wailsAppBackend, settingsStore });
   const batch = useBatchController({
     backend: wailsAppBackend,
@@ -44,8 +48,8 @@ export default function App() {
     <BackendProvider backend={wailsAppBackend}>
       <TerminalWorkspaceProvider runtime={wailsAppBackend}>
         <AppFrame>
-          <WorkspaceLayout workspace={workspace} batch={batch} dialogs={dialogs} />
-          <AppDialogs workspace={workspace} batch={batch} dialogs={dialogs} />
+          <WorkspaceLayout workspace={workspace} batch={batch} dialogs={dialogs} tasks={tasks} />
+          <AppDialogs workspace={workspace} batch={batch} dialogs={dialogs} tasks={tasks} />
         </AppFrame>
       </TerminalWorkspaceProvider>
     </BackendProvider>
@@ -56,10 +60,12 @@ function WorkspaceLayout({
   workspace,
   batch,
   dialogs,
+  tasks,
 }: {
   workspace: WorkspaceController;
   batch: BatchController;
   dialogs: DialogController;
+  tasks: BackgroundTaskController;
 }) {
   const snapshot = workspace.snapshot!;
   const sidebar = workspace.sidebar.sidebarSnapshot ?? {
@@ -94,6 +100,8 @@ function WorkspaceLayout({
         onOpenSettings={dialogs.openSettings}
         onOpenCommands={dialogs.openCommands}
         onOpenMonitor={dialogs.openMonitor}
+        onOpenBackgroundTasks={dialogs.openTasks}
+        backgroundTaskCount={Object.values(tasks.states).filter(state => state.repoId === workspace.selectedRepoId && taskActive(state)).length}
         onOpenDiffViewer={dialogs.openDiffViewer}
         onViewLog={workspace.openRepoLog}
         onFileTreeWidthChange={workspace.setFileTreeWidth}
@@ -107,10 +115,12 @@ function AppDialogs({
   workspace,
   batch,
   dialogs,
+  tasks,
 }: {
   workspace: WorkspaceController;
   batch: BatchController;
   dialogs: DialogController;
+  tasks: BackgroundTaskController;
 }) {
   const snapshot = workspace.snapshot!;
   const addFolder = () => {
@@ -165,6 +175,13 @@ function AppDialogs({
         }}
       />
       {dialogs.monitorOpen && <ResourceMonitorModal onClose={dialogs.closeMonitor} />}
+      {dialogs.tasksOpen && <BackgroundTasksModal
+        repo={snapshot.repos.find(repo => repo.id === workspace.selectedRepoId) ?? null}
+        settings={workspace.settings}
+        controller={tasks}
+        onSave={workspace.setBackgroundTasks}
+        onClose={dialogs.closeTasks}
+      />}
       <LogViewerModal log={workspace.repoLog} onClose={workspace.closeRepoLog} />
       <DiffViewerModal
         request={dialogs.diffViewerRequest}
@@ -193,12 +210,16 @@ function LoadingState({ error, onRetry }: { error: string | null; onRetry: () =>
 
 function useDialogs() {
   const [monitorOpen, setMonitorOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('ai-commit');
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [diffViewerRequest, setDiffViewerRequest] = useState<DiffViewerRequest | null>(null);
   return {
+    tasksOpen,
+    openTasks: () => setTasksOpen(true),
+    closeTasks: () => setTasksOpen(false),
     monitorOpen,
     openMonitor: () => setMonitorOpen(true),
     closeMonitor: () => setMonitorOpen(false),

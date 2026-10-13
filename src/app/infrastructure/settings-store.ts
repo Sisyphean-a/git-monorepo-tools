@@ -1,5 +1,6 @@
 import { cloneDefaultCommandCatalog, sanitizeCommandCatalog } from '../features/commands/command-catalog.js';
 import { clampTreeWidth } from '../features/files/tree-width.js';
+import { sanitizeBackgroundTasks } from '../domain/background-task.js';
 import type { AppSettings, ScanRootSetting } from '../domain/types.js';
 import type { SettingsStore } from '../application/ports.js';
 
@@ -33,6 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   terminalOperations: { rightClickCopyPaste: false },
   commandCenter: cloneDefaultCommandCatalog(),
+  backgroundTasks: {},
 };
 
 function cloneDefaults() {
@@ -111,6 +113,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   draft.gitBehavior.proxy.port = sanitizePort(proxy.port, draft.gitBehavior.proxy.port);
   draft.terminalOperations.rightClickCopyPaste = sanitizeBoolean(terminalOperations.rightClickCopyPaste, draft.terminalOperations.rightClickCopyPaste);
   draft.commandCenter = sanitizeCommandCatalog(source.commandCenter);
+  draft.backgroundTasks = sanitizeBackgroundTasks(source.backgroundTasks);
   return draft;
 }
 

@@ -10,6 +10,8 @@ export function CreateTerminalSession(arg1:terminal.TerminalSessionRequest):Prom
 
 export function EnsureTerminalSession(arg1:terminal.TerminalSessionRequest):Promise<terminal.TerminalSessionInfo>;
 
+export function ForgetBackgroundTask(arg1:string,arg2:string):Promise<void>;
+
 export function GenerateCommitMessage(arg1:string,arg2:snapshot.Request,arg3:snapshot.AICommitSettings):Promise<string>;
 
 export function GetCommitDetail(arg1:string,arg2:snapshot.Request,arg3:string):Promise<snapshot.CommitDetail>;
@@ -28,6 +30,8 @@ export function GetWorkingDiffFiles(arg1:string,arg2:snapshot.Request):Promise<A
 
 export function GetWorkspaceBootstrap(arg1:snapshot.Request):Promise<snapshot.WorkspaceBootstrap>;
 
+export function ListBackgroundTasks():Promise<Array<snapshot.BackgroundTaskState>>;
+
 export function ListRepoDirectory(arg1:string,arg2:snapshot.Request,arg3:string):Promise<Array<snapshot.RepoTreeEntry>>;
 
 export function MutateRepo(arg1:string,arg2:string,arg3:snapshot.Request,arg4:snapshot.RepoActionRequest):Promise<snapshot.RepoSnapshotUpdate>;
@@ -41,6 +45,8 @@ export function OpenLocalPath(arg1:string):Promise<void>;
 export function OpenTerminal(arg1:string):Promise<void>;
 
 export function PickFolder():Promise<string>;
+
+export function ReadBackgroundTaskLog(arg1:string,arg2:string,arg3:number,arg4:number):Promise<snapshot.BackgroundTaskLog>;
 
 export function ReadClipboardImagePath():Promise<string>;
 
@@ -63,6 +69,10 @@ export function RunBatch(arg1:string,arg2:snapshot.Request):Promise<snapshot.Bat
 export function RunRepoCommand(arg1:snapshot.RepoCommandRequest):Promise<snapshot.RepoCommandResult>;
 
 export function SetReadActivity(arg1:string,arg2:boolean):Promise<void>;
+
+export function StartBackgroundTask(arg1:snapshot.BackgroundTaskRequest):Promise<snapshot.BackgroundTaskState>;
+
+export function StopBackgroundTask(arg1:string,arg2:string):Promise<void>;
 
 export function StopRepoCommand(arg1:string):Promise<void>;
 

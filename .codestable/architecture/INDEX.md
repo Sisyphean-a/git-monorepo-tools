@@ -11,6 +11,7 @@
 | Wails 入口 | 组合依赖并导出桌面绑定 | `app.go` |
 | Git 工作区 | 扫描仓库、状态、变更、Git 操作、历史与差异 | `snapshot/service.go`、`snapshot/operations.go`、`snapshot/git_*.go` |
 | 终端 | 按仓库管理 ConPTY 会话并批量转发输出 | `internal/terminal/manager.go`、`internal/terminal/output_batcher.go` |
+| 后台任务 | 按项目托管非交互进程与有界日志，应用关闭回收 | `snapshot/background_tasks.go`、`src/app/features/background-tasks/` |
 | 只读资源监控 | 应用生命周期内采样当前进程、Go 运行时与系统内存，面板打开时附带进程树明细 | `internal/monitor/`、`app.go` |
 | 桌面能力 | 选目录、打开目录/终端/冲突工具 | `internal/desktop/client.go` |
 | 前端领域与应用层 | 纯数据规则、页面流程和端口 | `src/app/domain/`、`src/app/application/` |
@@ -20,7 +21,7 @@
 
 - `app.go` 只组装和转发；业务实现归入 `snapshot/`、`internal/terminal/`、`internal/desktop/` 或 `internal/monitor/`。
 - 前端依赖方向是 `components/features → application → domain`；基础设施实现应用层端口，组件不直接访问 Wails。
-- 跨端绑定和事件契约见 [Wails 桥接](shared/wails-bridge.md)。终端会话与事件约束见 [终端运行时](shared/terminal-runtime.md)。读取缓存、失焦暂停与关闭回收的产品边界见 `requirements/CONTEXT.md` 的读取资源规则，`snapshot/read_resources.go` 统一拥有后端数值缓存与生命周期。
+- 跨端绑定和事件契约见 [Wails 桥接](shared/wails-bridge.md)。终端会话与事件约束见 [终端运行时](shared/terminal-runtime.md)。后台任务的进程树回收、日志游标与按需读取约束见 [后台任务运行时](shared/background-tasks.md)。读取缓存、失焦暂停与关闭回收的产品边界见 `requirements/CONTEXT.md` 的读取资源规则，`snapshot/read_resources.go` 统一拥有后端数值缓存与生命周期。
 - Git 状态术语和刷新时序见 `requirements/CONTEXT.md`；高代价取舍见 `requirements/adrs/`。
 - 命令设置保存在本地设置中：组合与全局命令对所有仓库可见，项目命令按仓库 ID 保存，只在对应仓库的命令区域展示和执行。`src/app/features/commands/command-catalog.ts` 拥有选择、项目优先、编辑和排序规则；命令由独立弹窗管理，项目页签优先。组合、全局和项目命令均按保存的顺序展示且可调整；主界面将当前项目和全局命令合并为一个“命令”区域，并优先展示项目命令。
 - 主界面的命令输出是工作区级日志：切换项目不得清空或停止正在运行命令的后续输出；后来启动的命令拥有显示权，旧命令不得覆盖；只有用户点击“清空”才重置，清空后旧命令不得重新打开输出。单次命令输出超过 256 KiB 时只保留末尾并在界面标注已截断，防止长命令无限累积。

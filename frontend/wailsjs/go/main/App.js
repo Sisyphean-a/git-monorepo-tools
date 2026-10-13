@@ -14,6 +14,10 @@ export function EnsureTerminalSession(arg1) {
   return window['go']['main']['App']['EnsureTerminalSession'](arg1);
 }
 
+export function ForgetBackgroundTask(arg1, arg2) {
+  return window['go']['main']['App']['ForgetBackgroundTask'](arg1, arg2);
+}
+
 export function GenerateCommitMessage(arg1, arg2, arg3) {
   return window['go']['main']['App']['GenerateCommitMessage'](arg1, arg2, arg3);
 }
@@ -50,6 +54,10 @@ export function GetWorkspaceBootstrap(arg1) {
   return window['go']['main']['App']['GetWorkspaceBootstrap'](arg1);
 }
 
+export function ListBackgroundTasks() {
+  return window['go']['main']['App']['ListBackgroundTasks']();
+}
+
 export function ListRepoDirectory(arg1, arg2, arg3) {
   return window['go']['main']['App']['ListRepoDirectory'](arg1, arg2, arg3);
 }
@@ -76,6 +84,10 @@ export function OpenTerminal(arg1) {
 
 export function PickFolder() {
   return window['go']['main']['App']['PickFolder']();
+}
+
+export function ReadBackgroundTaskLog(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ReadBackgroundTaskLog'](arg1, arg2, arg3, arg4);
 }
 
 export function ReadClipboardImagePath() {
@@ -120,6 +132,14 @@ export function RunRepoCommand(arg1) {
 
 export function SetReadActivity(arg1, arg2) {
   return window['go']['main']['App']['SetReadActivity'](arg1, arg2);
+}
+
+export function StartBackgroundTask(arg1) {
+  return window['go']['main']['App']['StartBackgroundTask'](arg1);
+}
+
+export function StopBackgroundTask(arg1, arg2) {
+  return window['go']['main']['App']['StopBackgroundTask'](arg1, arg2);
 }
 
 export function StopRepoCommand(arg1) {

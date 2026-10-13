@@ -65,6 +65,7 @@ type App struct {
 	desktop           desktopGateway
 	terminals         terminalGateway
 	monitor           *monitor.Sampler
+	backgroundTasks   *snapshot.BackgroundTasks
 	maintenanceCancel context.CancelFunc
 	maintenanceDone   chan struct{}
 }
@@ -79,6 +80,11 @@ func NewApp() (*App, error) {
 
 func newApp(workspace workspaceService, desktopClient desktopGateway) *App {
 	app := &App{workspace: workspace, desktop: desktopClient}
+	app.backgroundTasks = snapshot.NewBackgroundTasks(func(state snapshot.BackgroundTaskState) {
+		if app.ctx != nil {
+			wruntime.EventsEmit(app.ctx, "background-task-state", state)
+		}
+	})
 	app.monitor = monitor.NewSampler(func() []monitor.TerminalScope {
 		if app.terminals == nil {
 			return nil
@@ -128,6 +134,11 @@ func (a *App) shutdown(context.Context) {
 	if a.maintenanceCancel != nil {
 		a.maintenanceCancel()
 		<-a.maintenanceDone
+	}
+	if a.backgroundTasks != nil {
+		if err := a.backgroundTasks.Close(); err != nil {
+			log.Printf("关闭后台任务失败：%v", err)
+		}
 	}
 	if err := a.workspace.Close(); err != nil {
 		log.Printf("关闭工作区资源失败：%v", err)
@@ -219,6 +230,26 @@ func (a *App) RunRepoCommand(request snapshot.RepoCommandRequest) (snapshot.Repo
 
 func (a *App) StopRepoCommand(streamID string) error {
 	return a.workspace.StopRepoCommand(streamID)
+}
+
+func (a *App) ListBackgroundTasks() []snapshot.BackgroundTaskState {
+	return a.backgroundTasks.List()
+}
+
+func (a *App) StartBackgroundTask(request snapshot.BackgroundTaskRequest) (snapshot.BackgroundTaskState, error) {
+	return a.backgroundTasks.Start(request)
+}
+
+func (a *App) StopBackgroundTask(repoID, taskID string) error {
+	return a.backgroundTasks.Stop(repoID, taskID)
+}
+
+func (a *App) ReadBackgroundTaskLog(repoID, taskID string, runID, cursor int64) (snapshot.BackgroundTaskLog, error) {
+	return a.backgroundTasks.ReadLog(repoID, taskID, runID, cursor)
+}
+
+func (a *App) ForgetBackgroundTask(repoID, taskID string) error {
+	return a.backgroundTasks.Forget(repoID, taskID)
 }
 
 func (a *App) PickFolder() (string, error) {

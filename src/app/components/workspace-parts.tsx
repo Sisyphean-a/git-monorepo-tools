@@ -1,20 +1,29 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { Activity, AlertTriangle, ArrowDown, ArrowUp, FolderOpen, GitBranch, GitCompare, Settings2, Terminal } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDown, ArrowUp, FolderOpen, GitBranch, GitCompare, ListTodo, Settings2, Terminal } from 'lucide-react';
 import { C } from '../theme';
 import type { FileChange, Repo } from '../domain/types';
 
 function HeaderActionBtn({
   icon,
   label,
+  ariaLabel,
   onClick,
+  compact = false,
+  badge = 0,
 }: {
   icon: ReactNode;
   label?: string;
+  ariaLabel?: string;
   onClick: () => void;
+  compact?: boolean;
+  badge?: number;
 }) {
   return (
     <button
       onClick={onClick}
+      title={badge > 0 ? `${label} · ${badge}` : label ?? ariaLabel}
+      aria-label={badge > 0 ? `${label} · ${badge}` : label ?? ariaLabel}
+      className={compact ? 'background-task-entry' : undefined}
       style={{
         background: C.panel2,
         border: `1px solid ${C.border}`,
@@ -29,7 +38,8 @@ function HeaderActionBtn({
       }}
     >
       {icon}
-      {label}
+      {label && <span>{label}</span>}
+      {badge > 0 && <span className="background-task-count">· {badge}</span>}
     </button>
   );
 }
@@ -39,6 +49,8 @@ export function RepoHeader({
   fileSummary,
   onOpenFolder,
   onOpenMonitor,
+  onOpenBackgroundTasks,
+  backgroundTaskCount = 0,
   onOpenTerminal,
   onOpenDiffViewer,
   onOpenSettings,
@@ -47,6 +59,8 @@ export function RepoHeader({
   fileSummary: ReturnType<typeof summarizeFiles>;
   onOpenFolder: () => void;
   onOpenMonitor: () => void;
+  onOpenBackgroundTasks: () => void;
+  backgroundTaskCount?: number;
   onOpenTerminal: () => void;
   onOpenDiffViewer: () => void;
   onOpenSettings: () => void;
@@ -78,12 +92,21 @@ export function RepoHeader({
             {repo.remoteCheck?.error && <span style={{ color: C.conflict, fontSize: 10 }}>{repo.remoteCheck.error}</span>}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
-          <HeaderActionBtn icon={<Activity size={11} />} label="资源监控" onClick={onOpenMonitor} />
-          <HeaderActionBtn icon={<FolderOpen size={11} />} label="文件夹" onClick={onOpenFolder} />
-          <HeaderActionBtn icon={<Terminal size={11} />} label="外部终端" onClick={onOpenTerminal} />
-          <HeaderActionBtn icon={<GitCompare size={11} />} label="查看差异" onClick={onOpenDiffViewer} />
-          <HeaderActionBtn icon={<Settings2 size={13} />} onClick={onOpenSettings} />
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+          <div role="group" aria-label="资源监控" style={{ display: 'flex', alignItems: 'center' }}>
+            <HeaderActionBtn icon={<Activity size={11} />} label="资源监控" onClick={onOpenMonitor} />
+          </div>
+          <span role="separator" aria-orientation="vertical" style={{ width: 1, height: 18, flexShrink: 0, background: C.borderLight }} />
+          <div role="group" aria-label="项目工具" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <HeaderActionBtn icon={<FolderOpen size={11} />} label="文件夹" onClick={onOpenFolder} />
+            <HeaderActionBtn icon={<ListTodo size={11} />} label="后台任务" badge={backgroundTaskCount} compact onClick={onOpenBackgroundTasks} />
+            <HeaderActionBtn icon={<Terminal size={11} />} label="外部终端" onClick={onOpenTerminal} />
+            <HeaderActionBtn icon={<GitCompare size={11} />} label="查看差异" onClick={onOpenDiffViewer} />
+          </div>
+          <span role="separator" aria-orientation="vertical" style={{ width: 1, height: 18, flexShrink: 0, background: C.borderLight }} />
+          <div role="group" aria-label="设置" style={{ display: 'flex', alignItems: 'center' }}>
+            <HeaderActionBtn icon={<Settings2 size={13} />} ariaLabel="设置" onClick={onOpenSettings} />
+          </div>
         </div>
       </div>
     </div>

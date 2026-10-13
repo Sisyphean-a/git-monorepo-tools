@@ -9,6 +9,7 @@ const settings: AppSettings = {
   customCategories: [],
   favoriteRepoIds: [],
   fileTreeWidths: {},
+  backgroundTasks: {},
   aiCommit: {
     apiKey: '',
     baseUrl: '',

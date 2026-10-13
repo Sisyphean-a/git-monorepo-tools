@@ -392,6 +392,7 @@ test('generateCommitMessage uses dedicated binding', async () => {
       customCategories: [],
       favoriteRepoIds: [],
       fileTreeWidths: {},
+      backgroundTasks: {},
       aiCommit: {
         apiKey: 'sk-test',
         baseUrl: 'https://api.deepseek.com',

@@ -11,7 +11,7 @@ const repo: Repo = {
 };
 
 function renderHeader(value: Repo) {
-  return renderToStaticMarkup(<RepoHeader repo={value} fileSummary={summarizeFiles([])} onOpenMonitor={() => {}} onOpenFolder={() => {}} onOpenTerminal={() => {}} onOpenDiffViewer={() => {}} onOpenSettings={() => {}} />);
+  return renderToStaticMarkup(<RepoHeader repo={value} fileSummary={summarizeFiles([])} onOpenMonitor={() => {}} onOpenBackgroundTasks={() => {}} onOpenFolder={() => {}} onOpenTerminal={() => {}} onOpenDiffViewer={() => {}} onOpenSettings={() => {}} />);
 }
 
 test('remote failure remains visible independently of a clean local worktree', () => {

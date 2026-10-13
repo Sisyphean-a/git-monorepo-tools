@@ -616,6 +616,86 @@ export namespace snapshot {
 		    return a;
 		}
 	}
+	export class BackgroundTaskLog {
+	    text: string;
+	    cursor: number;
+	    reset: boolean;
+	    truncated: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new BackgroundTaskLog(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.cursor = source["cursor"];
+	        this.reset = source["reset"];
+	        this.truncated = source["truncated"];
+	    }
+	}
+	export class BackgroundTaskRequest {
+	    taskId: string;
+	    repoId: string;
+	    repoName: string;
+	    repoPath: string;
+	    name: string;
+	    command: string;
+	    workDir: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BackgroundTaskRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.taskId = source["taskId"];
+	        this.repoId = source["repoId"];
+	        this.repoName = source["repoName"];
+	        this.repoPath = source["repoPath"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.workDir = source["workDir"];
+	    }
+	}
+	export class BackgroundTaskState {
+	    taskId: string;
+	    repoId: string;
+	    repoName: string;
+	    repoPath: string;
+	    name: string;
+	    command: string;
+	    workDir: string;
+	    runId: number;
+	    revision: number;
+	    status: string;
+	    startedAt: number;
+	    endedAt: number;
+	    exitCode?: number;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BackgroundTaskState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.taskId = source["taskId"];
+	        this.repoId = source["repoId"];
+	        this.repoName = source["repoName"];
+	        this.repoPath = source["repoPath"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.workDir = source["workDir"];
+	        this.runId = source["runId"];
+	        this.revision = source["revision"];
+	        this.status = source["status"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	        this.exitCode = source["exitCode"];
+	        this.error = source["error"];
+	    }
+	}
 	export class RepoSnapshotUpdate {
 	    repo: RepoDetail;
 	    scannedAt: string;

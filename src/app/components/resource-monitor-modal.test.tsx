@@ -17,9 +17,14 @@ function monitorBackend(): AppBackend {
 
 test('monitoring entry comes before folder and uses the existing header controls', () => {
   const repo: Repo = { id: 'r', name: 'repo', path: 'E:/repo', branch: 'main', remote: 'origin', category: 'test', modified: 0, ahead: 0, behind: 0, conflicts: 0, status: 'clean', lastScan: 'now' };
-  const html = renderToStaticMarkup(<RepoHeader repo={repo} fileSummary={summarizeFiles([])} onOpenMonitor={() => {}} onOpenFolder={() => {}} onOpenTerminal={() => {}} onOpenDiffViewer={() => {}} onOpenSettings={() => {}} />);
+  const html = renderToStaticMarkup(<RepoHeader repo={repo} fileSummary={summarizeFiles([])} onOpenMonitor={() => {}} onOpenBackgroundTasks={() => {}} onOpenFolder={() => {}} onOpenTerminal={() => {}} onOpenDiffViewer={() => {}} onOpenSettings={() => {}} />);
+  const groups = [...html.matchAll(/role="group" aria-label="([^"]+)"[^>]*>([\s\S]*?)<\/div>/g)];
+  assert.deepEqual(groups.map(group => group[1]), ['资源监控', '项目工具', '设置']);
+  assert.deepEqual(groups.map(group => (group[2]!.match(/<button/g) ?? []).length), [1, 4, 1]);
+  assert.equal((html.match(/role="separator" aria-orientation="vertical"/g) ?? []).length, 2);
   assert.ok(html.indexOf('资源监控') < html.indexOf('文件夹'));
-  assert.match(html, /查看差异/);
+  assert.match(groups[1]![2]!, /查看差异/);
+  assert.match(groups[2]![2]!, /aria-label="设置"/);
 });
 
 test('dialog shares diff dimensions, identifies system scope, and waits for the first sample', () => {

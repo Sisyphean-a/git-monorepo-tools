@@ -141,7 +141,15 @@ export interface ResourceMonitorBackend {
   fetchResourceMonitorState(): Promise<import('../domain/resource-monitor.js').ResourceMonitorState>;
 }
 
-export type AppBackend = WorkspaceBackend & RepoInteractionBackend & RuntimeBackend & ResourceMonitorBackend;
+export interface BackgroundTaskBackend {
+  listBackgroundTasks(): Promise<import('../domain/background-task.js').BackgroundTaskState[]>;
+  startBackgroundTask(request: import('../domain/background-task.js').BackgroundTaskRequest): Promise<import('../domain/background-task.js').BackgroundTaskState>;
+  stopBackgroundTask(repoId: string, taskId: string): Promise<void>;
+  readBackgroundTaskLog(repoId: string, taskId: string, runId: number, cursor: number): Promise<import('../domain/background-task.js').BackgroundTaskLog>;
+  forgetBackgroundTask(repoId: string, taskId: string): Promise<void>;
+}
+
+export type AppBackend = WorkspaceBackend & RepoInteractionBackend & RuntimeBackend & ResourceMonitorBackend & BackgroundTaskBackend;
 
 export interface SettingsStore {
   loadSettings(): AppSettings;

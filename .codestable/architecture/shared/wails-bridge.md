@@ -20,6 +20,7 @@
 - `App.GetResourceMonitorState` 是资源监控的唯一绑定：无参数返回采样器的只读视图（单调毫秒时间基准、有界数值历史、全程峰值、平均 CPU、最新快照或 `null`），读取同时续租面板观察窗口，驱动高频采样与进程树明细；停止读取后租约到期自动回到后台节奏，读侧不需要也不依赖显式关闭。内存字段为字节、CPU 为按逻辑核数归一化的百分比；主进程或系统总量查询失败时保留上一次快照并用错误字段表达；新增 File 池标签查询独立表达失败：`system.filePool` 为 `null` 且 `system.filePoolError` 保留原因，其他指标继续更新，历史点只在其覆盖的时间桶内没有任何已知 File 样本时才让 `filePoolCount` 与 `filePoolBytes` 为 `null`，首次或不可比较的 `netPerSecond` 为 `null`；子进程读取失败通过行级错误和 `null` 指标表达，未枚举进程树时 `children` 为 `null`，与已枚举且无子进程的 `[]` 区分，不能伪装成零占用。最新快照的 `terminals` 同样区分未采集的 `null` 与已采集的会话数组，元素只含会话、仓库、Shell、创建时间、根进程身份及独立归属错误；内部 Job 成员身份不经 JSON 暴露。子进程行用 `terminalSessionId` 关联会话，`label` 只传固定用途标签，`labelError` 与 `attributionError` 保留用途读取失败或归属冲突；不传原始命令行。采样生命周期由 `app.go` 的启动与关闭拥有，前端只轮询缓存。前端采样契约与指标归属由 `requirements/CONTEXT.md` 的资源监控规则定义。
 - `App.SetReadActivity(repoID, fileBrowserActive)` 是读取资源生命周期的唯一桥接：空仓库标识表示窗口失焦或不可见，文件浏览标记只在当前文件页可读时为真；前端按调用顺序交付活动变化，后端不让失焦后的迟到目录请求保留持久会话。此绑定不终止命令或终端，缓存与回收策略由 `requirements/CONTEXT.md` 的读取资源规则定义。
 - `App.StopRepoCommand` 是终止自定义命令的唯一桥接：按 `streamId` 定位运行中的命令并杀掉整棵进程树，未知或已结束的 `streamId` 必须返回错误，不得静默成功；前端只在命令运行中把它显示为“终止”，失败时必须恢复可重试状态。
+- 后台任务经 `App.ListBackgroundTasks`、`StartBackgroundTask`、`StopBackgroundTask`、`ReadBackgroundTaskLog` 与 `ForgetBackgroundTask` 访问独立管理器；领域 DTO 与 `BackgroundTaskBackend` 对应，组件仍只调用应用层端口。`background-task-state` 只携带任务身份与状态，禁止携带日志；日志按项目 ID、配置 ID、runId 和字节游标显式读取，关闭弹窗不需要后端日志订阅或续租。会话、revision、游标与回收协议统一见 [后台任务运行时](background-tasks.md)。
 - `frontend/wailsjs/` 由 Wails 生成，只能通过生成流程更新。
 
 ## 变更规则

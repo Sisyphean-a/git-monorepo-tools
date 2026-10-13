@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"git-monorepo-tools/internal/terminal"
+	"git-monorepo-tools/snapshot"
 )
 
 type lifecycleWorkspace struct {
@@ -159,6 +160,40 @@ func TestAppConnectsTerminalOwnershipToLiveResourceSnapshot(t *testing.T) {
 			t.Fatal("live sample did not arrive")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestAppBackgroundTasksAreAppOwnedAndReclaimedOnShutdown(t *testing.T) {
+	workspace := &lifecycleWorkspace{}
+	app := newApp(workspace, nil)
+	t.Cleanup(func() { app.shutdown(context.Background()) })
+	command := "printf READY; sleep 600"
+	if runtime.GOOS == "windows" {
+		command = "Write-Output READY; Start-Sleep -Seconds 600"
+	}
+	request := snapshot.BackgroundTaskRequest{TaskID: "dev", RepoID: "A", RepoName: "A", RepoPath: t.TempDir(), Name: "开发", Command: command, WorkDir: "."}
+	state, err := app.StartBackgroundTask(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.ListBackgroundTasks()) != 1 {
+		t.Fatal("task was not registered")
+	}
+	if _, err := app.ReadBackgroundTaskLog("A", "dev", state.RunID, -1); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ForgetBackgroundTask("A", "dev"); err == nil {
+		t.Fatal("forgot a running task")
+	}
+	if err := app.StopBackgroundTask("missing", "dev"); err == nil {
+		t.Fatal("unknown stop succeeded")
+	}
+	app.shutdown(context.Background())
+	if !workspace.closed || len(app.ListBackgroundTasks()) != 0 {
+		t.Fatal("shutdown left app resources alive")
+	}
+	if _, err := app.StartBackgroundTask(request); err == nil {
+		t.Fatal("started task after shutdown")
 	}
 }
 

@@ -142,6 +142,7 @@ export interface AppSettings {
   gitBehavior: GitBehaviorSettings;
   terminalOperations: TerminalOperationsSettings;
   commandCenter: CommandCenterSettings;
+  backgroundTasks: Record<string, import('./background-task.js').BackgroundTaskDefinition[]>;
 }
 
 export interface RepoLog {

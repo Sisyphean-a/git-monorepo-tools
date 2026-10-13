@@ -38,6 +38,23 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+.background-task-entry:focus-visible,
+[aria-label='后台任务'] :focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+[aria-label='后台任务'] button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+}
+
+@media (max-width: 1100px) {
+  .background-task-entry span:not(.background-task-count) {
+    display: none;
+  }
+}
+
 .sidebar-category-button:hover,
 .sidebar-repo-item[data-selected='false']:hover,
 .repo-file-tree-row[data-selected='false']:hover {

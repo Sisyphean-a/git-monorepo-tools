@@ -20,6 +20,7 @@ const settings = (concurrency: number): AppSettings => ({
   customCategories: [],
   favoriteRepoIds: [],
   fileTreeWidths: {},
+  backgroundTasks: {},
   aiCommit: {
     apiKey: '',
     baseUrl: '',
