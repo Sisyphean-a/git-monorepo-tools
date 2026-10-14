@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type UIEvent } from 'react';
 import { Archive, ArrowDown, ArrowUp, Bot, ChevronDown, ChevronRight, File, FileImage, FileText, Folder, FolderOpen, GitBranch, LoaderCircle, Search, X } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
-import type { AppSettings, RepoDetail, RepoFileContent, RepoTreeEntry } from '../domain/types';
-import { detectPreviewKind, maxPreviewRenderBytes } from '../features/files/file-preview-kind';
+import type { AppSettings, RepoDetail, RepoTreeEntry } from '../domain/types';
+import { detectPreviewKind } from '../features/files/file-preview-kind';
+import { createFileBrowserSession, isPathWithin, type DirectoryState, type FileState, type RenderedFile } from '../features/files/file-browser-session';
 import { fileIconKind, folderIconColor } from '../features/files/file-icon-kind';
 import { findFileMatches, type FileSearchMatch, type FileSearchOptions } from '../features/files/file-search';
 import { clampTreeWidth, treeResizerWidth, treeWidthDefault, treeWidthMax, treeWidthMin, treeWidthStep } from '../features/files/tree-width';
@@ -31,24 +32,7 @@ interface RepoFilesTabProps {
   onError: (error: unknown, fallback: string) => void;
 }
 
-type DirectoryState =
-  | { status: 'loading'; entries: RepoTreeEntry[] }
-  | { status: 'loaded'; entries: RepoTreeEntry[] }
-  | { status: 'error'; entries: RepoTreeEntry[]; message: string };
-
-type FileState =
-  | { status: 'idle' }
-  | { status: 'loading'; path: string }
-  | { status: 'loaded'; file: RepoFileContent }
-  | { status: 'error'; path: string; message: string };
-
 type MarkdownView = 'preview' | 'raw';
-
-interface RenderedFile {
-  path: string;
-  kind: 'markdown' | 'code';
-  html: string;
-}
 
 // Effect: 高亮与 Markdown 渲染器只在首次需要时加载，不打开代码/Markdown 文件的会话不付这份体积。
 let rendererPromise: Promise<FilePreviewRenderer> | null = null;
@@ -61,12 +45,8 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   const backend = useAppBackend();
   const windowActive = useWindowActivity();
   const positionRef = useRef<RepoFilePosition>(position ?? { selectedPath: '', expandedPaths: [''], treeScrollTop: 0, previewScrollTop: 0, markdownView: 'preview', wrapLines: true });
-  const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set(positionRef.current.expandedPaths));
   const [selectedPath, setSelectedPath] = useState(positionRef.current.selectedPath);
-  const [fileState, setFileState] = useState<FileState>({ status: 'idle' });
-  const [renderedFile, setRenderedFile] = useState<RenderedFile | null>(null);
-  const [renderNotice, setRenderNotice] = useState<string | null>(null);
   const [markdownView, setMarkdownView] = useState<MarkdownView>(positionRef.current.markdownView);
   const [wrapLines, setWrapLines] = useState(positionRef.current.wrapLines);
   const [anchorTarget, setAnchorTarget] = useState<{ path: string; fragment: string; id: number } | null>(null);
@@ -80,13 +60,17 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   expandedPathsRef.current = expandedPaths;
   selectedPathRef.current = selectedPath;
   settingsRef.current = settings;
-  const directoryRequestSequence = useRef(0);
-  const activeDirectoryRequests = useRef(new Map<string, number>());
-  const fileRequestSequence = useRef(0);
-  const currentFile = useRef<RepoFileContent | null>(null);
-  const revisionRef = useRef<string | null>(null);
-  const activeFileRequest = useRef<{ path: string; sequence: number } | null>(null);
-  const target = { path: repo.path, category: repo.category };
+  const session = useMemo(() => createFileBrowserSession({
+    repoId: repo.id,
+    target: { path: repo.path, category: repo.category },
+    backend,
+    getSettings: () => settingsRef.current,
+    onChange: next => setReading(next),
+    loadRenderer: loadFilePreviewRenderer,
+  }), [backend, repo.id, repo.path, repo.category]);
+  const [reading, setReading] = useState(session.readState);
+  const { directories, fileState, renderedFile, renderNotice } = reading;
+  const { loadDirectory, loadFile } = session;
   const rememberPosition = (next: Partial<RepoFilePosition>) => {
     positionRef.current = { ...positionRef.current, ...next };
     onPositionChange(positionRef.current);
@@ -155,92 +139,6 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
     onFileTreeWidthChange(next);
   };
 
-  const loadDirectory = useCallback(async (path: string) => {
-    if (activeDirectoryRequests.current.has(path)) return;
-    const sequence = ++directoryRequestSequence.current;
-    activeDirectoryRequests.current.set(path, sequence);
-    setDirectories(current => ({
-      ...current,
-      [path]: { status: 'loading', entries: current[path]?.entries ?? [] },
-    }));
-    try {
-      const entries = await backend.listRepoDirectory({ repoId: repo.id, path, settings: settingsRef.current, target });
-      if (activeDirectoryRequests.current.get(path) === sequence) {
-        setDirectories(current => ({ ...current, [path]: { status: 'loaded', entries } }));
-      }
-    } catch (error) {
-      if (activeDirectoryRequests.current.get(path) === sequence) {
-        setDirectories(current => ({
-          ...current,
-          [path]: {
-            status: 'error',
-            entries: current[path]?.entries ?? [],
-            message: readErrorMessage(error, '目录加载失败'),
-          },
-        }));
-      }
-    } finally {
-      if (activeDirectoryRequests.current.get(path) === sequence) {
-        activeDirectoryRequests.current.delete(path);
-      }
-    }
-  }, [backend, repo.id, target.category, target.path]);
-
-  const loadFile = useCallback(async (path: string, freshSelection = false, checkRevision = false) => {
-    if (activeFileRequest.current?.path === path) return;
-    const sequence = ++fileRequestSequence.current;
-    activeFileRequest.current = { path, sequence };
-    if (freshSelection || !currentFile.current) {
-      if (freshSelection) {
-        currentFile.current = null;
-        revisionRef.current = null;
-      }
-      setFileState({ status: 'loading', path });
-      setRenderedFile(null);
-      setRenderNotice(null);
-    }
-    try {
-      const request = { repoId: repo.id, path, settings: settingsRef.current, target };
-      const file = checkRevision && revisionRef.current
-        ? await backend.readRepoFileIfChanged(request, revisionRef.current)
-        : await backend.readRepoFile(request);
-      if (sequence !== fileRequestSequence.current || !file) return;
-      revisionRef.current = file.revision;
-      if (currentFile.current?.path === path && currentFile.current.content === file.content && currentFile.current.size === file.size) return;
-      const kind = detectPreviewKind(file.path);
-      let nextRendered: RenderedFile | null = null;
-      let nextNotice: string | null = null;
-      if (kind !== 'text') {
-        if (file.size > maxPreviewRenderBytes) {
-          nextNotice = '文件较大，已关闭高亮与预览渲染';
-        } else {
-          try {
-            const renderer = await loadFilePreviewRenderer();
-            nextRendered = { path: file.path, kind, html: renderer.renderFilePreviewHtml({ path: file.path, content: file.content, kind }) };
-          } catch (error) {
-            // Failure: 渲染失败不丢正文；重新进入仍可重读文件。
-            nextNotice = `预览渲染失败，已按纯文本显示：${readErrorMessage(error, '未知错误')}`;
-          }
-        }
-      }
-      if (sequence !== fileRequestSequence.current) return;
-      currentFile.current = file;
-      setRenderedFile(nextRendered);
-      setRenderNotice(nextNotice);
-      setFileState({ status: 'loaded', file });
-    } catch (error) {
-      if (sequence === fileRequestSequence.current) {
-        currentFile.current = null;
-        revisionRef.current = null;
-        setRenderedFile(null);
-        setRenderNotice(null);
-        setFileState({ status: 'error', path, message: readErrorMessage(error, '文件读取失败') });
-      }
-    } finally {
-      if (activeFileRequest.current?.sequence === sequence) activeFileRequest.current = null;
-    }
-  }, [backend, repo.id, target.category, target.path]);
-
   // Flow: 重新进入或重获焦点时更新已展开目录，并按版本检查当前文件；正文只在版本变化时重读。
   const refreshView = useCallback(() => {
     for (const path of expandedPathsRef.current) void loadDirectory(path);
@@ -250,21 +148,13 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   useEffect(() => {
     if (!active || !windowActive) {
       // Effect: 只保留阅读位置，失焦即释放正文、渲染结果和目录缓存，并禁止旧请求回填。
-      activeDirectoryRequests.current.clear();
-      fileRequestSequence.current += 1;
-      activeFileRequest.current = null;
-      currentFile.current = null;
-      revisionRef.current = null;
+      session.release();
       restoringTree.current = true;
-      setDirectories({});
-      setFileState({ status: 'idle' });
-      setRenderedFile(null);
-      setRenderNotice(null);
       setContextMenu(null);
       return;
     }
     refreshView();
-  }, [active, windowActive, refreshView]);
+  }, [active, windowActive, refreshView, session]);
 
   useEffect(() => {
     if (!active || !windowActive || !selectedPath) return;
@@ -281,10 +171,7 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
     if ([...expandedPaths].every(path => directories[path] && directories[path].status !== 'loading')) restoringTree.current = false;
   }, [directories, expandedPaths, active, windowActive]);
 
-  useEffect(() => () => {
-    activeDirectoryRequests.current.clear();
-    fileRequestSequence.current += 1;
-  }, []);
+  useEffect(() => () => session.release(), [session]);
 
   const toggleDirectory = (path: string) => {
     if (expandedPaths.has(path)) {
@@ -294,13 +181,8 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
       }
       setExpandedPaths(next);
       rememberPosition({ expandedPaths: [...next] });
-      for (const requestedPath of activeDirectoryRequests.current.keys()) {
-        if (isPathWithin(requestedPath, path)) activeDirectoryRequests.current.delete(requestedPath);
-      }
-      // Effect: 折叠目录时释放其子树缓存，内存只随当前展开范围增长。
-      setDirectories(current => Object.fromEntries(
-        Object.entries(current).filter(([loadedPath]) => !isPathWithin(loadedPath, path)),
-      ));
+      // Effect: 会话同时释放子树缓存并使对应在途请求失效。
+      session.releaseDirectory(path);
       return;
     }
     const next = new Set(expandedPaths).add(path);
@@ -1045,17 +927,6 @@ const codeTextStyle = {
   tabSize: 2,
   whiteSpace: 'pre',
 } as const;
-
-function isPathWithin(candidate: string, parent: string) {
-  return candidate === parent || (parent === '' ? candidate !== '' : candidate.startsWith(`${parent}/`));
-}
-
-function readErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === 'string' && error.trim()) return error;
-  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
-  return fallback;
-}
 
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;

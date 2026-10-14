@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { mergeRepoSnapshotUpdate, mergeSnapshotPreservingInteractions, type SnapshotApplyContext } from '../domain/repo-snapshot-merge';
+import type { SnapshotApplyContext } from '../domain/repo-snapshot-merge';
+import { createWorkspaceSnapshotState } from './workspace-snapshot-state';
 import type { AppSettings, AppSnapshot, RepoSnapshotUpdate } from '../domain/types';
 import type { WorkspaceBackend } from './ports';
 import { useProgressiveStartupScan } from './use-progressive-startup-scan';
@@ -17,44 +18,25 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
   const windowActive = useWindowActivity();
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [selectedRepoId, setSelectedRepoId] = useState('');
-  const interactionRevisionRef = useRef(0);
+  const stateRef = useRef<ReturnType<typeof createWorkspaceSnapshotState> | null>(null);
+  stateRef.current ??= createWorkspaceSnapshotState();
+  const state = stateRef.current;
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const snapshotRef = useRef<AppSnapshot | null>(null);
-  const interactionVersionsRef = useRef(new Map<string, number>());
 
   const applySnapshot = (nextSnapshot: AppSnapshot, context?: SnapshotApplyContext) => {
-    // Rule: 完整快照决定列表组成；fetch 期间发生的交互结果按仓库版本保留，避免旧状态回退前台操作。
-    const merged = context
-      ? mergeSnapshotPreservingInteractions(
-        nextSnapshot,
-        snapshotRef.current,
-        interactionVersionsRef.current,
-        context.preserveInteractionsSince,
-      )
-      : nextSnapshot;
-    snapshotRef.current = merged;
+    const merged = state.applySnapshot(nextSnapshot, context);
     setSnapshot(merged);
     sidebar.syncSidebarSnapshot(merged);
     setSelectedRepoId(current => merged.repoDetails[current] ? current : merged.selectedRepoId);
   };
   const applyRepoUpdate = (update: RepoSnapshotUpdate) => {
-    interactionRevisionRef.current += 1;
-    interactionVersionsRef.current.set(update.repo.id, interactionRevisionRef.current);
-    const historyRevision = `interaction-${interactionRevisionRef.current}`;
-    const currentSnapshot = snapshotRef.current;
-    const next = currentSnapshot ? mergeRepoSnapshotUpdate(currentSnapshot, update, 'interaction', historyRevision) : currentSnapshot;
-    snapshotRef.current = next;
-    setSnapshot(next);
+    setSnapshot(state.applyInteraction(update));
     sidebar.applySidebarRepoUpdate(update);
     setSelectedRepoId(current => current || update.repo.id);
   };
   const applyBackgroundRepoUpdate = (update: RepoSnapshotUpdate, context?: SnapshotApplyContext) => {
-    const currentSnapshot = snapshotRef.current;
-    if (!currentSnapshot?.repoDetails[update.repo.id]) return;
-    // Rule: 迟到的远端结果不能覆盖同仓库的新交互结果，也不能恢复已移除的仓库。
-    if (context && (interactionVersionsRef.current.get(update.repo.id) ?? 0) > context.preserveInteractionsSince) return;
-    const next = mergeRepoSnapshotUpdate(currentSnapshot, update, 'background');
-    snapshotRef.current = next;
+    const next = state.applyBackground(update, context);
+    if (!next) return;
     setSnapshot(next);
     sidebar.applySidebarRepoUpdate(update);
     setSelectedRepoId(current => current || update.repo.id);
@@ -66,7 +48,7 @@ export function useWorkspaceState({ backend, settings }: WorkspaceStateConfig) {
     reportError: setRefreshError,
     fetchSnapshot: backend.fetchSnapshot,
     refreshRepo: backend.refreshRepo,
-    readRepoUpdateRevision: () => interactionRevisionRef.current,
+    readRepoUpdateRevision: state.readRepoUpdateRevision,
     skipInitialRefresh: true,
     windowActive,
   });
