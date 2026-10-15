@@ -88,6 +88,13 @@ export interface AICommitSettings {
   model: string;
   maxDiffChars: number;
   stagedOnly: boolean;
+  proxy: AIProxySettings;
+}
+
+export interface AIProxySettings {
+  enabled: boolean;
+  host: string;
+  port: number;
 }
 
 export interface GitProxySettings {

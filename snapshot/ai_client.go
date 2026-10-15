@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -30,8 +32,24 @@ Requirements:
 `
 )
 
-// aiHTTPClient 可注入以便测试超时行为
+// aiHTTPClient 只提供客户端模板，单次请求的代理与连接池不共享。
 var aiHTTPClient = &http.Client{Timeout: aiRequestTimeout}
+
+func newAIHTTPClient(proxy AIProxySettings) (*http.Client, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Rule: AI 显式直连或使用自己的 HTTP 代理，不读取 Git 设置或环境代理。
+	transport.Proxy = nil
+	if proxy.Enabled {
+		host := strings.TrimSpace(proxy.Host)
+		if host == "" || strings.ContainsAny(host, "/?#@ \t\r\n") || proxy.Port < 1 || proxy.Port > 65535 {
+			return nil, errors.New("AI 服务代理配置无效：请填写不含协议的主机和 1–65535 的端口")
+		}
+		transport.Proxy = http.ProxyURL(&url.URL{Scheme: "http", Host: net.JoinHostPort(host, strconv.Itoa(proxy.Port))})
+	}
+	client := *aiHTTPClient
+	client.Transport = transport
+	return &client, nil
+}
 
 func requestAICompletion(settings AICommitSettings, prompt string) (string, error) {
 	payload := buildAIRequestPayload(settings, prompt)
@@ -41,11 +59,16 @@ func requestAICompletion(settings AICommitSettings, prompt string) (string, erro
 	}
 	request, err := newAIRequest(settings, body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("AI 服务请求创建失败：%w", err)
 	}
-	response, err := aiHTTPClient.Do(request)
+	client, err := newAIHTTPClient(settings.Proxy)
 	if err != nil {
 		return "", err
+	}
+	defer client.CloseIdleConnections()
+	response, err := client.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("AI 服务请求失败：%w", err)
 	}
 	defer response.Body.Close()
 	return parseAIResponse(response)
@@ -82,28 +105,29 @@ func newAIRequest(settings AICommitSettings, body []byte) (*http.Request, error)
 }
 
 func parseAIResponse(response *http.Response) (string, error) {
-	rawBody, err := io.ReadAll(io.LimitReader(response.Body, maxAIResponseBytes+1))
-	if err != nil {
-		return "", err
-	}
+	rawBody, readErr := io.ReadAll(io.LimitReader(response.Body, maxAIResponseBytes+1))
 	if len(rawBody) > maxAIResponseBytes {
 		return "", fmt.Errorf("AI 响应超过 %d 字节限制", maxAIResponseBytes)
 	}
 	var payload map[string]any
 	_ = json.Unmarshal(rawBody, &payload)
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		if message := nestedString(payload, "error", "message"); message != "" {
-			return "", errors.New(message)
-		}
-		text := strings.TrimSpace(string(rawBody))
+	text := strings.TrimSpace(string(rawBody))
+	// Failure: 已收到的服务商错误优先展示，不能被随后读取超时覆盖；保留状态码和请求标识等原文。
+	if response.StatusCode < 200 || response.StatusCode >= 300 || payload["error"] != nil {
 		if text == "" {
-			text = "AI 服务调用失败"
+			text = "空响应"
 		}
-		return "", errors.New(text)
+		if readErr != nil {
+			return "", fmt.Errorf("AI 服务返回错误（HTTP %d）：%s；响应读取失败：%w", response.StatusCode, text, readErr)
+		}
+		return "", fmt.Errorf("AI 服务返回错误（HTTP %d）：%s", response.StatusCode, text)
+	}
+	if readErr != nil {
+		return "", fmt.Errorf("AI 服务响应读取失败（HTTP %d）：%w；已接收响应：%s", response.StatusCode, readErr, text)
 	}
 	content := nestedString(payload, "choices", "0", "message", "content")
 	if strings.TrimSpace(content) == "" {
-		return "", errors.New("AI 未返回提交信息")
+		return "", fmt.Errorf("AI 响应未返回提交信息（HTTP %d）：%s", response.StatusCode, text)
 	}
 	return content, nil
 }

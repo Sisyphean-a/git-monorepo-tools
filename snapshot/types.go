@@ -50,11 +50,18 @@ type RepoCommandResult struct {
 }
 
 type AICommitSettings struct {
-	APIKey       string `json:"apiKey"`
-	BaseURL      string `json:"baseUrl"`
-	Model        string `json:"model"`
-	MaxDiffChars int    `json:"maxDiffChars"`
-	StagedOnly   bool   `json:"stagedOnly"`
+	APIKey       string          `json:"apiKey"`
+	BaseURL      string          `json:"baseUrl"`
+	Model        string          `json:"model"`
+	MaxDiffChars int             `json:"maxDiffChars"`
+	StagedOnly   bool            `json:"stagedOnly"`
+	Proxy        AIProxySettings `json:"proxy"`
+}
+
+type AIProxySettings struct {
+	Enabled bool   `json:"enabled"`
+	Host    string `json:"host"`
+	Port    int    `json:"port"`
 }
 
 type GitProxySettings struct {

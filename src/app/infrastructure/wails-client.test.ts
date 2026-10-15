@@ -364,7 +364,9 @@ test('generateCommitMessage uses dedicated binding', async () => {
     ResizeTerminal: async () => {
       throw new Error('unused');
     },
-    GenerateCommitMessage: async (repoId: string) => {
+    GenerateCommitMessage: async (repoId: string, request: { proxy: AppSettings['gitBehavior']['proxy'] }, ai: AppSettings['aiCommit']) => {
+      assert.deepEqual(request.proxy, { enabled: false, host: '127.0.0.1', port: 7897 });
+      assert.deepEqual(ai.proxy, { enabled: true, host: 'ai-proxy', port: 8888 });
       calls.push(`GenerateCommitMessage:${repoId}`);
       return 'feat: 统一 AI 提交生成';
     },
@@ -399,6 +401,7 @@ test('generateCommitMessage uses dedicated binding', async () => {
         model: 'deepseek-chat',
         maxDiffChars: 8000,
         stagedOnly: true,
+        proxy: { enabled: true, host: 'ai-proxy', port: 8888 },
       },
       gitBehavior: {
         autoScanEnabled: true,

@@ -127,6 +127,71 @@ func TestParseAIResponseRejectsOversizedResponse(t *testing.T) {
 	}
 }
 
+func TestParseAIResponsePreservesProviderErrors(t *testing.T) {
+	const busy = "Service is too busy. We advise users to temporarily switch to alternative LLM API service providers."
+	for _, status := range []int{http.StatusServiceUnavailable, http.StatusOK} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			response := &http.Response{
+				StatusCode: status,
+				Body:       io.NopCloser(strings.NewReader(fmt.Sprintf(`{"error":{"message":%q,"type":"server_error"},"request_id":"busy-request"}`, busy))),
+			}
+			message, err := parseAIResponse(response)
+			if message != "" || err == nil {
+				t.Fatalf("expected provider failure, got %q, %v", message, err)
+			}
+			for _, detail := range []string{"AI 服务", fmt.Sprintf("HTTP %d", status), busy, "busy-request"} {
+				if !strings.Contains(err.Error(), detail) {
+					t.Fatalf("expected %q in provider error, got %v", detail, err)
+				}
+			}
+		})
+	}
+}
+
+func TestParseAIResponseKeepsSuccessAndUnexpectedResponsesDistinct(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		status  int
+		body    string
+		content string
+	}{
+		{"success", http.StatusOK, `{"choices":[{"message":{"content":"fix: 修复错误提示"}}]}`, "fix: 修复错误提示"},
+		{"plain error", http.StatusBadGateway, "upstream unavailable", ""},
+		{"unexpected success body", http.StatusOK, "unexpected response", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			content, err := parseAIResponse(&http.Response{StatusCode: test.status, Body: io.NopCloser(strings.NewReader(test.body))})
+			if test.content != "" {
+				if err != nil || content != test.content {
+					t.Fatalf("unexpected completion: %q, %v", content, err)
+				}
+				return
+			}
+			if content != "" || err == nil || !strings.Contains(err.Error(), test.body) || !strings.Contains(err.Error(), fmt.Sprintf("HTTP %d", test.status)) {
+				t.Fatalf("expected response details, got %q, %v", content, err)
+			}
+		})
+	}
+}
+
+func TestRequestAICompletionPreservesReceivedErrorOnBodyTimeout(t *testing.T) {
+	originalClient := aiHTTPClient
+	aiHTTPClient = &http.Client{Timeout: 50 * time.Millisecond}
+	defer func() { aiHTTPClient = originalClient }()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"error":{"message":"Service is too busy."},"request_id":"body-timeout"}`)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	_, err := requestAICompletion(AICommitSettings{APIKey: "sk-test", BaseURL: server.URL, Model: "deepseek-chat"}, "prompt")
+	if err == nil || !strings.Contains(err.Error(), "Service is too busy.") || !strings.Contains(err.Error(), "body-timeout") || !strings.Contains(err.Error(), "Client.Timeout") {
+		t.Fatalf("expected received provider error and read failure, got %v", err)
+	}
+}
+
 func TestRequestAICompletionHonorsClientTimeout(t *testing.T) {
 	originalClient := aiHTTPClient
 	aiHTTPClient = &http.Client{Timeout: 50 * time.Millisecond}
@@ -142,7 +207,7 @@ func TestRequestAICompletionHonorsClientTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
-	if !strings.Contains(err.Error(), "Client.Timeout") {
-		t.Fatalf("expected client timeout error, got %v", err)
+	if !strings.Contains(err.Error(), "Client.Timeout") || !strings.Contains(err.Error(), "AI 服务请求失败") {
+		t.Fatalf("expected AI client timeout error, got %v", err)
 	}
 }

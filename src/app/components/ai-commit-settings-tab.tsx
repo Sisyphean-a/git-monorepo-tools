@@ -56,6 +56,38 @@ export function AICommitSettingsTab({ draft, setDraft }: AICommitSettingsTabProp
       <FormRow label="基础 URL">
         <Input value={ai.baseUrl} onChange={value => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, baseUrl: value } }))} monospace />
       </FormRow>
+      <FormRow label="AI 代理">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ color: C.textSecondary, fontSize: 12, fontWeight: 500 }}>启用 AI 手动代理</div>
+            <div style={{ color: C.textWeak, fontSize: 11 }}>仅影响 AI API 请求，与 Git 代理独立；关闭时直连，不读取环境代理</div>
+          </div>
+          <Toggle checked={ai.proxy.enabled} onChange={() => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, proxy: { ...current.aiCommit.proxy, enabled: !current.aiCommit.proxy.enabled } } }))} />
+        </div>
+      </FormRow>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <FormRow label="AI 代理主机（HTTP）">
+            <Input
+              value={ai.proxy.host}
+              onChange={value => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, proxy: { ...current.aiCommit.proxy, host: value } } }))}
+              placeholder="127.0.0.1"
+              monospace
+            />
+          </FormRow>
+        </div>
+        <div style={{ width: 140 }}>
+          <FormRow label="AI 代理端口">
+            <Input
+              value={String(ai.proxy.port)}
+              onChange={value => setDraft(current => ({ ...current, aiCommit: { ...current.aiCommit, proxy: { ...current.aiCommit.proxy, port: Number(value) } } }))}
+              placeholder="7897"
+              type="number"
+              monospace
+            />
+          </FormRow>
+        </div>
+      </div>
       <FormRow label="模型">
         <Select
           value={ai.model}

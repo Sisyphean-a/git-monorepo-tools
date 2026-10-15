@@ -52,6 +52,37 @@ test('sanitizeSettings keeps proxy host and normalizes invalid port', () => {
   });
 });
 
+test('AI proxy is opt-in and independent of Git proxy for old and saved settings', () => {
+  const old = sanitizeSettings({ gitBehavior: { proxy: { enabled: true, host: 'git-proxy', port: 8080 } } });
+  assert.deepEqual(old.aiCommit.proxy, { enabled: false, host: '127.0.0.1', port: 7897 });
+  const settings = sanitizeSettings({
+    aiCommit: { proxy: { enabled: true, host: ' ai-proxy ', port: 8888 } },
+    gitBehavior: { proxy: { enabled: false, host: 'git-proxy', port: 8080 } },
+  });
+  assert.deepEqual(settings.aiCommit.proxy, { enabled: true, host: 'ai-proxy', port: 8888 });
+  assert.deepEqual(settings.gitBehavior.proxy, { enabled: false, host: 'git-proxy', port: 8080 });
+  assert.deepEqual(sanitizeSettings({ aiCommit: { proxy: { enabled: 'true', host: ' ', port: 99999 } } }).aiCommit.proxy,
+    { enabled: false, host: '127.0.0.1', port: 7897 });
+
+  const originalWindow = globalThis.window;
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { localStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value); },
+    } },
+  });
+  try {
+    saveSettings(settings);
+    const loaded = loadSettings();
+    assert.deepEqual(loaded.aiCommit.proxy, settings.aiCommit.proxy);
+    assert.deepEqual(loaded.gitBehavior.proxy, settings.gitBehavior.proxy);
+  } finally {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
+  }
+});
+
 test('sanitizeSettings trims and deduplicates custom categories', () => {
   const settings = sanitizeSettings({
     customCategories: [' 团队 ', '团队', '', '个人'],

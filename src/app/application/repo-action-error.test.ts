@@ -24,6 +24,33 @@ test('every built-in action retains its identity, repository and raw error', () 
   }
 });
 
+test('AI failures explain provider errors without Git remedies', () => {
+  const busy = 'Service is too busy. We advise users to temporarily switch to alternative LLM API service providers. (request_id: 26148aa6-6510-41c8-88ad-5b3b8e23b057)';
+  const cases = [
+    [busy, 'ai-busy'],
+    [`AI 服务返回错误（HTTP 503）：${busy}`, 'ai-busy'],
+    [`AI 服务返回错误（HTTP 503）：${busy}；响应读取失败：Client.Timeout`, 'ai-busy'],
+    ['context deadline exceeded (Client.Timeout or context cancellation while reading body)', 'ai-timeout'],
+    ['AI 服务请求失败：context deadline exceeded', 'ai-timeout'],
+    ['AI 服务返回错误（HTTP 401）：Invalid API key', 'ai-authentication'],
+    ['AI 服务返回错误（HTTP 429）：Rate limit reached', 'ai-rate-limit'],
+    ['AI 服务请求失败：dial tcp: connection refused', 'ai-network'],
+    ['AI 服务代理配置无效：请填写不含协议的主机和 1–65535 的端口', 'ai-config'],
+    ['AI 服务返回错误（HTTP 500）：unexpected provider failure', 'ai-service'],
+    ['AI 响应解析失败：AI 未返回可识别的提交信息', 'ai-response'],
+  ];
+  for (const [detail, kind] of cases) {
+    const error = describeRepoActionError('generate', detail, repo);
+    assert.equal(error.kind, kind, detail);
+    assert.equal(error.detail, detail);
+    assert.match(error.reason, /AI/);
+    assert.doesNotMatch(error.suggestion, /调整 Git|仓库日志|终端|强制覆盖/);
+  }
+  assert.match(describeRepoActionError('generate', busy, repo).reason, /繁忙/);
+  assert.equal(describeRepoActionError('generate', 'git diff 超时（1m0s）', repo).kind, 'timeout');
+  assert.equal(describeRepoActionError('combo:release', `AI 服务返回错误（HTTP 503）：${busy}`, repo).kind, 'ai-busy');
+});
+
 test('known failures explain distinct causes instead of replacing Git output', () => {
   const cases = [
     ['当前仓库有本地改动，请先提交或处理后再拉取\nfile.ts', 'local-changes'],

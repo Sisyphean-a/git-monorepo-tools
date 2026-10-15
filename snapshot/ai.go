@@ -26,7 +26,11 @@ func (s *Service) GenerateCommitMessage(repoID string, request Request, settings
 	if err != nil {
 		return "", err
 	}
-	return extractCommitMessage(raw)
+	message, err := extractCommitMessage(raw)
+	if err != nil {
+		return "", fmt.Errorf("AI 响应解析失败：%w", err)
+	}
+	return message, nil
 }
 
 func ensureAISettings(settings AICommitSettings) error {

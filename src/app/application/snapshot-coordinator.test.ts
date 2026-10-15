@@ -27,6 +27,7 @@ const settings = (concurrency: number): AppSettings => ({
     model: '',
     maxDiffChars: 2000,
     stagedOnly: true,
+    proxy: { enabled: false, host: '127.0.0.1', port: 7897 },
   },
   gitBehavior: {
     autoScanEnabled: true,

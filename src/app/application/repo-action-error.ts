@@ -68,16 +68,34 @@ const failureRules: readonly [RegExp, string, string, string][] = [
   [/Wails 绑定|不支持 Wails/i, 'bridge', '桌面后端绑定不可用，操作未能正常交付。', '重启桌面应用；若仍发生，请重新构建匹配的前后端并保留原始错误。'],
 ];
 
+// Rule: AI 边界由后端标注；生成前的 Git 读取失败仍沿用 Git 分类，不能仅凭操作名称判断来源。
+const aiFailureRules: readonly [RegExp, string, string, string][] = [
+  [/^AI 服务代理配置/i, 'ai-config', 'AI 代理配置无效。', '在设置的 AI 提交页检查 AI 代理开关、主机与端口；这与 Git 代理设置独立。'],
+  [/service is too busy|server.*overloaded|服务.*繁忙/i, 'ai-busy', 'AI 服务商当前繁忙，暂时无法生成提交信息。', '稍后重试，或在设置的 AI 提交页手动切换其他可用服务商和模型；可凭原始错误中的 request_id 联系服务商。'],
+  [/HTTP 429|rate.?limit|too many requests|配额|quota/i, 'ai-rate-limit', 'AI 服务请求受到限流或配额限制。', '检查 AI 服务商的调用频率、账户额度与配额，按服务商说明处理后重试。'],
+  [/HTTP 40[13]|invalid.*(?:api.?key|token)|authentication|unauthorized|forbidden/i, 'ai-authentication', 'AI 服务认证或访问权限校验失败。', '在设置的 AI 提交页检查 API 密钥、基础 URL、模型及账户访问权限。'],
+  [/超时|timed? out|timeout|context deadline exceeded/i, 'ai-timeout', 'AI 请求超时，未能完整取得生成结果；仅凭超时无法确认服务商是否繁忙。', '检查 AI 服务商状态、网络与代理后重试，或手动切换其他可用服务商；Git 操作超时设置不影响 AI 请求。'],
+  [/could not resolve|no such host|dial tcp|failed to connect|connection (?:refused|reset|closed)|network is unreachable|proxy|certificate|\bEOF\b/i, 'ai-network', 'AI 服务连接失败，未能取得完整响应。', '检查 AI 基础 URL、网络与证书，以及 AI 提交页的代理开关、主机和端口；Git 代理设置不控制 AI 请求。'],
+  [/^AI 响应/i, 'ai-response', 'AI 服务返回的内容无法解析为提交信息。', '核对 AI 模型是否支持当前接口与响应格式；按原始响应排查，必要时联系服务商。'],
+];
+
 export function describeRepoActionError(action: string, error: unknown, repo: Pick<Repo, 'name' | 'path'>): RepoActionFailure {
   const detail = readErrorMessage(error);
-  const rule = failureRules.find(([pattern]) => pattern.test(detail));
+  const isAIError = /^AI (?:服务|响应)/.test(detail)
+    || (action === 'generate' && /service is too busy|Client\.Timeout|^context deadline exceeded/i.test(detail));
+  const rule = isAIError
+    ? aiFailureRules.find(([pattern]) => pattern.test(detail))
+      ?? [null, 'ai-service', `AI 服务调用失败，返回信息：${detail}`, '检查 AI 服务商状态及 AI 提交设置；保留原始错误和 request_id 以便排查。']
+    : failureRules.find(([pattern]) => pattern.test(detail));
   return {
     title: `${actionLabels[action] ?? action}失败`,
     repoName: repo.name,
     repoPath: repo.path,
     kind: rule?.[1] ?? 'unknown',
     reason: rule?.[2] ?? '未能自动判定失败原因，下面保留了后端返回的原始信息。',
-    suggestion: rule?.[3] ?? '按原始错误检查仓库日志或在终端重试；反馈问题时附上操作名称、仓库路径和原始错误，不要尝试强制覆盖本地状态。',
+    suggestion: rule?.[3] ?? (action === 'generate'
+      ? '检查 AI 提交设置与服务商状态；反馈问题时附上原始错误，不能仅凭生成失败认定是 Git 问题。'
+      : '按原始错误检查仓库日志或在终端重试；反馈问题时附上操作名称、仓库路径和原始错误，不要尝试强制覆盖本地状态。'),
     detail,
   };
 }

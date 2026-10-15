@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     model: 'deepseek-chat',
     maxDiffChars: 8000,
     stagedOnly: true,
+    proxy: { enabled: false, host: '127.0.0.1', port: 7897 },
   },
   gitBehavior: {
     autoScanEnabled: true,
@@ -83,6 +84,7 @@ export function sanitizeSettings(value: unknown): AppSettings {
   if (!value || typeof value !== 'object') return draft;
   const source = value as Partial<AppSettings>;
   const aiCommit: Partial<AppSettings['aiCommit']> = source.aiCommit ?? {};
+  const aiProxy: Partial<AppSettings['aiCommit']['proxy']> = aiCommit.proxy ?? {};
   const gitBehavior: Partial<AppSettings['gitBehavior']> = source.gitBehavior ?? {};
   const proxy: Partial<AppSettings['gitBehavior']['proxy']> = gitBehavior.proxy ?? {};
   const terminalOperations: Partial<AppSettings['terminalOperations']> = source.terminalOperations ?? {};
@@ -97,6 +99,9 @@ export function sanitizeSettings(value: unknown): AppSettings {
   draft.aiCommit.model = sanitizeText(aiCommit.model, draft.aiCommit.model);
   draft.aiCommit.maxDiffChars = sanitizeNumber(aiCommit.maxDiffChars, draft.aiCommit.maxDiffChars, [2000, 4000, 8000, 12000, 20000]);
   draft.aiCommit.stagedOnly = sanitizeBoolean(aiCommit.stagedOnly, draft.aiCommit.stagedOnly);
+  draft.aiCommit.proxy.enabled = sanitizeBoolean(aiProxy.enabled, draft.aiCommit.proxy.enabled);
+  draft.aiCommit.proxy.host = sanitizeText(aiProxy.host, draft.aiCommit.proxy.host);
+  draft.aiCommit.proxy.port = sanitizePort(aiProxy.port, draft.aiCommit.proxy.port);
 
   draft.gitBehavior.autoScanEnabled = sanitizeBoolean(gitBehavior.autoScanEnabled, draft.gitBehavior.autoScanEnabled);
   draft.gitBehavior.autoScanIntervalSeconds = sanitizeNumber(gitBehavior.autoScanIntervalSeconds, draft.gitBehavior.autoScanIntervalSeconds, [30, 60, 120, 300]);
