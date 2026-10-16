@@ -17,31 +17,37 @@ type TaskRow = { key: string; request: BackgroundTaskRequest; definition?: Backg
 
 interface BackgroundTasksModalProps {
   repo: Repo | null;
+  repos: Repo[];
   settings: AppSettings;
   controller: BackgroundTaskController;
   onSave: (repoId: string, tasks: BackgroundTaskDefinition[]) => void;
   onClose: () => void;
 }
 
-export function BackgroundTasksModal({ repo, settings, controller, onSave, onClose }: BackgroundTasksModalProps) {
+export function BackgroundTasksModal({ repo, repos, settings, controller, onSave, onClose }: BackgroundTasksModalProps) {
   const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width:850px)').matches);
-  const [scope, setScope] = useState<'project' | 'running'>('project');
+  const [scope, setScope] = useState<'all' | 'project' | 'running'>('all');
   const [search, setSearch] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [editing, setEditing] = useState<BackgroundTaskDefinition | null>(null);
+  const [editingRepo, setEditingRepo] = useState<Repo | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  const definitions = repo ? settings.backgroundTasks[repo.id] ?? [] : [];
+  const definitions = editingRepo ? settings.backgroundTasks[editingRepo.id] ?? [] : [];
+  const configuredRows: TaskRow[] = (scope === 'project' ? repos.filter(project => project.id === repo?.id) : repos).flatMap(project =>
+    (settings.backgroundTasks[project.id] ?? []).map(definition => {
+      const key = taskKey(project.id, definition.id);
+      return { key, definition, state: controller.states[key], request: { taskId: definition.id, repoId: project.id, repoName: project.name, repoPath: project.path, name: definition.name, command: definition.command, workDir: definition.workDir } };
+    }));
+  const configuredKeys = new Set(configuredRows.map(row => row.key));
+  const sessionRows = Object.values(controller.states).map(state => ({ key: taskKey(state.repoId, state.taskId), request: state, state }));
   const rows: TaskRow[] = scope === 'running'
-    ? Object.values(controller.states).filter(taskActive).map(state => ({ key: taskKey(state.repoId, state.taskId), request: state, state }))
-    : repo ? definitions.map(definition => {
-      const key = taskKey(repo.id, definition.id);
-      return { key, definition, state: controller.states[key], request: { taskId: definition.id, repoId: repo.id, repoName: repo.name, repoPath: repo.path, name: definition.name, command: definition.command, workDir: definition.workDir } };
-    }) : [];
+    ? sessionRows.filter(row => taskActive(row.state))
+    : scope === 'all' ? [...configuredRows, ...sessionRows.filter(row => !configuredKeys.has(row.key))] : configuredRows;
   const visible = rows.filter(row => `${row.request.name} ${row.request.command} ${row.request.repoName}`.toLowerCase().includes(search.toLowerCase()));
   const selected = visible.find(row => row.key === selectedKey) ?? visible[0];
   const active = taskActive(selected?.state);
@@ -73,30 +79,35 @@ export function BackgroundTasksModal({ repo, settings, controller, onSave, onClo
     };
   }, []);
 
-  const edit = (definition?: BackgroundTaskDefinition) => {
-    setScope('project');
-    setEditing(definition ?? { id: crypto.randomUUID(), name: '', command: '', workDir: '.' });
+  const edit = (row?: TaskRow) => {
+    const target = row ? repos.find(project => project.id === row.request.repoId) : repo;
+    if (!target) return;
+    setEditingRepo(target);
+    setEditing(row?.definition ?? { id: crypto.randomUUID(), name: '', command: '', workDir: '.' });
     setFormError(null);
     setShowDetails(true);
   };
   const save = () => {
-    if (!editing || !repo) return;
+    if (!editing || !editingRepo) return;
     const next = { ...editing, name: editing.name.trim(), command: editing.command.trim(), workDir: editing.workDir.trim() || '.' };
     if (!next.name || !next.command) { setFormError('名称和命令不能为空'); return; }
     try {
       const index = definitions.findIndex(task => task.id === next.id);
-      onSave(repo.id, index < 0 ? [...definitions, next] : definitions.map(task => task.id === next.id ? next : task));
-      setSelectedKey(taskKey(repo.id, next.id));
+      onSave(editingRepo.id, index < 0 ? [...definitions, next] : definitions.map(task => task.id === next.id ? next : task));
+      setScope(scope === 'running' ? 'all' : scope);
+      setSelectedKey(taskKey(editingRepo.id, next.id));
       setSearch('');
       setEditing(null);
       setFormError(null);
     } catch (failure) { setFormError(taskErrorText(failure)); }
   };
   const remove = async () => {
-    if (!selected?.definition || !repo) return;
-    if (!await controller.forget(repo.id, selected.definition.id)) return;
+    if (!selected?.definition) return;
+    if (!window.confirm(`确定删除后台任务“${selected.definition.name}”吗？\n任务配置及本轮日志将被删除，且无法恢复。`)) return;
+    const { repoId, taskId } = selected.request;
+    if (!await controller.forget(repoId, taskId)) return;
     try {
-      onSave(repo.id, definitions.filter(task => task.id !== selected.definition!.id));
+      onSave(repoId, (settings.backgroundTasks[repoId] ?? []).filter(task => task.id !== taskId));
       setSelectedKey(null);
       setShowDetails(false);
     } catch (failure) { setFormError(taskErrorText(failure)); }
@@ -111,9 +122,9 @@ export function BackgroundTasksModal({ repo, settings, controller, onSave, onClo
           <ListTodo size={16} color={C.btnPrimary} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: C.textPrimary, fontSize: 14, fontWeight: 600 }}>后台任务</div>
-            <div title={repo?.path} style={{ color: C.textSecondary, fontSize: 11, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repo?.name ?? '未选择项目'} · 收起窗口不会停止任务</div>
+            <div title={scope === 'project' ? repo?.path : undefined} style={{ color: C.textSecondary, fontSize: 11, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scope === 'project' ? repo?.name ?? '未选择项目' : scope === 'running' ? '全部项目运行中' : '全部项目任务'} · 收起窗口不会停止任务</div>
           </div>
-          <button type="button" disabled={!repo} onClick={() => edit()} style={buttonStyle}><Plus size={13} />添加</button>
+          <button type="button" disabled={!repo} title={repo ? `添加到当前项目 ${repo.name}` : '未选择项目'} onClick={() => edit()} style={buttonStyle}><Plus size={13} />添加</button>
           <button ref={closeButton} type="button" onClick={onClose} aria-label="收起后台任务" title="收起，不停止任务" style={buttonStyle}><X size={16} /></button>
         </header>
         {controller.error && <div role="alert" style={{ padding: '8px 16px', color: C.conflict, fontSize: 12, whiteSpace: 'pre-wrap' }}>{controller.error} <button type="button" onClick={() => void controller.refresh()} style={buttonStyle}>刷新状态</button></div>}
@@ -121,7 +132,7 @@ export function BackgroundTasksModal({ repo, settings, controller, onSave, onClo
           <aside className="background-task-list" style={{ display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.border}`, minHeight: 0 }}>
             <div style={{ padding: 12, display: 'grid', gap: 8 }}>
               <select aria-label="任务范围" value={scope} onChange={event => { setScope(event.target.value as typeof scope); setEditing(null); setSelectedKey(null); setShowDetails(false); }} style={inputStyle}>
-                <option value="project">当前项目</option><option value="running">全部运行中</option>
+                <option value="all">全部任务</option><option value="project">当前项目</option><option value="running">全部运行中</option>
               </select>
               <input aria-label="搜索任务" placeholder="搜索任务…" value={search} onChange={event => setSearch(event.target.value)} style={inputStyle} />
             </div>
@@ -131,7 +142,7 @@ export function BackgroundTasksModal({ repo, settings, controller, onSave, onClo
                 <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: selected?.key === row.key && !editing ? C.selectedBg : 'transparent' }}>
                   <button type="button" aria-pressed={selected?.key === row.key && !editing} onClick={() => { setSelectedKey(row.key); setShowDetails(true); setEditing(null); setFormError(null); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', padding: '8px 0', color: C.textPrimary, textAlign: 'left', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}><span title={row.request.name} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.request.name}</span><span style={{ color: row.state?.status === 'failed' ? C.conflict : taskActive(row.state) ? C.added : C.textSecondary, whiteSpace: 'nowrap', fontSize: 11 }}>{taskStatusLabel(row.state)}</span></div>
-                    <div title={row.request.command} style={{ color: C.textSecondary, fontFamily: 'JetBrains Mono, monospace', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 5 }}>{scope === 'running' ? `${row.request.repoName} · ` : ''}{row.request.command}</div>
+                    <div title={row.request.command} style={{ color: C.textSecondary, fontFamily: 'JetBrains Mono, monospace', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 5 }}>{scope !== 'project' ? `${row.request.repoName} · ` : ''}{row.request.command}</div>
                   </button>
                   {row.definition && !taskActive(row.state) && <button type="button" aria-label={`启动 ${row.request.name}`} disabled={controller.pending.has(row.key)} onClick={() => { setSelectedKey(row.key); setShowDetails(true); setEditing(null); void controller.start(row.request); }} style={buttonStyle}><Play size={12} /></button>}
                 </div>
@@ -142,11 +153,11 @@ export function BackgroundTasksModal({ repo, settings, controller, onSave, onClo
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.panel1 }}>
               <button className="background-task-back" type="button" onClick={() => { setShowDetails(false); setEditing(null); }} style={buttonStyle}><ArrowLeft size={13} />返回</button>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{editing ? '任务配置' : selected?.request.name ?? '选择任务'}</div>
+                <div style={{ fontSize: 13, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{editing ? `任务配置 · ${editingRepo?.name}` : selected?.request.name ?? '选择任务'}</div>
                 {!editing && selected && <div style={{ fontSize: 11, color: C.textSecondary, marginTop: 4 }}>{taskStatusLabel(selected.state)}{selected.state?.exitCode != null ? ` · 退出码 ${selected.state.exitCode}` : ''}</div>}
               </div>
               {!editing && selected && <>
-                {selected.definition && !active && <button type="button" disabled={busy} onClick={() => edit(selected.definition)} style={buttonStyle}>编辑</button>}
+                {selected.definition && !active && <button type="button" disabled={busy} onClick={() => edit(selected)} style={buttonStyle}>编辑</button>}
                 {selected.definition && !active && <button type="button" disabled={busy} title="删除配置并丢弃本轮日志" onClick={() => void remove()} style={buttonStyle}>删除</button>}
                 {(active || selected.definition) && <button type="button" title={active ? '结束此任务及其子进程' : '启动任务'} disabled={busy} onClick={() => void (active ? controller.stop(selected.request.repoId, selected.request.taskId) : controller.start(selected.request))} style={{ ...buttonStyle, color: active ? C.conflict : C.btnPrimary }}>
                   {active ? <Square size={12} /> : <Play size={12} />}{busy ? '处理中…' : active ? '停止' : '启动'}
@@ -154,10 +165,10 @@ export function BackgroundTasksModal({ repo, settings, controller, onSave, onClo
               </>}
             </div>
             {editing ? <form onSubmit={event => { event.preventDefault(); save(); }} style={{ padding: 20, overflowY: 'auto', display: 'grid', gap: 14, alignContent: 'start' }}>
-              {(settings.commandCenter.projectCommands[repo?.id ?? ''] ?? []).length > 0 && <label style={{ color: C.textSecondary, fontSize: 12 }}>从项目命令复制<select aria-label="从项目命令复制" defaultValue="" onChange={event => {
-                const command = settings.commandCenter.projectCommands[repo!.id]?.find(item => item.id === event.target.value);
+              {(settings.commandCenter.projectCommands[editingRepo?.id ?? ''] ?? []).length > 0 && <label style={{ color: C.textSecondary, fontSize: 12 }}>从项目命令复制<select aria-label="从项目命令复制" defaultValue="" onChange={event => {
+                const command = settings.commandCenter.projectCommands[editingRepo!.id]?.find(item => item.id === event.target.value);
                 if (command) setEditing({ ...editing, name: command.label, command: command.command });
-              }} style={{ ...inputStyle, marginTop: 6 }}><option value="">选择已有命令…</option>{settings.commandCenter.projectCommands[repo!.id]!.map(command => <option key={command.id} value={command.id}>{command.label}</option>)}</select></label>}
+              }} style={{ ...inputStyle, marginTop: 6 }}><option value="">选择已有命令…</option>{settings.commandCenter.projectCommands[editingRepo!.id]!.map(command => <option key={command.id} value={command.id}>{command.label}</option>)}</select></label>}
               <label style={{ color: C.textSecondary, fontSize: 12 }}>名称<input required aria-label="任务名称" value={editing.name} onChange={event => setEditing({ ...editing, name: event.target.value })} placeholder="例如：前端开发" style={{ ...inputStyle, marginTop: 6 }} /></label>
               <label style={{ color: C.textSecondary, fontSize: 12 }}>命令<textarea required aria-label="任务命令" value={editing.command} onChange={event => setEditing({ ...editing, command: event.target.value })} placeholder="npm run dev" rows={3} style={{ ...inputStyle, marginTop: 6, fontFamily: 'JetBrains Mono, monospace' }} /></label>
               <label style={{ color: C.textSecondary, fontSize: 12 }}>项目内工作目录<input aria-label="任务工作目录" value={editing.workDir} onChange={event => setEditing({ ...editing, workDir: event.target.value })} placeholder=". 或 frontend" style={{ ...inputStyle, marginTop: 6 }} /></label>

@@ -146,10 +146,15 @@ export function RepoFilesTab({ repo, settings, active, position, onPositionChang
   }, [loadDirectory, loadFile]);
 
   useEffect(() => {
-    if (!active || !windowActive) {
-      // Effect: 只保留阅读位置，失焦即释放正文、渲染结果和目录缓存，并禁止旧请求回填。
+    if (!active) {
+      // Effect: 离开文件页才释放阅读数据，并禁止旧请求回填。
       session.release();
       restoringTree.current = true;
+      setContextMenu(null);
+      return;
+    }
+    if (!windowActive) {
+      // Rule: 失焦只暂停自动刷新，保留当前文件树、正文与预览供继续阅读。
       setContextMenu(null);
       return;
     }

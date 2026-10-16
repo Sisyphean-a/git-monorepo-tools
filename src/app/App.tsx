@@ -177,6 +177,7 @@ function AppDialogs({
       {dialogs.monitorOpen && <ResourceMonitorModal onClose={dialogs.closeMonitor} />}
       {dialogs.tasksOpen && <BackgroundTasksModal
         repo={snapshot.repos.find(repo => repo.id === workspace.selectedRepoId) ?? null}
+        repos={snapshot.repos}
         settings={workspace.settings}
         controller={tasks}
         onSave={workspace.setBackgroundTasks}
