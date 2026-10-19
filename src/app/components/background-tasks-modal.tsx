@@ -138,15 +138,19 @@ export function BackgroundTasksModal({ repo, repos, settings, controller, onSave
             </div>
             <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
               {visible.length === 0 && <div style={{ padding: 16, color: C.textSecondary, fontSize: 12 }}>{search ? '没有匹配的任务' : scope === 'running' ? '当前没有运行中的任务' : '还没有任务，点击“添加”保存项目命令。'}</div>}
-              {visible.map(row => (
-                <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: selected?.key === row.key && !editing ? C.selectedBg : 'transparent' }}>
+              {visible.map(row => {
+                const rowActive = taskActive(row.state);
+                const rowBusy = controller.pending.has(row.key) || row.state?.status === 'stopping';
+                return <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: selected?.key === row.key && !editing ? C.selectedBg : 'transparent' }}>
                   <button type="button" aria-pressed={selected?.key === row.key && !editing} onClick={() => { setSelectedKey(row.key); setShowDetails(true); setEditing(null); setFormError(null); }} style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', padding: '8px 0', color: C.textPrimary, textAlign: 'left', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}><span title={row.request.name} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.request.name}</span><span style={{ color: row.state?.status === 'failed' ? C.conflict : taskActive(row.state) ? C.added : C.textSecondary, whiteSpace: 'nowrap', fontSize: 11 }}>{taskStatusLabel(row.state)}</span></div>
                     <div title={row.request.command} style={{ color: C.textSecondary, fontFamily: 'JetBrains Mono, monospace', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 5 }}>{scope !== 'project' ? `${row.request.repoName} · ` : ''}{row.request.command}</div>
                   </button>
-                  {row.definition && !taskActive(row.state) && <button type="button" aria-label={`启动 ${row.request.name}`} disabled={controller.pending.has(row.key)} onClick={() => { setSelectedKey(row.key); setShowDetails(true); setEditing(null); void controller.start(row.request); }} style={buttonStyle}><Play size={12} /></button>}
-                </div>
-              ))}
+                  {(rowActive || row.definition) && <button type="button" aria-label={`${rowActive ? '停止' : '启动'} ${row.request.name}`} aria-busy={rowBusy} title={rowBusy ? '处理中…' : rowActive ? '结束此任务及其子进程' : '启动任务'} disabled={rowBusy} onClick={() => void (rowActive ? controller.stop(row.request.repoId, row.request.taskId) : controller.start(row.request))} style={{ ...buttonStyle, width: 32, height: 30, padding: 0, justifyContent: 'center', flexShrink: 0, color: rowActive ? C.conflict : C.btnPrimary, opacity: rowBusy ? 0.5 : 1, cursor: rowBusy ? 'default' : 'pointer' }}>
+                    {rowActive ? <Square size={12} /> : <Play size={12} />}
+                  </button>}
+                </div>;
+              })}
             </div>
           </aside>
           <section className="background-task-detail" style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0, background: C.appBg }}>

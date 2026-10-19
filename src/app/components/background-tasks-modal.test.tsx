@@ -60,6 +60,49 @@ test('all tasks remain visible without a current project and preserve sessions o
   assert.match(html, /disabled="" title="未选择项目"/);
 });
 
+test('list offers start and stop in place for every task state', () => {
+  const settings = { ...DEFAULT_SETTINGS, backgroundTasks: {
+    A: [{ id: 'idle', name: '待启动任务', command: 'npm run dev', workDir: '.' }],
+    B: [{ id: 'dev', name: '目标任务', command: 'npm start', workDir: '.' }],
+  } };
+  for (const status of [undefined, 'running', 'stopping', 'stopped', 'exited', 'failed'] as const) {
+    const state: BackgroundTaskState | undefined = status && { repoId: 'B', repoName: otherRepo.name, repoPath: otherRepo.path, taskId: 'dev', name: '目标任务', command: 'npm start', workDir: '.', runId: 1, revision: 1, status, startedAt: 1, endedAt: 0, exitCode: null, error: '' };
+    const html = renderToStaticMarkup(<BackgroundTasksModal repo={repo} repos={[repo, otherRepo]} settings={settings} controller={{ ...controller, states: state ? { [taskKey('B', 'dev')]: state } : {} }} onSave={() => {}} onClose={() => {}} />);
+    const list = html.match(/<aside\b[^>]*>([\s\S]*?)<\/aside>/)?.[1];
+    assert.ok(list);
+    const active = status === 'running' || status === 'stopping';
+    const action = list.match(/<button[^>]*aria-label="(启动|停止) 目标任务"[^>]*>/)?.[0];
+    assert.ok(action, `列表缺少 ${status ?? '未启动'} 状态的操作`);
+    assert.match(action, new RegExp(`aria-label="${active ? '停止' : '启动'} 目标任务"`));
+    assert.equal(action.includes('disabled=""'), status === 'stopping');
+    assert.equal(action.includes('aria-busy="true"'), status === 'stopping');
+    assert.equal(list.match(/aria-label="启动 待启动任务"/g)?.length, 1);
+  }
+});
+
+test('list disables only the pending task and still allows other tasks to start', () => {
+  const settings = { ...DEFAULT_SETTINGS, backgroundTasks: { A: [
+    { id: 'one', name: '任务一', command: 'npm start', workDir: '.' },
+    { id: 'two', name: '任务二', command: 'npm run dev', workDir: '.' },
+  ] } };
+  const html = renderToStaticMarkup(<BackgroundTasksModal repo={repo} repos={[repo]} settings={settings} controller={{ ...controller, pending: new Set([taskKey('A', 'one')]) }} onSave={() => {}} onClose={() => {}} />);
+  const list = html.match(/<aside\b[^>]*>([\s\S]*?)<\/aside>/)?.[1];
+  assert.ok(list);
+  assert.match(list.match(/<button[^>]*aria-label="启动 任务一"[^>]*>/)?.[0] ?? '', /disabled=""/);
+  assert.doesNotMatch(list.match(/<button[^>]*aria-label="启动 任务二"[^>]*>/)?.[0] ?? '', /disabled/);
+});
+
+test('list can stop sessions outside discovery but cannot restart them without configuration', () => {
+  const state: BackgroundTaskState = { repoId: 'missing', repoName: '离线项目', repoPath: 'E:/missing', taskId: 'watch', name: '监听任务', command: 'npm run watch', workDir: '.', runId: 1, revision: 1, status: 'running', startedAt: 1, endedAt: 0, exitCode: null, error: '' };
+  for (const status of ['running', 'stopped'] as const) {
+    const html = renderToStaticMarkup(<BackendProvider backend={{} as AppBackend}><BackgroundTasksModal repo={null} repos={[]} settings={DEFAULT_SETTINGS} controller={{ ...controller, states: { [taskKey(state.repoId, state.taskId)]: { ...state, status } } }} onSave={() => {}} onClose={() => {}} /></BackendProvider>);
+    const list = html.match(/<aside\b[^>]*>([\s\S]*?)<\/aside>/)?.[1];
+    assert.ok(list);
+    assert.equal(list.includes('aria-label="停止 监听任务"'), status === 'running');
+    assert.doesNotMatch(list, /aria-label="启动 监听任务"/);
+  }
+});
+
 test('configured tasks merge their runtime state without duplicate rows', () => {
   const state: BackgroundTaskState = { repoId: 'B', repoName: otherRepo.name, repoPath: otherRepo.path, taskId: 'dev', name: '开发 B', command: 'npm start', workDir: '.', runId: 1, revision: 1, status: 'running', startedAt: 1, endedAt: 0, exitCode: null, error: '' };
   const settings = { ...DEFAULT_SETTINGS, backgroundTasks: { B: [{ id: 'dev', name: state.name, command: state.command, workDir: '.' }] } };
