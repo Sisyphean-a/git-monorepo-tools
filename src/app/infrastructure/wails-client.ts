@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, CommitDetail, FileChange, FileDiff, RepoCommandResult, RepoFileContent, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, RepoTreeEntry, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
+import type { AppSettings, AppSnapshot, CommitDetail, FileChange, FileDiff, HistoryScope, RepoCommandResult, RepoFileContent, RepoHistoryPage, RepoLog, RepoMutationAction, RepoSnapshotUpdate, RepoTreeEntry, TerminalSessionInfo, WorkspaceBootstrap } from '../domain/types.js';
 import type {
   BatchResponse,
   BackgroundTaskBackend,
@@ -28,6 +28,8 @@ interface SnapshotRequest {
   proxy: AppSettings['gitBehavior']['proxy'];
   repoPath?: string;
   repoCategory?: string;
+  historyScope?: HistoryScope;
+  historyRefs?: string[];
 }
 
 type WailsSnapshotBinding = (request: SnapshotRequest) => Promise<AppSnapshot>;
@@ -222,8 +224,13 @@ export async function fetchRepoLog(repoId: string, settings: AppSettings) {
   return getWailsBindings().GetRepoLog(repoId, buildSnapshotRequest(settings));
 }
 
-export async function fetchRepoHistory({ repoId, offset, limit, settings }: RepoHistoryRequest) {
-  return getWailsBindings().GetRepoHistory(repoId, buildSnapshotRequest(settings), offset, limit);
+export async function fetchRepoHistory({ repoId, offset, limit, settings, scope, refs }: RepoHistoryRequest) {
+  const request: SnapshotRequest = {
+    ...buildSnapshotRequest(settings),
+    historyScope: scope,
+    historyRefs: refs,
+  };
+  return getWailsBindings().GetRepoHistory(repoId, request, offset, limit);
 }
 
 export async function fetchCommitDetail({ repoId, hash, settings }: CommitDetailRequest) {

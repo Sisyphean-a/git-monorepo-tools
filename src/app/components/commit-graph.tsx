@@ -5,6 +5,8 @@ const LANE_WIDTH = 14;
 const ROW_HEIGHT = 56;
 const NODE_Y = 20;
 const GRAPH_COLORS = [C.btnPrimary, C.aiAccent, C.added, C.modified, '#a78bfa', '#fb7185'];
+// Rule: 轨道过多时压缩到固定宽度，保证提交消息仍有可读空间；真正的收敛靠历史范围筛选。
+export const MAX_GRAPH_LANES = 8;
 
 export type GraphRow = {
   lane: number;
@@ -58,13 +60,14 @@ export function buildCommitGraph(commits: CommitSummary[]): GraphRow[] {
 }
 
 export function commitGraphWidth(laneCount: number) {
-  return Math.max(1, laneCount) * LANE_WIDTH;
+  return Math.min(Math.max(1, laneCount), MAX_GRAPH_LANES) * LANE_WIDTH;
 }
 
 export function CommitGraphRow({ row, selected, laneCount }: { row: GraphRow; selected: boolean; laneCount: number }) {
   const width = commitGraphWidth(laneCount);
-  const fromX = laneX(row.lane);
-  const nodeColor = graphColor(row.lane);
+  const fromLane = displayLane(row.lane);
+  const fromX = laneX(fromLane);
+  const nodeColor = graphColor(fromLane);
 
   return (
     <div style={{ width, minWidth: width, height: ROW_HEIGHT }} aria-hidden="true">
@@ -73,15 +76,19 @@ export function CommitGraphRow({ row, selected, laneCount }: { row: GraphRow; se
         {Array.from({ length: row.lanesBefore }, (_, lane) => {
           const targetLane = row.laneTargets[lane];
           if (lane === row.lane || targetLane === undefined || targetLane < 0) return null;
-          return <line key={`pass-${lane}`} x1={laneX(lane)} y1={0} x2={laneX(targetLane)} y2={ROW_HEIGHT} stroke={graphColor(lane)} strokeWidth={1.5} opacity={0.8} />;
+          return <line key={`pass-${lane}`} x1={laneX(displayLane(lane))} y1={0} x2={laneX(displayLane(targetLane))} y2={ROW_HEIGHT} stroke={graphColor(displayLane(lane))} strokeWidth={1.5} opacity={0.8} />;
         })}
         {row.parentLanes.map(parentLane => (
-          <line key={`parent-${parentLane}`} x1={fromX} y1={NODE_Y} x2={laneX(parentLane)} y2={ROW_HEIGHT} stroke={nodeColor} strokeWidth={1.8} />
+          <line key={`parent-${parentLane}`} x1={fromX} y1={NODE_Y} x2={laneX(displayLane(parentLane))} y2={ROW_HEIGHT} stroke={nodeColor} strokeWidth={1.8} />
         ))}
         <circle cx={fromX} cy={NODE_Y} r={selected ? 5 : 4} fill={selected ? nodeColor : C.panel2} stroke={nodeColor} strokeWidth={1.8} />
       </svg>
     </div>
   );
+}
+
+function displayLane(lane: number) {
+  return Math.min(lane, MAX_GRAPH_LANES - 1);
 }
 
 function laneX(lane: number) {

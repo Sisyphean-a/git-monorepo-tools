@@ -1,5 +1,6 @@
 import { GripVertical, Plus, Star, Trash2 } from 'lucide-react';
 import { C } from '../theme.js';
+import { groupReposByWorktree, isWorktreeGroupFavorite, type WorktreeGroup } from '../domain/worktree-groups.js';
 import type { AppSettings, Repo } from '../domain/types.js';
 
 interface RepositoriesSettingsTabProps {
@@ -10,7 +11,7 @@ interface RepositoriesSettingsTabProps {
   onRemoveScanRoot: (path: string) => void;
   onIgnoreRepo: (path: string) => void;
   onUnignoreRepo: (path: string) => void;
-  onToggleFavorite: (repoId: string) => void;
+  onToggleFavorite: (repoIds: string[]) => void;
 }
 
 export function RepositoriesSettingsTab({
@@ -24,10 +25,16 @@ export function RepositoriesSettingsTab({
   onToggleFavorite,
 }: RepositoriesSettingsTabProps) {
   const monitoredRepos = filterMonitoredRepos(repos, settings.ignoredRepoPaths);
+  const monitoredGroups = groupReposByWorktree(monitoredRepos);
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <span style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>仓库（{monitoredRepos.length}）</span>
+        <span style={{ color: C.textSecondary, fontSize: 12, fontWeight: 600 }}>
+          仓库（{monitoredGroups.length}）
+          {monitoredRepos.length !== monitoredGroups.length && (
+            <span style={{ color: C.textWeak }}> · 工作树（{monitoredRepos.length}）</span>
+          )}
+        </span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button
             onClick={() => void onAddScanRoot()}
@@ -94,50 +101,29 @@ export function RepositoriesSettingsTab({
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {monitoredRepos.map(repo => {
-          const favorite = settings.favoriteRepoIds.includes(repo.id);
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {monitoredGroups.map(group => {
+          if (group.repos.length <= 1) {
+            const repo = group.repos[0];
+            if (!repo) return null;
+            return (
+              <RepositoryRow
+                key={repo.id}
+                repo={repo}
+                favorite={settings.favoriteRepoIds.includes(repo.id)}
+                onIgnoreRepo={onIgnoreRepo}
+                onToggleFavorite={onToggleFavorite}
+              />
+            );
+          }
           return (
-          <div
-            key={repo.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              background: C.panel1,
-              border: `1px solid ${C.border}`,
-              borderRadius: 6,
-              padding: '8px 10px',
-            }}
-          >
-            <GripVertical size={12} color={C.textWeak} style={{ cursor: 'grab', flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: C.textPrimary, fontSize: 12, fontWeight: 500 }}>{repo.name}</div>
-              <div style={{ color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {repo.path}
-              </div>
-            </div>
-            <span style={{ color: C.textWeak, fontSize: 10, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 3, padding: '2px 6px', flexShrink: 0 }}>
-              {repo.category}
-            </span>
-            <button
-              type="button"
-              title="停止监控"
-              onClick={() => onIgnoreRepo(repo.path)}
-              style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 4, padding: '3px 6px', cursor: 'pointer', fontSize: 10, flexShrink: 0 }}
-            >
-              停止监控
-            </button>
-            <button
-              type="button"
-              aria-label={favorite ? `取消收藏 ${repo.name}` : `收藏 ${repo.name}`}
-              title={favorite ? '取消收藏' : '收藏'}
-              onClick={() => onToggleFavorite(repo.id)}
-              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', color: favorite ? C.modified : C.textWeak, cursor: 'pointer', padding: 3 }}
-            >
-              <Star size={14} fill={favorite ? 'currentColor' : 'none'} />
-            </button>
-          </div>
+            <WorktreeGroupRows
+              key={group.id}
+              group={group}
+              favorite={isWorktreeGroupFavorite(group, settings.favoriteRepoIds)}
+              onIgnoreRepo={onIgnoreRepo}
+              onToggleFavorite={onToggleFavorite}
+            />
           );
         })}
       </div>
@@ -170,6 +156,113 @@ export function RepositoriesSettingsTab({
   );
 }
 
+function RepositoryRow({
+  repo,
+  favorite,
+  onIgnoreRepo,
+  onToggleFavorite,
+}: {
+  repo: Repo;
+  favorite: boolean;
+  onIgnoreRepo: (path: string) => void;
+  onToggleFavorite: (repoIds: string[]) => void;
+}) {
+  return (
+    <div style={repoRowStyle}>
+      <GripVertical size={12} color={C.textWeak} style={{ cursor: 'grab', flexShrink: 0 }} />
+      <RepoInfo repo={repo} />
+      <CategoryChip category={repo.category} />
+      <StopMonitoringButton repo={repo} onIgnoreRepo={onIgnoreRepo} />
+      <FavoriteButton label={repo.name} favorite={favorite} onClick={() => onToggleFavorite([repo.id])} />
+    </div>
+  );
+}
+
+function WorktreeGroupRows({
+  group,
+  favorite,
+  onIgnoreRepo,
+  onToggleFavorite,
+}: {
+  group: WorktreeGroup;
+  favorite: boolean;
+  onIgnoreRepo: (path: string) => void;
+  onToggleFavorite: (repoIds: string[]) => void;
+}) {
+  return (
+    <div style={groupContainerStyle}>
+      <div style={groupHeaderStyle}>
+        <GripVertical size={12} color={C.textWeak} style={{ cursor: 'grab', flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={repoNameStyle}>
+            {group.name}
+            <span style={groupCountStyle}>· {group.repos.length} 个工作树</span>
+          </div>
+          <div style={repoPathStyle}>{group.mainRepo?.path ?? group.repos[0]?.path ?? ''}</div>
+        </div>
+        <CategoryChip category={group.category} />
+        <FavoriteButton
+          label={`${group.name} 的全部工作树`}
+          favorite={favorite}
+          onClick={() => onToggleFavorite(group.repos.map(repo => repo.id))}
+        />
+      </div>
+      <div style={groupChildrenStyle}>
+        {group.repos.map(repo => (
+          <div key={repo.id} style={childRowStyle}>
+            <RepoInfo repo={repo} main={Boolean(repo.isMainWorktree)} />
+            <span style={metaChipStyle} title={`分支 ${repo.branch}`}>{repo.branch}</span>
+            <StopMonitoringButton repo={repo} onIgnoreRepo={onIgnoreRepo} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RepoInfo({ repo, main = false }: { repo: Repo; main?: boolean }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={repoNameStyle}>
+        {repo.name}
+        {main && <span style={mainTagStyle}>主</span>}
+      </div>
+      <div style={repoPathStyle}>{repo.path}</div>
+    </div>
+  );
+}
+
+function CategoryChip({ category }: { category: string }) {
+  return <span style={metaChipStyle}>{category}</span>;
+}
+
+function StopMonitoringButton({ repo, onIgnoreRepo }: { repo: Repo; onIgnoreRepo: (path: string) => void }) {
+  return (
+    <button
+      type="button"
+      title={`停止监控 ${repo.name}`}
+      onClick={() => onIgnoreRepo(repo.path)}
+      style={stopButtonStyle}
+    >
+      停止监控
+    </button>
+  );
+}
+
+function FavoriteButton({ label, favorite, onClick }: { label: string; favorite: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={favorite ? `取消收藏 ${label}` : `收藏 ${label}`}
+      title={favorite ? '取消收藏' : '收藏'}
+      onClick={onClick}
+      style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', color: favorite ? C.modified : C.textWeak, cursor: 'pointer', padding: 3, flexShrink: 0 }}
+    >
+      <Star size={14} fill={favorite ? 'currentColor' : 'none'} />
+    </button>
+  );
+}
+
 export function filterMonitoredRepos(repos: Repo[], ignoredRepoPaths: string[]) {
   const ignoredPaths = new Set(ignoredRepoPaths.map(normalizeRepoPath));
   return repos.filter(repo => !ignoredPaths.has(normalizeRepoPath(repo.path)));
@@ -178,3 +271,15 @@ export function filterMonitoredRepos(repos: Repo[], ignoredRepoPaths: string[]) 
 function normalizeRepoPath(path: string) {
   return path.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
+
+const repoRowStyle = { display: 'flex', alignItems: 'center', gap: 8, background: C.panel1, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px' } as const;
+const repoNameStyle = { color: C.textPrimary, fontSize: 12, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 } as const;
+const repoPathStyle = { color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const } as const;
+const metaChipStyle = { color: C.textWeak, fontSize: 10, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 3, padding: '2px 6px', flexShrink: 0 } as const;
+const mainTagStyle = { color: C.textSecondary, fontSize: 9, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 3, padding: '0 4px', flexShrink: 0 } as const;
+const groupCountStyle = { color: C.textWeak, fontSize: 10, fontWeight: 400 } as const;
+const stopButtonStyle = { background: C.panel2, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 4, padding: '3px 6px', cursor: 'pointer', fontSize: 10, flexShrink: 0 } as const;
+const groupContainerStyle = { background: C.panel1, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' } as const;
+const groupHeaderStyle = { display: 'flex', alignItems: 'center', gap: 8, background: C.panel2, padding: '8px 10px' } as const;
+const groupChildrenStyle = { display: 'flex', flexDirection: 'column' } as const;
+const childRowStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px 7px 26px', borderTop: `1px solid ${C.border}` } as const;

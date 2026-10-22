@@ -906,8 +906,8 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
     GetRepoLog: async () => {
       throw new Error('unused');
     },
-    GetRepoHistory: async (repoId: string, _request: unknown, offset: number, limit: number) => {
-      calls.push(`GetRepoHistory:${repoId}:${offset}:${limit}`);
+    GetRepoHistory: async (repoId: string, request: { historyScope?: string; historyRefs?: string[] }, offset: number, limit: number) => {
+      calls.push(`GetRepoHistory:${repoId}:${offset}:${limit}:${request.historyScope ?? '-'}:${(request.historyRefs ?? []).join(',') || '-'}`);
       return {
         repoId,
         repoName: 'repo-1',
@@ -1039,7 +1039,7 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
     await setReadActivity('repo-1', true);
     await setReadActivity('repo-1', false);
     await setReadActivity('', false);
-    const history = await fetchRepoHistory({ repoId: 'repo-1', offset: 50, limit: 50 });
+    const history = await fetchRepoHistory({ repoId: 'repo-1', offset: 50, limit: 50, scope: 'selected', refs: ['refs/heads/main'] });
     assert.equal(history.total, 51);
     assert.equal(history.commits[0]?.hash, 'abc');
     const detail = await fetchCommitDetail({ repoId: 'repo-1', hash: 'abc' });
@@ -1101,7 +1101,7 @@ test('history and repository file bindings use dedicated Wails bridge', async ()
     'SetReadActivity:repo-1:true',
     'SetReadActivity:repo-1:false',
     'SetReadActivity::false',
-    'GetRepoHistory:repo-1:50:50',
+    'GetRepoHistory:repo-1:50:50:selected:refs/heads/main',
     'GetCommitDetail:repo-1:abc',
     'ListRepoDirectory:repo-1:/repo/a:测试:.',
     'ReadRepoFile:repo-1:/repo/a:测试:src/app.ts',

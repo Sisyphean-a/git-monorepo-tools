@@ -89,6 +89,9 @@ export function toRepoSummary(repo: Repo): Repo {
     scanError: repo.scanError,
     lastScan: repo.lastScan,
     remoteCheck: repo.remoteCheck,
+    worktreeGroupId: repo.worktreeGroupId,
+    worktreeGroupName: repo.worktreeGroupName,
+    isMainWorktree: repo.isMainWorktree,
   };
 }
 

@@ -11,6 +11,9 @@ type Request struct {
 	Proxy            GitProxySettings `json:"proxy"`
 	RepoPath         string           `json:"repoPath,omitempty"`
 	RepoCategory     string           `json:"repoCategory,omitempty"`
+	// Rule: 历史查看范围只由 GetRepoHistory 读取，其他快照请求忽略这两个字段。
+	HistoryScope string   `json:"historyScope,omitempty"`
+	HistoryRefs  []string `json:"historyRefs,omitempty"`
 }
 
 type RepoActionRequest struct {
@@ -119,6 +122,10 @@ type Repo struct {
 	ScanError    string       `json:"scanError,omitempty"`
 	LastScan     string       `json:"lastScan"`
 	RemoteCheck  *RemoteCheck `json:"remoteCheck,omitempty"`
+	// Rule: 工作树分组只用于侧栏聚合；Repo 仍是工作树级身份与操作对象。
+	WorktreeGroupID   string `json:"worktreeGroupId,omitempty"`
+	WorktreeGroupName string `json:"worktreeGroupName,omitempty"`
+	IsMainWorktree    bool   `json:"isMainWorktree,omitempty"`
 }
 
 type RepoDetail struct {
@@ -180,15 +187,26 @@ type CommitDetail struct {
 	ChangedFiles []FileChange `json:"changedFiles"`
 }
 
+type RepoRef struct {
+	Name      string `json:"name"`
+	ShortName string `json:"shortName"`
+	Kind      string `json:"kind"`
+	Hash      string `json:"hash"`
+	Current   bool   `json:"current,omitempty"`
+}
+
 type RepoHistoryPage struct {
-	RepoID   string          `json:"repoId"`
-	RepoName string          `json:"repoName"`
-	Path     string          `json:"path"`
-	Offset   int             `json:"offset"`
-	Limit    int             `json:"limit"`
-	Total    int             `json:"total"`
-	HasMore  bool            `json:"hasMore"`
-	Commits  []CommitSummary `json:"commits"`
+	RepoID       string          `json:"repoId"`
+	RepoName     string          `json:"repoName"`
+	Path         string          `json:"path"`
+	Offset       int             `json:"offset"`
+	Limit        int             `json:"limit"`
+	Total        int             `json:"total"`
+	HasMore      bool            `json:"hasMore"`
+	Scope        string          `json:"scope,omitempty"`
+	SelectedRefs []string        `json:"selectedRefs,omitempty"`
+	Refs         []RepoRef       `json:"refs,omitempty"`
+	Commits      []CommitSummary `json:"commits"`
 }
 
 type RepoLog struct {

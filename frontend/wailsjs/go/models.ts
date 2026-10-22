@@ -480,6 +480,9 @@ export namespace snapshot {
 	    scanError?: string;
 	    lastScan: string;
 	    remoteCheck?: RemoteCheck;
+	    worktreeGroupId?: string;
+	    worktreeGroupName?: string;
+	    isMainWorktree?: boolean;
 	    files: FileChange[];
 	    stagedCount: number;
 	    unstagedCount: number;
@@ -510,6 +513,9 @@ export namespace snapshot {
 	        this.scanError = source["scanError"];
 	        this.lastScan = source["lastScan"];
 	        this.remoteCheck = this.convertValues(source["remoteCheck"], RemoteCheck);
+	        this.worktreeGroupId = source["worktreeGroupId"];
+	        this.worktreeGroupName = source["worktreeGroupName"];
+	        this.isMainWorktree = source["isMainWorktree"];
 	        this.files = this.convertValues(source["files"], FileChange);
 	        this.stagedCount = source["stagedCount"];
 	        this.unstagedCount = source["unstagedCount"];
@@ -570,6 +576,9 @@ export namespace snapshot {
 	    scanError?: string;
 	    lastScan: string;
 	    remoteCheck?: RemoteCheck;
+	    worktreeGroupId?: string;
+	    worktreeGroupName?: string;
+	    isMainWorktree?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Repo(source);
@@ -593,6 +602,9 @@ export namespace snapshot {
 	        this.scanError = source["scanError"];
 	        this.lastScan = source["lastScan"];
 	        this.remoteCheck = this.convertValues(source["remoteCheck"], RemoteCheck);
+	        this.worktreeGroupId = source["worktreeGroupId"];
+	        this.worktreeGroupName = source["worktreeGroupName"];
+	        this.isMainWorktree = source["isMainWorktree"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -922,6 +934,8 @@ export namespace snapshot {
 	    proxy: GitProxySettings;
 	    repoPath?: string;
 	    repoCategory?: string;
+	    historyScope?: string;
+	    historyRefs?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Request(source);
@@ -939,6 +953,8 @@ export namespace snapshot {
 	        this.proxy = this.convertValues(source["proxy"], GitProxySettings);
 	        this.repoPath = source["repoPath"];
 	        this.repoCategory = source["repoCategory"];
+	        this.historyScope = source["historyScope"];
+	        this.historyRefs = source["historyRefs"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1106,6 +1122,26 @@ export namespace snapshot {
 	        this.revision = source["revision"];
 	    }
 	}
+	export class RepoRef {
+	    name: string;
+	    shortName: string;
+	    kind: string;
+	    hash: string;
+	    current?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RepoRef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.shortName = source["shortName"];
+	        this.kind = source["kind"];
+	        this.hash = source["hash"];
+	        this.current = source["current"];
+	    }
+	}
 	export class RepoHistoryPage {
 	    repoId: string;
 	    repoName: string;
@@ -1114,6 +1150,9 @@ export namespace snapshot {
 	    limit: number;
 	    total: number;
 	    hasMore: boolean;
+	    scope?: string;
+	    selectedRefs?: string[];
+	    refs?: RepoRef[];
 	    commits: CommitSummary[];
 	
 	    static createFrom(source: any = {}) {
@@ -1129,6 +1168,9 @@ export namespace snapshot {
 	        this.limit = source["limit"];
 	        this.total = source["total"];
 	        this.hasMore = source["hasMore"];
+	        this.scope = source["scope"];
+	        this.selectedRefs = source["selectedRefs"];
+	        this.refs = this.convertValues(source["refs"], RepoRef);
 	        this.commits = this.convertValues(source["commits"], CommitSummary);
 	    }
 	
@@ -1168,6 +1210,7 @@ export namespace snapshot {
 	        this.content = source["content"];
 	    }
 	}
+	
 	
 	export class RepoTreeEntry {
 	    name: string;

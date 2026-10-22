@@ -26,6 +26,10 @@ export interface Repo {
   scanError?: string;
   lastScan: string;
   remoteCheck?: RemoteCheck;
+  // Rule: 工作树分组只用于侧栏与页头聚合；repo.id 仍是工作树级身份和操作目标。
+  worktreeGroupId?: string;
+  worktreeGroupName?: string;
+  isMainWorktree?: boolean;
 }
 
 export interface FileChange {
@@ -229,7 +233,20 @@ export interface RepoHistoryPage {
   limit: number;
   total: number;
   hasMore: boolean;
+  scope?: HistoryScope;
+  selectedRefs?: string[];
+  refs?: RepoRef[];
   commits: CommitSummary[];
+}
+
+export type HistoryScope = 'all' | 'head' | 'selected';
+
+export interface RepoRef {
+  name: string;
+  shortName: string;
+  kind: 'branch' | 'remote' | 'tag';
+  hash: string;
+  current?: boolean;
 }
 
 export interface AppSnapshot {

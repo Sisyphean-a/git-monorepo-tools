@@ -23,6 +23,8 @@
 - 前端依赖方向是 `components/features → application → domain`；基础设施实现应用层端口，组件不直接访问 Wails。
 - 跨端绑定和事件契约见 [Wails 桥接](shared/wails-bridge.md)。终端会话与事件约束见 [终端运行时](shared/terminal-runtime.md)。后台任务的进程树回收、日志游标与按需读取约束见 [后台任务运行时](shared/background-tasks.md)。读取缓存、失焦暂停与关闭回收的产品边界见 `requirements/CONTEXT.md` 的读取资源规则，`snapshot/read_resources.go` 统一拥有后端数值缓存与生命周期。
 - Git 状态术语和刷新时序见 `requirements/CONTEXT.md`；高代价取舍见 `requirements/adrs/`。
+- 工作树分组只影响侧栏与设置页展示：`Repo` 仍是工作树级身份和操作目标，分组键来自 common git dir。后端 `snapshot/worktree.go` 解析主/链接工作树，`snapshot/service.go` 在 bootstrap、完整快照和单仓刷新中携带分组字段；前端 `src/app/domain/worktree-groups.ts` 拥有分组、排序、状态聚合、搜索与收藏规则，`sidebar-repo-list.tsx` 和 `repositories-settings-tab.tsx` 共用该分组。单工作树保持平铺，多工作树才显示组行；页头显示当前工作树。历史页排除 `refs/stash` 与 `refs/notes/*`（`snapshot/git_history.go`）。
+- 历史范围与引用选择由 `snapshot/git_history.go` 拥有：`all` 读取分支/远端/标签/HEAD，`head` 只读当前 HEAD，`selected` 只接受分支选择器返回的引用并回显实际范围。`src/app/domain/history-filter.ts` 拥有分组、标签和失效引用裁剪规则，`repo-history-tab.tsx` 管理范围切换、分页防串写和 1000 条加载上限，`commit-graph.tsx` 将轨道压缩到 8 列；分页列表保留每页一次 `--numstat`，不逐行启动 Git。
 - `src/app/features/files/file-browser-session.ts` 拥有文件阅读会话的目录缓存、请求去重、正文版本、按需预览和迟到响应判断；折叠目录通过 `releaseDirectory` 同时释放子树缓存与请求，离开文件页和卸载通过 `release` 释放阅读数据并使在途读取/渲染失效。`repo-files-tab.tsx` 保留阅读位置、展开选择、界面和现有定时调度，通过同一会话入口读取，不持有内部请求编号或正文版本。后端路径安全仍由既有文件读取端口实现，渲染净化仍由 `file-renderer.ts` 实现；产品读取频率、上限和错误规则见 `requirements/CONTEXT.md`。
 - 命令设置保存在本地设置中：组合与全局命令对所有仓库可见，项目命令按仓库 ID 保存，只在对应仓库的命令区域展示和执行。`src/app/features/commands/command-catalog.ts` 拥有选择、项目优先、编辑和排序规则；命令由独立弹窗管理，项目页签优先。组合、全局和项目命令均按保存的顺序展示且可调整；主界面将当前项目和全局命令合并为一个“命令”区域，并优先展示项目命令。
 - 主界面的命令输出是工作区级日志：切换项目不得清空或停止正在运行命令的后续输出；后来启动的命令拥有显示权，旧命令不得覆盖；只有用户点击“清空”才重置，清空后旧命令不得重新打开输出。单次命令输出超过 256 KiB 时只保留末尾并在界面标注已截断，防止长命令无限累积。

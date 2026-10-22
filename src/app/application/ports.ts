@@ -12,6 +12,7 @@ import type {
   RepoMutationAction,
   RepoTreeEntry,
   RepoSnapshotUpdate,
+  HistoryScope,
   TerminalSessionInfo,
   WorkspaceBootstrap,
 } from '../domain/types.js';
@@ -63,6 +64,8 @@ export interface RepoHistoryRequest {
   offset: number;
   limit: number;
   settings?: AppSettings;
+  scope?: HistoryScope;
+  refs?: string[];
 }
 
 export interface CommitDetailRequest {

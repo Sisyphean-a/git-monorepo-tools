@@ -158,16 +158,20 @@ func buildBootstrapSnapshots(entries []repoEntry, scanTime time.Time) []repoSnap
 func buildBootstrapRepo(entry repoEntry, scanTime time.Time) repoSnapshot {
 	repoPath := normalizePath(entry.repoPath)
 	repoName := filepath.Base(repoPath)
+	identity := resolveWorktreeIdentity(repoPath)
 	return repoSnapshot{
 		repo: Repo{
-			ID:       createRepoID(repoName, repoPath),
-			Name:     repoName,
-			Branch:   "扫描中",
-			Path:     repoPath,
-			Remote:   "—",
-			Category: entry.category,
-			Status:   "checking",
-			LastScan: formatTime(scanTime),
+			ID:                createRepoID(repoName, repoPath),
+			Name:              repoName,
+			Branch:            "扫描中",
+			Path:              repoPath,
+			Remote:            "—",
+			Category:          entry.category,
+			Status:            "checking",
+			LastScan:          formatTime(scanTime),
+			WorktreeGroupID:   identity.GroupID,
+			WorktreeGroupName: identity.GroupName,
+			IsMainWorktree:    identity.IsMain,
 		},
 	}
 }
@@ -265,24 +269,28 @@ func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, sca
 		scanError = err.Error()
 	}
 	modified := uniquePathCount(files)
+	identity := resolveWorktreeIdentity(repoPath)
 
 	repo := Repo{
-		ID:           createRepoID(repoName, repoPath),
-		Name:         repoName,
-		Branch:       parsed.branch,
-		HeadRevision: parsed.headRevision,
-		RefsRevision: refsRevision,
-		Path:         repoPath,
-		Remote:       parsed.remote,
-		Category:     entry.category,
-		Modified:     modified,
-		Ahead:        parsed.ahead,
-		Behind:       parsed.behind,
-		Conflicts:    parsed.conflicts,
-		Status:       repoStatus(scanError, parsed.conflicts, modified),
-		ScanError:    scanError,
-		LastScan:     formatTime(scanTime),
-		RemoteCheck:  remoteCheck,
+		ID:                createRepoID(repoName, repoPath),
+		Name:              repoName,
+		Branch:            parsed.branch,
+		HeadRevision:      parsed.headRevision,
+		RefsRevision:      refsRevision,
+		Path:              repoPath,
+		Remote:            parsed.remote,
+		Category:          entry.category,
+		Modified:          modified,
+		Ahead:             parsed.ahead,
+		Behind:            parsed.behind,
+		Conflicts:         parsed.conflicts,
+		Status:            repoStatus(scanError, parsed.conflicts, modified),
+		ScanError:         scanError,
+		LastScan:          formatTime(scanTime),
+		RemoteCheck:       remoteCheck,
+		WorktreeGroupID:   identity.GroupID,
+		WorktreeGroupName: identity.GroupName,
+		IsMainWorktree:    identity.IsMain,
 	}
 
 	detail := RepoDetail{

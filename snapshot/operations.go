@@ -72,17 +72,46 @@ func (s *Service) GetRepoHistory(repoID string, request Request, offset, limit i
 	if err != nil {
 		return RepoHistoryPage{}, err
 	}
-	commits, hasMore, err := newGitExecutor(request).loadHistoryPage(entry.repoPath, offset, limit)
+	executor := newGitExecutor(request)
+	scope := normalizeHistoryScope(request.HistoryScope)
+	refs := []RepoRef{}
+	if scope == HistoryScopeSelected {
+		loaded, loadErr := executor.loadHistoryRefs(entry.repoPath)
+		if loadErr != nil {
+			return RepoHistoryPage{}, loadErr
+		}
+		refs = loaded
+	} else if offset <= 0 {
+		// Rule: 首页返回分支选择器数据；读取失败不阻断历史列表。
+		if loaded, loadErr := executor.loadHistoryRefs(entry.repoPath); loadErr == nil {
+			refs = loaded
+		}
+	}
+	selectedRefs := []string{}
+	if scope == HistoryScopeSelected {
+		selectedRefs = filterHistoryRefs(refs, request.HistoryRefs)
+		if len(selectedRefs) == 0 {
+			scope = HistoryScopeHead
+		}
+	}
+	pageRefs := refs
+	if offset > 0 {
+		pageRefs = nil
+	}
+	commits, hasMore, err := executor.loadHistoryPage(entry.repoPath, scope, selectedRefs, offset, limit)
 	if isNoCommitHistoryError(err) {
 		return RepoHistoryPage{
-			RepoID:   repoID,
-			RepoName: filepath.Base(entry.repoPath),
-			Path:     entry.repoPath,
-			Offset:   max(offset, 0),
-			Limit:    normalizeHistoryLimit(limit),
-			Total:    0,
-			HasMore:  false,
-			Commits:  []CommitSummary{},
+			RepoID:       repoID,
+			RepoName:     filepath.Base(entry.repoPath),
+			Path:         entry.repoPath,
+			Offset:       max(offset, 0),
+			Limit:        normalizeHistoryLimit(limit),
+			Total:        0,
+			HasMore:      false,
+			Scope:        scope,
+			SelectedRefs: selectedRefs,
+			Refs:         pageRefs,
+			Commits:      []CommitSummary{},
 		}, nil
 	}
 	if err != nil {
@@ -90,14 +119,17 @@ func (s *Service) GetRepoHistory(repoID string, request Request, offset, limit i
 	}
 	normalizedOffset := max(offset, 0)
 	return RepoHistoryPage{
-		RepoID:   repoID,
-		RepoName: filepath.Base(entry.repoPath),
-		Path:     entry.repoPath,
-		Offset:   normalizedOffset,
-		Limit:    normalizeHistoryLimit(limit),
-		Total:    pageHistoryTotal(normalizedOffset, len(commits), hasMore),
-		HasMore:  hasMore,
-		Commits:  commits,
+		RepoID:       repoID,
+		RepoName:     filepath.Base(entry.repoPath),
+		Path:         entry.repoPath,
+		Offset:       normalizedOffset,
+		Limit:        normalizeHistoryLimit(limit),
+		Total:        pageHistoryTotal(normalizedOffset, len(commits), hasMore),
+		HasMore:      hasMore,
+		Scope:        scope,
+		SelectedRefs: selectedRefs,
+		Refs:         pageRefs,
+		Commits:      commits,
 	}, nil
 }
 

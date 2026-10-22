@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultRepoId, favoriteRepos, nonFavoriteRepos } from './favorite-repos.js';
+import { defaultRepoId, favoriteRepos, toggleFavoriteRepoIds } from './favorite-repos.js';
 import type { Repo } from './types.js';
 
 function createRepo(id: string): Repo {
@@ -20,12 +20,11 @@ function createRepo(id: string): Repo {
   };
 }
 
-test('favorite repos are ordered by the saved favorites and excluded from other groups', () => {
+test('favorite repos are ordered by the saved favorites', () => {
   const repos = [createRepo('repo-a'), createRepo('repo-b'), createRepo('repo-c')];
   const favoriteRepoIds = ['repo-c', 'repo-a', 'removed-repo'];
 
   assert.deepEqual(favoriteRepos(repos, favoriteRepoIds).map(repo => repo.id), ['repo-c', 'repo-a']);
-  assert.deepEqual(nonFavoriteRepos(repos, favoriteRepoIds).map(repo => repo.id), ['repo-b']);
 });
 
 test('defaultRepoId uses the first available favorite and otherwise falls back', () => {
@@ -33,4 +32,11 @@ test('defaultRepoId uses the first available favorite and otherwise falls back',
 
   assert.equal(defaultRepoId(repos, ['removed-repo', 'repo-b'], 'repo-a'), 'repo-b');
   assert.equal(defaultRepoId(repos, ['removed-repo'], 'repo-a'), 'repo-a');
+});
+
+test('group favorite toggling adds all members or removes the whole group', () => {
+  assert.deepEqual(toggleFavoriteRepoIds([], ['main', 'feat-x']), ['main', 'feat-x']);
+  assert.deepEqual(toggleFavoriteRepoIds(['other'], ['main', 'feat-x']), ['other', 'main', 'feat-x']);
+  assert.deepEqual(toggleFavoriteRepoIds(['main', 'feat-x', 'other'], ['main', 'feat-x']), ['other']);
+  assert.deepEqual(toggleFavoriteRepoIds(['other'], []), ['other']);
 });

@@ -8,9 +8,14 @@ export function favoriteRepos<T extends Repo>(repos: T[], favoriteRepoIds: strin
   });
 }
 
-export function nonFavoriteRepos<T extends Repo>(repos: T[], favoriteRepoIds: string[]) {
-  const favoriteIds = new Set(favoriteRepoIds);
-  return repos.filter(repo => !favoriteIds.has(repo.id));
+// Rule: 组星标以“任一成员已收藏”为已收藏；点击组星标整体取消或整体收藏。
+export function toggleFavoriteRepoIds(favoriteRepoIds: string[], repoIds: string[]) {
+  if (repoIds.length === 0) return favoriteRepoIds;
+  const ids = new Set(repoIds);
+  if (repoIds.some(id => favoriteRepoIds.includes(id))) {
+    return favoriteRepoIds.filter(id => !ids.has(id));
+  }
+  return [...favoriteRepoIds, ...repoIds.filter(id => !favoriteRepoIds.includes(id))];
 }
 
 export function defaultRepoId(repos: Repo[], favoriteRepoIds: string[], fallbackRepoId: string) {

@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Activity, AlertTriangle, ArrowDown, ArrowUp, FolderOpen, GitBranch, GitCompare, ListTodo, Settings2, Terminal } from 'lucide-react';
 import { C } from '../theme';
+import type { WorktreeGroup } from '../domain/worktree-groups';
 import type { FileChange, Repo } from '../domain/types';
 
 function HeaderActionBtn({
@@ -44,8 +45,21 @@ function HeaderActionBtn({
   );
 }
 
+const worktreeBadgeStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  background: C.panel2,
+  border: `1px solid ${C.border}`,
+  borderRadius: 5,
+  padding: '2px 8px',
+  color: C.textSecondary,
+  fontSize: 11,
+} as const;
+
 export function RepoHeader({
   repo,
+  worktreeGroup,
   fileSummary,
   onOpenFolder,
   onOpenMonitor,
@@ -56,6 +70,7 @@ export function RepoHeader({
   onOpenSettings,
 }: {
   repo: Repo;
+  worktreeGroup?: WorktreeGroup | null;
   fileSummary: ReturnType<typeof summarizeFiles>;
   onOpenFolder: () => void;
   onOpenMonitor: () => void;
@@ -65,12 +80,20 @@ export function RepoHeader({
   onOpenDiffViewer: () => void;
   onOpenSettings: () => void;
 }) {
+  const multiWorktree = (worktreeGroup?.repos.length ?? 0) > 1;
+  const showWorktreeContext = multiWorktree || repo.isMainWorktree === false;
+  const title = showWorktreeContext && worktreeGroup ? worktreeGroup.name : repo.name;
   return (
     <div style={{ background: C.panel1, borderBottom: `1px solid ${C.border}`, padding: '10px 16px', flexShrink: 0 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ color: C.textPrimary, fontSize: 15, fontWeight: 600 }}>{repo.name}</span>
+            <span style={{ color: C.textPrimary, fontSize: 15, fontWeight: 600 }}>{title}</span>
+            {showWorktreeContext && (
+              <span style={worktreeBadgeStyle} title={`工作树：${repo.name}\n${repo.path}`}>
+                {multiWorktree && repo.isMainWorktree ? '主工作树' : `工作树 · ${repo.name}`}
+              </span>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 5, padding: '2px 8px' }}>
               <GitBranch size={11} color={C.btnPrimary} />
               <span style={{ color: C.btnPrimary, fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>{repo.branch}</span>
@@ -85,6 +108,7 @@ export function RepoHeader({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
             <span style={{ color: C.textWeak, fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}>{repo.path}</span>
+            {multiWorktree && worktreeGroup && <span style={{ color: C.textWeak, fontSize: 10 }}>{worktreeGroup.repos.length} 个工作树</span>}
             {fileSummary.total > 0 && <span style={{ color: C.textSecondary, fontSize: 10 }}>{fileSummary.total} 处变更 ·<span style={{ color: C.added }}> +{fileSummary.added} 新增</span> ·<span style={{ color: C.modified }}> ~{fileSummary.modified} 修改</span> ·<span style={{ color: C.deleted }}> -{fileSummary.deleted} 删除</span></span>}
             <span style={{ color: C.textWeak, fontSize: 10 }}>本地更新于 {repo.lastScan}</span>
             {repo.remote !== '—' && <span style={{ color: repo.remoteCheck?.status === 'error' ? C.conflict : C.textWeak, fontSize: 10 }}>{repo.remoteCheck ? `${repo.remoteCheck.status === 'success' ? '远端检查成功' : '远端检查失败'}于 ${repo.remoteCheck.checkedAt}` : '远端尚未检查'}</span>}

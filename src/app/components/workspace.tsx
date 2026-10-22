@@ -13,6 +13,7 @@ import {
   type WorkspaceMainTab,
 } from '../features/terminal/terminal-workspace';
 import { createFileDiffLoader } from '../features/diff/file-diff-loader';
+import { findWorktreeGroup, groupReposByWorktree } from '../domain/worktree-groups';
 import type { RepoFilePosition } from './repo-files-tab';
 import type {
   AppSettings,
@@ -130,6 +131,10 @@ export function Workspace({
   const terminalTabs = useTerminalWorkspaceTabs(repoDetails, selectedRepoId);
   const repoIds = useMemo(() => Object.keys(repoDetails), [repoDetails]);
   const repo = repoDetails[terminalTabs.activeRepoId];
+  const worktreeGroup = useMemo(
+    () => (repo ? findWorktreeGroup(groupReposByWorktree(Object.values(repoDetails)), repo.id) : undefined),
+    [repo, repoDetails],
+  );
   const {
     mainTab,
     terminalEnabled,
@@ -226,6 +231,7 @@ export function Workspace({
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: C.appBg }}>
       <RepoHeader
         repo={repo}
+        worktreeGroup={worktreeGroup}
         fileSummary={fileSummary}
         onOpenMonitor={onOpenMonitor}
         onOpenBackgroundTasks={onOpenBackgroundTasks}
@@ -339,8 +345,9 @@ export function Workspace({
               }}
             >
               <RepoHistoryTab
-                key={`${repo.id}:${repo.historyRevision ?? 'initial'}`}
+                key={repo.id}
                 repoId={repo.id}
+                historyRevision={repo.historyRevision || 'initial'}
                 initialCommits={repo.history}
                 initialTotal={repo.historyTotal}
                 initialHasMore={repo.historyHasMore}

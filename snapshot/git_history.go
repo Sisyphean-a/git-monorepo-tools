@@ -10,29 +10,46 @@ import (
 const (
 	defaultHistoryPageSize = 50
 	emptyTreeHash          = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+	HistoryScopeAll      = "all"
+	HistoryScopeHead     = "head"
+	HistoryScopeSelected = "selected"
 )
 
 // Rule: 全引用历史的提交与标签由引用集合及 HEAD 归属决定，不能仅用当前 HEAD 或提交数量判定变化。
+// Rule: stash 与 notes 不是分支历史，既不读取其提交，也不让其变化触发历史重载。
 func (executor gitExecutor) readHistoryRefsRevision(repoPath string) (string, error) {
 	output, err := executor.runGit(repoPath, []string{"for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)%00%(symref)%00%(HEAD)"})
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(output))), nil
+	lines := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		if line == "" {
+			continue
+		}
+		refName, _, _ := strings.Cut(line, "\x00")
+		if isExcludedHistoryRef(refName) {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(lines, "\n")))), nil
 }
 
-// Flow: Git 决定全引用拓扑顺序，父提交哈希使前端分页追加时保持同一张提交图。
-func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) ([]CommitSummary, bool, error) {
+// Flow: Git 决定所选引用范围内的拓扑顺序，父提交哈希使前端分页追加时保持同一张提交图。
+func (executor gitExecutor) loadHistoryPage(repoPath, scope string, refs []string, offset, limit int) ([]CommitSummary, bool, error) {
 	if offset < 0 {
 		offset = 0
 	}
 	if limit <= 0 {
 		limit = defaultHistoryPageSize
 	}
-	output, err := executor.runGit(repoPath, []string{
-		"log", "--all", "--topo-order", fmt.Sprintf("--skip=%d", offset), fmt.Sprintf("-%d", limit+1),
-		"--numstat", "--decorate=short", "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1f%P%x1f%D",
-	})
+	args := []string{"log"}
+	args = append(args, historyRevisionArgs(scope, refs)...)
+	args = append(args, "--topo-order", fmt.Sprintf("--skip=%d", offset), fmt.Sprintf("-%d", limit+1),
+		"--numstat", "--decorate=short", "--format=%H%x1f%h%x1f%an%x1f%ar%x1f%s%x1f%P%x1f%D")
+	output, err := executor.runGit(repoPath, args)
 	if err != nil {
 		return nil, false, err
 	}
@@ -45,6 +62,109 @@ func (executor gitExecutor) loadHistoryPage(repoPath string, offset, limit int) 
 		history = history[:limit]
 	}
 	return history, hasMore, nil
+}
+
+func normalizeHistoryScope(scope string) string {
+	switch strings.TrimSpace(scope) {
+	case HistoryScopeHead:
+		return HistoryScopeHead
+	case HistoryScopeSelected:
+		return HistoryScopeSelected
+	default:
+		return HistoryScopeAll
+	}
+}
+
+func historyRevisionArgs(scope string, refs []string) []string {
+	switch normalizeHistoryScope(scope) {
+	case HistoryScopeHead:
+		return []string{"HEAD"}
+	case HistoryScopeSelected:
+		if len(refs) == 0 {
+			return []string{"HEAD"}
+		}
+		return refs
+	default:
+		// Rule: stash/notes 不是分支历史，不能进入提交图。
+		return []string{"--exclude=refs/stash", "--exclude=refs/notes/*", "--all"}
+	}
+}
+
+// loadHistoryRefs 返回分支选择器可用引用；只接受本地分支、远端分支和标签。
+func (executor gitExecutor) loadHistoryRefs(repoPath string) ([]RepoRef, error) {
+	output, err := executor.runGit(repoPath, []string{
+		"for-each-ref", "--sort=refname",
+		"--format=%(refname)%00%(objectname)%00%(HEAD)%00%(symref)%00%(objecttype)",
+		"refs/heads", "refs/remotes", "refs/tags",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	refs := make([]RepoRef, 0)
+	for _, line := range strings.Split(output, "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\x00")
+		if len(fields) < 5 {
+			continue
+		}
+		name := strings.TrimSpace(fields[0])
+		// Rule: 跳过 origin/HEAD 等符号引用；它们与目标分支重复。
+		if fields[3] != "" {
+			continue
+		}
+		if fields[4] != "commit" && fields[4] != "tag" {
+			continue
+		}
+		kind, shortName := classifyHistoryRef(name)
+		if kind == "" {
+			continue
+		}
+		refs = append(refs, RepoRef{
+			Name:      name,
+			ShortName: shortName,
+			Kind:      kind,
+			Hash:      fields[1],
+			Current:   strings.TrimSpace(fields[2]) == "*",
+		})
+	}
+	return refs, nil
+}
+
+func classifyHistoryRef(name string) (string, string) {
+	switch {
+	case strings.HasPrefix(name, "refs/heads/"):
+		return "branch", strings.TrimPrefix(name, "refs/heads/")
+	case strings.HasPrefix(name, "refs/remotes/"):
+		return "remote", strings.TrimPrefix(name, "refs/remotes/")
+	case strings.HasPrefix(name, "refs/tags/"):
+		return "tag", strings.TrimPrefix(name, "refs/tags/")
+	default:
+		return "", ""
+	}
+}
+
+func filterHistoryRefs(refs []RepoRef, requested []string) []string {
+	allowed := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		allowed[ref.Name] = struct{}{}
+	}
+	selected := make([]string, 0, len(requested))
+	seen := make(map[string]struct{}, len(requested))
+	for _, name := range requested {
+		name = strings.TrimSpace(name)
+		if _, ok := allowed[name]; !ok {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		selected = append(selected, name)
+	}
+	return selected
 }
 
 func parseHistoryOutput(output string) []CommitSummary {
@@ -96,10 +216,17 @@ func parseHistoryRefs(raw string) []string {
 			label = strings.TrimSpace(strings.TrimPrefix(label, "HEAD -> "))
 		}
 		if label != "" {
+			if isExcludedHistoryRef(label) {
+				continue
+			}
 			refs = append(refs, label)
 		}
 	}
 	return refs
+}
+
+func isExcludedHistoryRef(refName string) bool {
+	return refName == "refs/stash" || strings.HasPrefix(refName, "refs/notes/")
 }
 
 func (executor gitExecutor) loadCommitDetail(repoPath, hash string) (CommitDetail, error) {
@@ -306,5 +433,12 @@ func parseNumstatLine(line string) (int, int, bool) {
 }
 
 func isNoCommitHistoryError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "does not have any commits yet")
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	if strings.Contains(message, "does not have any commits yet") || strings.Contains(message, "bad revision 'HEAD'") {
+		return true
+	}
+	return strings.Contains(message, "ambiguous argument 'HEAD'") && strings.Contains(message, "unknown revision")
 }

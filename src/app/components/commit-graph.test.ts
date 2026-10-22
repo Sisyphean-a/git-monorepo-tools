@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCommitGraph } from './commit-graph.js';
+import { buildCommitGraph, commitGraphWidth, MAX_GRAPH_LANES } from './commit-graph.js';
 import type { CommitSummary } from '../domain/types.js';
 
 function commit(hash: string, parentHashes: string[] = []): CommitSummary {
@@ -62,4 +62,9 @@ test('buildCommitGraph connects each merge parent without duplicating an existin
   assert.deepEqual(rows[0]?.parentLanes, [0, 1]);
   assert.deepEqual(rows.map(row => row.lane), [0, 1, 0, 0]);
   assert.deepEqual(rows[2]?.parentLanes, [0]);
+});
+
+test('commit graph width stays bounded when many branches are visible', () => {
+  assert.equal(commitGraphWidth(MAX_GRAPH_LANES + 20), commitGraphWidth(MAX_GRAPH_LANES));
+  assert.ok(commitGraphWidth(1) > 0);
 });

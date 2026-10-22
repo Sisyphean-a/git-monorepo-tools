@@ -1,16 +1,18 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Copy, GitBranch, GitCommit, GitCompare, GitMerge } from 'lucide-react';
+import { ChevronDown, Clock3, Copy, GitBranch, GitCommit, GitCompare, GitMerge } from 'lucide-react';
 import { useAppBackend } from '../application/backend-context';
-import { buildCommitGraph, CommitGraphRow } from './commit-graph';
+import { buildCommitGraph, CommitGraphRow, MAX_GRAPH_LANES } from './commit-graph';
 import { C } from '../theme';
+import { groupRepoRefs, historyScopeLabel, HISTORY_MAX_COMMITS, pruneHistoryRefs } from '../domain/history-filter';
 import { calculateHistoryViewport, HISTORY_LINE_HEIGHT, HISTORY_VIEWPORT_HEIGHT } from '../features/history/history-viewport';
-import type { AppSettings, CommitDetail, CommitSummary } from '../domain/types';
+import type { AppSettings, CommitDetail, CommitSummary, HistoryScope, RepoRef } from '../domain/types';
 
 const HISTORY_PAGE_SIZE = 50;
 
 interface RepoHistoryTabProps {
   repoId: string;
+  historyRevision: string;
   initialCommits: CommitSummary[];
   initialTotal: number;
   initialHasMore: boolean;
@@ -19,7 +21,7 @@ interface RepoHistoryTabProps {
   onOpenDiffViewer: (detail: CommitDetail) => void;
 }
 
-export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHasMore, settings, active, onOpenDiffViewer }: RepoHistoryTabProps) {
+export function RepoHistoryTab({ repoId, historyRevision, initialCommits, initialTotal, initialHasMore, settings, active, onOpenDiffViewer }: RepoHistoryTabProps) {
   const backend = useAppBackend();
   const [commits, setCommits] = useState<CommitSummary[]>(initialCommits);
   const [total, setTotal] = useState(initialTotal);
@@ -32,24 +34,51 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
   const [copiedHash, setCopiedHash] = useState('');
   const [initialLoading, setInitialLoading] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [scope, setScope] = useState<HistoryScope>('all');
+  const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
+  const [refs, setRefs] = useState<RepoRef[]>([]);
   const historyListRef = useRef<HTMLDivElement | null>(null);
   const [historyScrollTop, setHistoryScrollTop] = useState(0);
   const [historyViewportHeight, setHistoryViewportHeight] = useState(HISTORY_VIEWPORT_HEIGHT);
-  const loadedRepoId = useRef(initialCommits.length > 0 ? repoId : '');
+  const requestKey = `${repoId}|${historyRevision}|${scope}|${JSON.stringify(selectedRefs)}`;
+  const loadedRequestKeyRef = useRef('');
+  const activeRequestKeyRef = useRef(requestKey);
+  activeRequestKeyRef.current = requestKey;
   // Rule: 设置对象换新（如文件树宽度落盘）不得重读提交详情；详情只在选中的提交变化时重新读取。
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
   useEffect(() => {
-    if (!active || loadedRepoId.current === repoId) return;
+    if (!active || loadedRequestKeyRef.current === requestKey) return;
     let cancelled = false;
     setInitialLoading(true);
     setInitialLoadError(null);
-    void backend.fetchRepoHistory({ repoId, offset: 0, limit: HISTORY_PAGE_SIZE, settings })
+    setLoadMoreError(null);
+    setLoadingMore(false);
+    setHistoryScrollTop(0);
+    if (historyListRef.current) historyListRef.current.scrollTop = 0;
+    void backend.fetchRepoHistory({
+      repoId,
+      offset: 0,
+      limit: HISTORY_PAGE_SIZE,
+      settings: settingsRef.current,
+      scope,
+      refs: scope === 'selected' ? selectedRefs : undefined,
+    })
       .then(next => {
         if (cancelled) return;
+        const responseScope = next.scope ?? scope;
+        const loadedRefs = Array.isArray(next.refs) ? next.refs : refs;
+        const responseRefs = Array.isArray(next.selectedRefs)
+          ? next.selectedRefs
+          : scope === 'selected' ? pruneHistoryRefs(loadedRefs, selectedRefs) : [];
+        const effectiveRefs = responseScope === 'selected' ? responseRefs : [];
+        loadedRequestKeyRef.current = `${repoId}|${historyRevision}|${responseScope}|${JSON.stringify(effectiveRefs)}`;
+        if (responseScope !== scope) setScope(responseScope);
+        if (JSON.stringify(effectiveRefs) !== JSON.stringify(selectedRefs)) setSelectedRefs(effectiveRefs);
+        if (Array.isArray(next.refs)) setRefs(next.refs);
         const nextCommits = Array.isArray(next.commits) ? next.commits : [];
-        loadedRepoId.current = repoId;
         setCommits(nextCommits);
         setTotal(next.total);
         setHasMore(next.hasMore);
@@ -64,7 +93,7 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
     return () => {
       cancelled = true;
     };
-  }, [active, backend, repoId, settings]);
+  }, [active, backend, historyRevision, repoId, requestKey, scope, selectedRefs]);
 
   useEffect(() => {
     if (!selectedHash) {
@@ -122,18 +151,37 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
   }, [commits]);
   const detailRefs = detail?.refs ?? [];
   const detailFilesChanged = detail?.filesChanged ?? [];
-  const historyLabel = total > 0 ? `全部分支提交 ${commits.length}/${total}` : `全部分支提交 ${commits.length}${hasMore ? '+' : ''}`;
+  const historyLabel = total > 0
+    ? `提交 ${commits.length}/${total}`
+    : `提交 ${commits.length}${hasMore ? '+' : ''}`;
+  const graphOverflow = commitGraph.laneCount > MAX_GRAPH_LANES;
+  const atLoadLimit = commits.length >= HISTORY_MAX_COMMITS;
 
   const loadMore = async () => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore || atLoadLimit) return;
+    const key = activeRequestKeyRef.current;
     setLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const next = await backend.fetchRepoHistory({
         repoId,
         offset: commits.length,
         limit: HISTORY_PAGE_SIZE,
-        settings,
+        settings: settingsRef.current,
+        scope,
+        refs: scope === 'selected' ? selectedRefs : undefined,
       });
+      // Rule: 范围切换后迟到的分页结果不得追加到新范围。
+      if (key !== activeRequestKeyRef.current) return;
+      const responseScope = next.scope ?? scope;
+      const responseRefs = Array.isArray(next.selectedRefs)
+        ? next.selectedRefs
+        : scope === 'selected' ? selectedRefs : [];
+      if (responseScope !== scope || (responseScope === 'selected' && JSON.stringify(responseRefs) !== JSON.stringify(selectedRefs))) {
+        setScope(responseScope);
+        setSelectedRefs(responseScope === 'selected' ? responseRefs : []);
+        return;
+      }
       const nextCommits = Array.isArray(next.commits) ? next.commits : [];
       setCommits(current => {
         const seen = new Set(current.map(commit => commit.hash));
@@ -142,12 +190,17 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
           if (seen.has(commit.hash)) continue;
           merged.push(commit);
         }
-        return merged;
+        return merged.slice(0, HISTORY_MAX_COMMITS);
       });
       setTotal(next.total);
       setHasMore(next.hasMore);
-      if (!selectedHash && nextCommits[0]) {
-        setSelectedHash(nextCommits[0].hash);
+      if (nextCommits[0]) {
+        const firstHash = nextCommits[0].hash;
+        setSelectedHash(current => current || firstHash);
+      }
+    } catch (error) {
+      if (key === activeRequestKeyRef.current) {
+        setLoadMoreError(error instanceof Error ? error.message : '加载更多提交失败');
       }
     } finally {
       setLoadingMore(false);
@@ -174,26 +227,46 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
     return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.conflict, fontSize: 12 }}>{initialLoadError}</div>;
   }
 
-  if (commits.length === 0) {
-    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textWeak, fontSize: 12 }}>暂无提交历史</div>;
-  }
-
   return (
     <div style={{ flex: 1, display: 'flex', minHeight: 0, background: C.appBg }}>
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.border}`, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.panel1, flexShrink: 0 }}>
-          <div style={{ color: C.textSecondary, fontSize: 11 }}>{historyLabel}</div>
-          {hasMore && (
-            <button
-              onClick={() => void loadMore()}
-              disabled={loadingMore}
-              style={{ background: 'none', border: `1px solid ${C.border}`, color: loadingMore ? C.textWeak : C.textSecondary, borderRadius: 6, padding: '4px 10px', cursor: loadingMore ? 'default' : 'pointer', fontSize: 11 }}
-            >
-              {loadingMore ? '加载中…' : '加载更多'}
-            </button>
-          )}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', borderBottom: `1px solid ${C.border}`, background: C.panel1, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <HistoryScopePicker
+              scope={scope}
+              selectedRefs={selectedRefs}
+              refs={refs}
+              disabled={initialLoading}
+              onApply={(nextScope, nextRefs) => {
+                setScope(nextScope);
+                setSelectedRefs(nextRefs);
+              }}
+            />
+            <div style={{ color: C.textSecondary, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{historyLabel}</div>
+            {graphOverflow && (
+              <span style={historyHintStyle} title={`提交图轨道超过 ${MAX_GRAPH_LANES} 条，已压缩显示；可用左侧范围筛选收敛`}>
+                图已压缩
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {hasMore && !atLoadLimit && (
+              <button
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                style={{ background: 'none', border: `1px solid ${C.border}`, color: loadingMore ? C.textWeak : C.textSecondary, borderRadius: 6, padding: '4px 10px', cursor: loadingMore ? 'default' : 'pointer', fontSize: 11 }}
+              >
+                {loadingMore ? '加载中…' : '加载更多'}
+              </button>
+            )}
+            {hasMore && atLoadLimit && (
+              <span style={historyHintStyle}>已达 {HISTORY_MAX_COMMITS} 条上限，请用范围筛选</span>
+            )}
+          </div>
         </div>
+        {loadMoreError && <div style={loadMoreErrorStyle}>{loadMoreError}</div>}
         <div ref={historyListRef} onScroll={handleHistoryScroll} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          {commits.length === 0 && <div style={emptyHistoryStyle}>当前范围暂无提交历史</div>}
           <div style={{ position: 'relative', height: historyViewport.totalHeight }}>
             <div style={{ position: 'absolute', top: historyViewport.offsetTop, left: 0, right: 0 }}>
               {commits.slice(historyViewport.start, historyViewport.end).map((commit, index) => {
@@ -334,6 +407,101 @@ export function RepoHistoryTab({ repoId, initialCommits, initialTotal, initialHa
   );
 }
 
+function HistoryScopePicker({
+  scope,
+  selectedRefs,
+  refs,
+  disabled,
+  onApply,
+}: {
+  scope: HistoryScope;
+  selectedRefs: string[];
+  refs: RepoRef[];
+  disabled: boolean;
+  onApply: (scope: HistoryScope, refs: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftScope, setDraftScope] = useState<HistoryScope>(scope);
+  const [draftRefs, setDraftRefs] = useState<string[]>(selectedRefs);
+  const groups = useMemo(() => groupRepoRefs(refs), [refs]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [open]);
+
+  const openPicker = () => {
+    setDraftScope(scope);
+    setDraftRefs(selectedRefs);
+    setOpen(true);
+  };
+  const toggleRef = (name: string) => {
+    setDraftScope('selected');
+    setDraftRefs(current => current.includes(name) ? current.filter(item => item !== name) : [...current, name]);
+  };
+  const apply = () => {
+    if (draftScope === 'selected' && draftRefs.length === 0) return;
+    onApply(draftScope, draftScope === 'selected' ? draftRefs : []);
+    setOpen(false);
+  };
+
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        type="button"
+        className="history-scope-trigger"
+        disabled={disabled}
+        onClick={() => open ? setOpen(false) : openPicker()}
+        style={scopeTriggerStyle(disabled)}
+      >
+        <span>{historyScopeLabel(scope, selectedRefs, refs)}</span>
+        <ChevronDown size={11} />
+      </button>
+      {open && (
+        <>
+          <div style={pickerBackdropStyle} onClick={() => setOpen(false)} />
+          <div style={pickerPanelStyle}>
+            <div style={pickerTitleStyle}>提交历史范围</div>
+            <label style={pickerOptionStyle}>
+              <input type="radio" style={{ accentColor: C.btnPrimary }} checked={draftScope === 'all'} onChange={() => { setDraftScope('all'); setDraftRefs([]); }} />
+              <span>全部分支</span>
+            </label>
+            <label style={pickerOptionStyle}>
+              <input type="radio" style={{ accentColor: C.btnPrimary }} checked={draftScope === 'head'} onChange={() => { setDraftScope('head'); setDraftRefs([]); }} />
+              <span>当前分支</span>
+            </label>
+            <div style={pickerDividerStyle} />
+            <div style={pickerSectionLabelStyle}>或选择分支</div>
+            <div style={pickerListStyle}>
+              {groups.length === 0 && <div style={pickerEmptyStyle}>暂无可选分支</div>}
+              {groups.map(group => (
+                <div key={group.kind}>
+                  <div style={pickerGroupLabelStyle}>{group.label}</div>
+                  {group.refs.map(ref => (
+                    <label key={ref.name} style={pickerRefRowStyle} title={ref.name}>
+                      <input type="checkbox" style={{ accentColor: C.btnPrimary }} checked={draftRefs.includes(ref.name)} onChange={() => toggleRef(ref.name)} />
+                      <span style={pickerRefNameStyle}>{ref.shortName}</span>
+                      {ref.current && <span style={pickerCurrentTagStyle}>当前</span>}
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div style={pickerActionsStyle}>
+              <button type="button" onClick={() => setOpen(false)} style={pickerCancelButtonStyle}>取消</button>
+              <button type="button" onClick={apply} disabled={draftScope === 'selected' && draftRefs.length === 0} style={pickerApplyButtonStyle(draftScope === 'selected' && draftRefs.length === 0)}>应用</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function MetaBlock({ label, value, subValue }: { label: string; value: string; subValue?: string }) {
   return (
     <div>
@@ -385,3 +553,57 @@ function detailActionBtn(enabled: boolean, accent = false) {
     fontSize: 11,
   };
 }
+
+const historyHintStyle = { color: C.textWeak, fontSize: 10, whiteSpace: 'nowrap' as const };
+const emptyHistoryStyle = { padding: 20, textAlign: 'center' as const, color: C.textWeak, fontSize: 12 };
+const loadMoreErrorStyle = { padding: '6px 14px', color: C.conflict, fontSize: 10, borderBottom: `1px solid ${C.border}` } as const;
+const scopeTriggerStyle = (disabled: boolean) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  background: C.panel2,
+  border: `1px solid ${C.border}`,
+  color: disabled ? C.textWeak : C.textSecondary,
+  borderRadius: 6,
+  padding: '4px 8px',
+  cursor: disabled ? 'default' : 'pointer',
+  fontSize: 11,
+  flexShrink: 0,
+});
+const pickerBackdropStyle = { position: 'fixed' as const, inset: 0, zIndex: 30 };
+const pickerPanelStyle = {
+  position: 'absolute' as const,
+  top: 'calc(100% + 6px)',
+  left: 0,
+  zIndex: 31,
+  width: 320,
+  maxHeight: 380,
+  background: C.panel2,
+  border: `1px solid ${C.border}`,
+  borderRadius: 8,
+  boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+  display: 'flex',
+  flexDirection: 'column' as const,
+  overflow: 'hidden',
+};
+const pickerTitleStyle = { padding: '10px 10px 6px', color: C.textSecondary, fontSize: 11, fontWeight: 600 } as const;
+const pickerOptionStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', color: C.textPrimary, fontSize: 12, cursor: 'pointer' } as const;
+const pickerDividerStyle = { height: 1, background: C.border, margin: '6px 0' } as const;
+const pickerSectionLabelStyle = { padding: '4px 10px', color: C.textWeak, fontSize: 10 } as const;
+const pickerListStyle = { flex: 1, minHeight: 0, overflowY: 'auto' as const };
+const pickerEmptyStyle = { padding: '8px 10px', color: C.textWeak, fontSize: 11 } as const;
+const pickerGroupLabelStyle = { padding: '6px 10px 2px', color: C.textWeak, fontSize: 9, textTransform: 'uppercase' as const, letterSpacing: 0.5 } as const;
+const pickerRefRowStyle = { display: 'flex', alignItems: 'center', gap: 7, padding: '4px 10px', color: C.textSecondary, fontSize: 11, cursor: 'pointer' } as const;
+const pickerRefNameStyle = { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, fontFamily: 'JetBrains Mono, monospace' } as const;
+const pickerCurrentTagStyle = { color: C.modified, fontSize: 9, border: `1px solid ${C.modified}55`, borderRadius: 3, padding: '0 4px', flexShrink: 0 } as const;
+const pickerActionsStyle = { display: 'flex', justifyContent: 'flex-end', gap: 6, padding: '8px 10px', borderTop: `1px solid ${C.border}` } as const;
+const pickerCancelButtonStyle = { background: 'none', border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 5, padding: '4px 10px', cursor: 'pointer', fontSize: 11 } as const;
+const pickerApplyButtonStyle = (disabled: boolean) => ({
+  background: disabled ? C.panel3 : C.btnPrimary,
+  border: `1px solid ${disabled ? C.border : C.btnPrimary}`,
+  color: disabled ? C.textWeak : 'white',
+  borderRadius: 5,
+  padding: '4px 12px',
+  cursor: disabled ? 'default' : 'pointer',
+  fontSize: 11,
+});

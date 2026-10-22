@@ -6,6 +6,7 @@ import { AICommitSettingsTab } from './ai-commit-settings-tab';
 import { GitBehaviorSettingsTab } from './git-behavior-settings-tab';
 import { RepositoriesSettingsTab } from './repositories-settings-tab';
 import { withScanRoots } from '../application/settings-actions';
+import { toggleFavoriteRepoIds } from '../domain/favorite-repos';
 import { FormRow, Toggle } from './settings-modal-shared';
 
 interface SettingsModalProps {
@@ -79,12 +80,10 @@ export function SettingsModal({
     setDraft(current => ({ ...current, ignoredRepoPaths: next.ignoredRepoPaths }));
   };
 
-  const toggleFavorite = (repoId: string) => {
+  const toggleFavorite = (repoIds: string[]) => {
     setDraft(current => ({
       ...current,
-      favoriteRepoIds: current.favoriteRepoIds.includes(repoId)
-        ? current.favoriteRepoIds.filter(id => id !== repoId)
-        : [...current.favoriteRepoIds, repoId],
+      favoriteRepoIds: toggleFavoriteRepoIds(current.favoriteRepoIds, repoIds),
     }));
   };
 
