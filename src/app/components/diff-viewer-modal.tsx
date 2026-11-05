@@ -343,7 +343,7 @@ function SourceButton({ active, disabled, onClick, children }: { active: boolean
 const DIFF_FILE_ROW_HEIGHT = 36;
 const DIFF_FILE_OVERSCAN = 8;
 
-function DiffFileList({ files, loading, emptyMessage, selectedFileId, reviewedIds, onSelect, onToggleReviewed }: {
+export function DiffFileList({ files, loading, emptyMessage, selectedFileId, reviewedIds, onSelect, onToggleReviewed }: {
   files: FileChange[];
   loading: boolean;
   emptyMessage: string;
@@ -396,27 +396,28 @@ function DiffFileList({ files, loading, emptyMessage, selectedFileId, reviewedId
   }, []);
   const viewport = calculateFileListViewport(files.length, scrollTop, viewportHeight);
 
-  if (files.length === 0) {
-    return <div style={{ padding: 24, color: C.textWeak, fontSize: 11, textAlign: 'center' }}>{loading ? ' ' : emptyMessage}</div>;
-  }
-
+  // Rule: 滚动容器常驻。视口高度只在挂载时测量一次，空列表提前返回会让测量拿到空节点，虚拟窗口永久停留在初始高度。
   return (
     <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 0' }}>
-      <div style={{ position: 'relative', height: viewport.totalHeight }}>
-        <div style={{ position: 'absolute', top: viewport.offsetTop, left: 0, right: 0 }}>
-          {files.slice(viewport.start, viewport.end).map(file => (
-            <DiffFileRow
-              key={file.id}
-              file={file}
-              selected={!loading && file.id === selectedFileId}
-              reviewed={reviewedIds.has(file.id)}
-              disabled={loading}
-              onSelect={onSelect}
-              onToggleReviewed={onToggleReviewed}
-            />
-          ))}
+      {files.length === 0 ? (
+        <div style={{ padding: 24, color: C.textWeak, fontSize: 11, textAlign: 'center' }}>{loading ? ' ' : emptyMessage}</div>
+      ) : (
+        <div style={{ position: 'relative', height: viewport.totalHeight }}>
+          <div style={{ position: 'absolute', top: viewport.offsetTop, left: 0, right: 0 }}>
+            {files.slice(viewport.start, viewport.end).map(file => (
+              <DiffFileRow
+                key={file.id}
+                file={file}
+                selected={!loading && file.id === selectedFileId}
+                reviewed={reviewedIds.has(file.id)}
+                disabled={loading}
+                onSelect={onSelect}
+                onToggleReviewed={onToggleReviewed}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
