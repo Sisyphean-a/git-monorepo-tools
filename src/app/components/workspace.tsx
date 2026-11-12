@@ -105,6 +105,45 @@ function WorkspaceScanningState() {
   );
 }
 
+export function WorkspaceTerminalTab({
+  active,
+  closable,
+  disabled,
+  onSelect,
+  onClose,
+}: {
+  active: boolean;
+  closable: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', borderBottom: `2px solid ${active ? C.btnPrimary : 'transparent'}`, whiteSpace: 'nowrap' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onSelect}
+        style={{ background: 'none', border: 'none', color: active ? C.textPrimary : C.textWeak, padding: closable ? '8px 4px 8px 14px' : '8px 14px', cursor: disabled ? 'default' : 'pointer', fontSize: 12, fontWeight: active ? 500 : 400, opacity: disabled ? 0.65 : 1 }}
+      >
+        终端
+      </button>
+      {closable && (
+        <button
+          type="button"
+          aria-label="关闭终端"
+          title="关闭终端"
+          disabled={disabled}
+          onClick={onClose}
+          style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', color: C.textWeak, cursor: disabled ? 'default' : 'pointer', padding: '5px 8px 5px 5px', opacity: disabled ? 0.65 : 1 }}
+        >
+          <X size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Workspace({
   repoDetails,
   settings,
@@ -140,8 +179,12 @@ export function Workspace({
     terminalEnabled,
     independentTerminals,
     repoIndependentTerminals,
+    defaultTerminalVisible,
+    terminalTabsClosable,
+    closedDefaultTerminalRepoIds,
     selectMainTab,
     openIndependentTerminal,
+    closeDefaultTerminal,
     closeIndependentTerminal,
   } = terminalTabs;
   const [filesEnabled, setFilesEnabled] = useState(false);
@@ -224,7 +267,6 @@ export function Workspace({
     { key: 'changes', label: `变更 ${fileSummary.total > 0 ? `(${fileSummary.total})` : ''}` },
     { key: 'history', label: '历史' },
     { key: 'files', label: '文件' },
-    { key: 'terminal', label: '终端' },
   ];
 
   return (
@@ -269,30 +311,24 @@ export function Workspace({
             {tab.label}
           </button>
         ))}
+        {defaultTerminalVisible && (
+          <WorkspaceTerminalTab
+            active={mainTab === 'terminal'}
+            closable={terminalTabsClosable}
+            disabled={isChecking}
+            onSelect={() => selectMainTab('terminal')}
+            onClose={closeDefaultTerminal}
+          />
+        )}
         {repoIndependentTerminals.map(tab => (
-          <div
+          <WorkspaceTerminalTab
             key={tab.id}
-            style={{ display: 'flex', alignItems: 'center', borderBottom: `2px solid ${mainTab === tab.id ? C.btnPrimary : 'transparent'}`, whiteSpace: 'nowrap' }}
-          >
-            <button
-              type="button"
-              disabled={isChecking}
-              onClick={() => selectMainTab(tab.id)}
-              style={{ background: 'none', border: 'none', color: mainTab === tab.id ? C.textPrimary : C.textWeak, padding: '8px 4px 8px 14px', cursor: isChecking ? 'default' : 'pointer', fontSize: 12, fontWeight: mainTab === tab.id ? 500 : 400, opacity: isChecking ? 0.65 : 1 }}
-            >
-              终端
-            </button>
-            <button
-              type="button"
-              aria-label="关闭终端"
-              title="关闭终端"
-              disabled={isChecking}
-              onClick={() => closeIndependentTerminal(tab.id)}
-              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', color: C.textWeak, cursor: isChecking ? 'default' : 'pointer', padding: '5px 8px 5px 5px', opacity: isChecking ? 0.65 : 1 }}
-            >
-              <X size={13} />
-            </button>
-          </div>
+            active={mainTab === tab.id}
+            closable={terminalTabsClosable}
+            disabled={isChecking}
+            onSelect={() => selectMainTab(tab.id)}
+            onClose={() => closeIndependentTerminal(tab.id)}
+          />
         ))}
         <button
           type="button"
@@ -375,7 +411,7 @@ export function Workspace({
         )}
         {terminalEnabled && (
           <Suspense fallback={null}>
-            <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={!isChecking && mainTab === 'terminal'} rightClickCopyPaste={settings.terminalOperations.rightClickCopyPaste} onError={onError} />
+            <RepoTerminalTab repoDetails={repoDetails} activeRepoId={repo.id} visible={!isChecking && mainTab === 'terminal'} closedDefaultTerminalRepoIds={closedDefaultTerminalRepoIds} rightClickCopyPaste={settings.terminalOperations.rightClickCopyPaste} onError={onError} />
             {independentTerminals.map(tab => {
               const terminalRepo = repoDetails[tab.repoId];
               return terminalRepo ? <IndependentTerminalTab key={tab.id} repo={terminalRepo} visible={!isChecking && tab.repoId === repo.id && mainTab === tab.id} rightClickCopyPaste={settings.terminalOperations.rightClickCopyPaste} onError={onError} /> : null;

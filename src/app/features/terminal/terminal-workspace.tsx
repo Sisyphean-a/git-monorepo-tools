@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { RepoInteractionBackend, RuntimeBackend, TerminalSessionRequest } from '../../application/ports.js';
 import type { RepoDetail, TerminalSessionInfo } from '../../domain/types.js';
+import { retainExistingRepoIdSet } from './terminal-repo-state.js';
 
 export type RepoTerminalState = 'idle' | 'starting' | 'running' | 'active' | 'exited' | 'failed';
 export type WorkspaceMainTab = 'changes' | 'history' | 'files' | 'terminal' | IndependentTerminalTabId;
@@ -598,8 +599,12 @@ export function useTerminalWorkspaceTabs(repoDetails: Record<string, RepoDetail>
   const [mainTabsByRepo, setMainTabsByRepo] = useState<WorkspaceMainTabsByRepo>({});
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [independentTerminals, setIndependentTerminals] = useState<IndependentTerminalTab[]>([]);
+  const [closedDefaultTerminalRepoIds, setClosedDefaultTerminalRepoIds] = useState<ReadonlySet<string>>(() => new Set());
   const terminalSequence = useRef(1);
   const mainTab = resolveMainTabForRepo(mainTabsByRepo, activeRepoId, independentTerminals);
+  const defaultTerminalVisible = !closedDefaultTerminalRepoIds.has(activeRepoId);
+  const repoIndependentTerminals = getIndependentTerminalsForRepo(independentTerminals, activeRepoId);
+  const terminalTabIds = getTerminalTabIds(defaultTerminalVisible, repoIndependentTerminals);
 
   useEffect(() => {
     if (mainTab === 'terminal' || independentTerminals.some(tab => tab.id === mainTab)) {
@@ -612,6 +617,8 @@ export function useTerminalWorkspaceTabs(repoDetails: Record<string, RepoDetail>
       const next = current.filter(tab => Boolean(repoDetails[tab.repoId]));
       return next.length === current.length ? current : next;
     });
+    // Rule: 仓库消失时不保留“默认终端已关闭”，仓库重新出现后从默认终端恢复，避免该仓库没有终端 tab。
+    setClosedDefaultTerminalRepoIds(current => retainExistingRepoIdSet(current, repoDetails));
   }, [repoDetails]);
 
   const selectMainTab = (tab: WorkspaceMainTab) => {
@@ -624,14 +631,34 @@ export function useTerminalWorkspaceTabs(repoDetails: Record<string, RepoDetail>
     setMainTabsByRepo(current => selectMainTabForRepo(current, activeRepoId, id));
   };
 
+  /**
+   * Guarantee: 每个仓库至少保留一个终端 tab，唯一剩余的终端不提供关闭入口，也不接受关闭请求。
+   */
+  const closeDefaultTerminal = () => {
+    if (terminalTabIds.length <= 1) {
+      return;
+    }
+    setClosedDefaultTerminalRepoIds(current => new Set(current).add(activeRepoId));
+    setMainTabsByRepo(current => resolveTerminalSelectionAfterClose(current, activeRepoId, 'terminal', terminalTabIds));
+  };
+
+  /**
+   * Guarantee: 独立终端与固定终端共用“每个仓库至少保留一个终端 tab”的约束，唯一剩余的终端不接受关闭请求。
+   */
   const closeIndependentTerminal = (id: IndependentTerminalTabId) => {
     const terminal = independentTerminals.find(tab => tab.id === id);
-    setIndependentTerminals(current => current.filter(tab => tab.id !== id));
-    if (terminal) {
-      setMainTabsByRepo(current => current[terminal.repoId] === id
-        ? selectMainTabForRepo(current, terminal.repoId, 'terminal')
-        : current);
+    if (!terminal) {
+      return;
     }
+    const visibleTerminalTabs = getTerminalTabIds(
+      !closedDefaultTerminalRepoIds.has(terminal.repoId),
+      getIndependentTerminalsForRepo(independentTerminals, terminal.repoId),
+    );
+    if (visibleTerminalTabs.length <= 1) {
+      return;
+    }
+    setIndependentTerminals(current => current.filter(tab => tab.id !== id));
+    setMainTabsByRepo(current => resolveTerminalSelectionAfterClose(current, terminal.repoId, id, visibleTerminalTabs));
   };
 
   return {
@@ -639,9 +666,13 @@ export function useTerminalWorkspaceTabs(repoDetails: Record<string, RepoDetail>
     mainTab,
     terminalEnabled,
     independentTerminals,
-    repoIndependentTerminals: getIndependentTerminalsForRepo(independentTerminals, activeRepoId),
+    repoIndependentTerminals,
+    defaultTerminalVisible,
+    terminalTabsClosable: terminalTabIds.length > 1,
+    closedDefaultTerminalRepoIds,
     selectMainTab,
     openIndependentTerminal,
+    closeDefaultTerminal,
     closeIndependentTerminal,
   };
 }
@@ -651,6 +682,47 @@ export function getIndependentTerminalsForRepo(
   repoId: string,
 ): IndependentTerminalTab[] {
   return terminals.filter(terminal => terminal.repoId === repoId);
+}
+
+/**
+ * Flow: 终端 tab 栏按“固定终端在前、独立终端按创建顺序在后”排列，关闭入口只取决于可见终端数量。
+ */
+export function getTerminalTabIds(
+  defaultTerminalVisible: boolean,
+  terminals: readonly IndependentTerminalTab[],
+): WorkspaceMainTab[] {
+  const independentIds: WorkspaceMainTab[] = terminals.map(terminal => terminal.id);
+  return defaultTerminalVisible ? ['terminal', ...independentIds] : independentIds;
+}
+
+/**
+ * Rule: 关闭活动终端后激活左侧最近的终端，最左侧时改取右侧；与 VS Code 关闭页签一致。
+ */
+export function resolveNeighborTerminalTab(
+  terminalTabIds: readonly WorkspaceMainTab[],
+  closedTabId: WorkspaceMainTab,
+): WorkspaceMainTab | null {
+  const index = terminalTabIds.indexOf(closedTabId);
+  if (index < 0) {
+    return null;
+  }
+  return terminalTabIds[index - 1] ?? terminalTabIds[index + 1] ?? null;
+}
+
+/**
+ * Rule: 只有被关闭的 tab 正在显示时才切换选择，未显示的 tab 关闭不改变当前页签。
+ */
+export function resolveTerminalSelectionAfterClose(
+  mainTabsByRepo: WorkspaceMainTabsByRepo,
+  repoId: string,
+  closedTabId: WorkspaceMainTab,
+  terminalTabIds: readonly WorkspaceMainTab[],
+): WorkspaceMainTabsByRepo {
+  if (mainTabsByRepo[repoId] !== closedTabId) {
+    return mainTabsByRepo;
+  }
+  const neighbor = resolveNeighborTerminalTab(terminalTabIds, closedTabId);
+  return neighbor ? selectMainTabForRepo(mainTabsByRepo, repoId, neighbor) : mainTabsByRepo;
 }
 
 export function resolveMainTabForRepo(

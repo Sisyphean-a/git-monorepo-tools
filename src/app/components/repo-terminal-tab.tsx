@@ -9,6 +9,7 @@ interface RepoTerminalTabProps {
   activeRepoId: string;
   visible: boolean;
   rightClickCopyPaste: boolean;
+  closedDefaultTerminalRepoIds: ReadonlySet<string>;
   onError: (error: unknown, fallback: string) => void;
 }
 
@@ -25,7 +26,7 @@ export function IndependentTerminalTab({ repo, visible, rightClickCopyPaste, onE
   }} />;
 }
 
-export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClickCopyPaste, onError }: RepoTerminalTabProps) {
+export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClickCopyPaste, closedDefaultTerminalRepoIds, onError }: RepoTerminalTabProps) {
   const [openedRepoIds, setOpenedRepoIds] = useState<string[]>([]);
   const [contentfulRepoIds, setContentfulRepoIds] = useState<ReadonlySet<string>>(() => new Set());
   const [autoClosingRepoIds, setAutoClosingRepoIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -55,7 +56,7 @@ export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClick
   };
 
   const handleTerminalClosed = (repoId: string, closeError?: unknown) => {
-    if (closeError !== undefined) onError(closeError, `自动关闭空终端失败：${repoDetails[repoId]?.name ?? repoId}`);
+    if (closeError !== undefined) onError(closeError, `关闭终端失败：${repoDetails[repoId]?.name ?? repoId}`);
     setOpenedRepoIds(current => current.filter(id => id !== repoId));
     setContentfulRepoIds(current => {
       if (!current.has(repoId)) {
@@ -103,7 +104,7 @@ export function RepoTerminalTab({ repoDetails, activeRepoId, visible, rightClick
           repo={repo}
           active={visible && repo.id === activeRepoId}
           rightClickCopyPaste={rightClickCopyPaste}
-          closeRequested={autoClosingRepoIds.has(repo.id)}
+          closeRequested={autoClosingRepoIds.has(repo.id) || closedDefaultTerminalRepoIds.has(repo.id)}
           onContentChange={hasContent => handleContentChange(repo.id, hasContent)}
           onClosed={error => handleTerminalClosed(repo.id, error)}
         />

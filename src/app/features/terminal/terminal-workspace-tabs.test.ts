@@ -2,9 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   getIndependentTerminalsForRepo,
+  getTerminalTabIds,
   resolveMainTabForRepo,
+  resolveNeighborTerminalTab,
+  resolveTerminalSelectionAfterClose,
   selectMainTabForRepo,
   type IndependentTerminalTab,
+  type WorkspaceMainTab,
   type WorkspaceMainTabsByRepo,
 } from './terminal-workspace.js';
 
@@ -43,4 +47,26 @@ test('does not expose another repository independent terminal as the selected ta
 
 test('falls back to changes after an independent terminal is removed', () => {
   assert.equal(resolveMainTabForRepo({ 'repo-a': 'terminal-1' }, 'repo-a', []), 'changes');
+});
+
+test('orders the default terminal before independent terminals and omits a closed default tab', () => {
+  assert.deepEqual(getTerminalTabIds(true, terminals), ['terminal', 'terminal-1', 'terminal-2']);
+  assert.deepEqual(getTerminalTabIds(false, terminals), ['terminal-1', 'terminal-2']);
+});
+
+test('closes toward the nearest left terminal and takes the right one at the leftmost tab', () => {
+  const tabIds: WorkspaceMainTab[] = ['terminal', 'terminal-1', 'terminal-2'];
+
+  assert.equal(resolveNeighborTerminalTab(tabIds, 'terminal-2'), 'terminal-1');
+  assert.equal(resolveNeighborTerminalTab(tabIds, 'terminal-1'), 'terminal');
+  assert.equal(resolveNeighborTerminalTab(tabIds, 'terminal'), 'terminal-1');
+  assert.equal(resolveNeighborTerminalTab(tabIds, 'terminal-9'), null);
+});
+
+test('activates the neighbor only when the closed terminal is the selected tab', () => {
+  const tabIds: WorkspaceMainTab[] = ['terminal', 'terminal-1', 'terminal-2'];
+
+  assert.equal(resolveTerminalSelectionAfterClose({ 'repo-a': 'terminal-2' }, 'repo-a', 'terminal-2', tabIds)['repo-a'], 'terminal-1');
+  assert.deepEqual(resolveTerminalSelectionAfterClose({ 'repo-a': 'changes' }, 'repo-a', 'terminal-1', tabIds), { 'repo-a': 'changes' });
+  assert.equal(resolveTerminalSelectionAfterClose({ 'repo-a': 'terminal-1' }, 'repo-a', 'terminal-1', ['terminal-1'])['repo-a'], 'terminal-1');
 });
