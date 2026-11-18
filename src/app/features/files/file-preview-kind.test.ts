@@ -24,6 +24,28 @@ test('known extensions map to registered highlight.js languages', () => {
   assert.equal(languageForPath('web/index.html'), 'xml');
 });
 
+test('Vue 单文件组件按代码预览，扩展名不区分大小写', () => {
+  assert.equal(languageForPath('src/App.vue'), 'xml');
+  assert.equal(detectPreviewKind('src/components/Panel.VUE'), 'code');
+});
+
+test('Vue 高亮覆盖模板标签、内嵌脚本和样式，并转义原始标签', () => {
+  const content = `<template><button v-if="visible">{{ label }}</button></template>
+<script setup>const label = 'Hello';</script>
+<style scoped>button { color: red; }</style>`;
+  const language = languageForPath('src/App.vue');
+  assert.ok(language);
+  const html = hljs.highlight(content, { language, ignoreIllegals: true }).value;
+  assert.match(html, /hljs-name[^>]*>button</);
+  assert.match(html, /hljs-attr[^>]*>v-if</);
+  assert.match(html, /language-javascript/);
+  assert.match(html, /hljs-keyword[^>]*>const</);
+  assert.match(html, /language-css/);
+  assert.match(html, /hljs-attribute[^>]*>color</);
+  assert.ok(!html.includes('<template>'));
+  assert.ok(!html.includes('<script'));
+});
+
 test('unknown, hidden and extensionless files stay plain text', () => {
   assert.equal(detectPreviewKind('notes.txt'), 'text');
   assert.equal(detectPreviewKind('assets/logo.png'), 'text');
@@ -36,7 +58,7 @@ test('render limit stays below the backend preview cap', () => {
   assert.ok(maxPreviewRenderBytes < 1024 * 1024);
 });
 
-// Guard: 映射表里的语言 id 必须真的被 highlight.js common 注册，否则高亮会静默退化成纯文本。
+// 约束：映射表里的语言 id 必须真的被 highlight.js common 注册，否则高亮会静默退化成纯文本。
 test('every mapped language id is registered by highlight.js common', () => {
   const registered = Object.entries(languageByExtension).filter(([, language]) => !hljs.getLanguage(language));
   assert.deepEqual(registered, []);

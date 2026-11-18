@@ -63,6 +63,8 @@ export const languageByExtension: Readonly<Record<string, string>> = {
   wat: 'wasm',
   html: 'xml',
   htm: 'xml',
+  // Vue 复用 HTML/XML 语法，高亮模板标签及内嵌 JavaScript、CSS。
+  vue: 'xml',
   xml: 'xml',
   svg: 'xml',
   xsl: 'xml',
