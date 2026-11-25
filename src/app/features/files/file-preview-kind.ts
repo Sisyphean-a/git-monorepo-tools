@@ -77,6 +77,11 @@ const markdownExtensions = new Set(['md', 'markdown', 'mdx']);
 const namedLanguages = new Map([
   ['makefile', 'makefile'],
   ['gnumakefile', 'makefile'],
+  ['.gitignore', 'gitignore'],
+  ['.dockerignore', 'gitignore'],
+  ['.npmignore', 'gitignore'],
+  ['dockerfile', 'dockerfile'],
+  ['containerfile', 'dockerfile'],
 ]);
 
 export function isMarkdownPath(filePath: string): boolean {
@@ -84,7 +89,11 @@ export function isMarkdownPath(filePath: string): boolean {
 }
 
 export function languageForPath(filePath: string): string | null {
-  const name = fileNameOf(filePath).toLowerCase();
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  const name = fileNameOf(normalized);
+  if (normalized.endsWith('/.git/info/exclude') || normalized === '.git/info/exclude') return 'gitignore';
+  if (/^(dockerfile|containerfile)\..+/.test(name) || /\.(dockerfile|containerfile)$/.test(name)) return 'dockerfile';
+  if (name === '.env' || name.startsWith('.env.')) return 'bash';
   const named = namedLanguages.get(name);
   if (named) return named;
   const extension = extensionOf(filePath);
@@ -106,7 +115,7 @@ function fileNameOf(filePath: string): string {
 function extensionOf(filePath: string): string {
   const name = fileNameOf(filePath);
   const index = name.lastIndexOf('.');
-  // 隐藏文件（.gitignore）与无扩展名文件都没有可映射的语言。
+  // 隐藏文件与无扩展名文件不按扩展名匹配。
   if (index <= 0) return '';
   return name.slice(index + 1).toLowerCase();
 }

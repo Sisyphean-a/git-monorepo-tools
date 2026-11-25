@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import hljs from 'highlight.js/lib/common';
+import hljs from './preview-highlighter.js';
 import {
   detectPreviewKind,
   isMarkdownPath,
@@ -46,11 +46,25 @@ test('Vue 高亮覆盖模板标签、内嵌脚本和样式，并转义原始标�
   assert.ok(!html.includes('<script'));
 });
 
+test('special filenames use their appropriate registered grammars', () => {
+  for (const path of ['.gitignore', 'src/.dockerignore', '.npmignore', '.git/info/exclude']) {
+    assert.equal(languageForPath(path), 'gitignore');
+    assert.equal(detectPreviewKind(path), 'code');
+  }
+  for (const path of ['Dockerfile', 'docker/Dockerfile.dev', 'build/test.Dockerfile', 'Containerfile']) {
+    assert.equal(languageForPath(path), 'dockerfile');
+    assert.equal(detectPreviewKind(path), 'code');
+  }
+  assert.equal(languageForPath('.env.local'), 'bash');
+  assert.match(hljs.highlight('# comment\n*.log\n!important.log', { language: 'gitignore' }).value, /hljs-comment/);
+  assert.match(hljs.highlight('FROM node:20\nRUN npm ci', { language: 'dockerfile' }).value, /hljs-keyword/);
+});
+
 test('unknown, hidden and extensionless files stay plain text', () => {
   assert.equal(detectPreviewKind('notes.txt'), 'text');
   assert.equal(detectPreviewKind('assets/logo.png'), 'text');
   assert.equal(languageForPath('LICENSE'), null);
-  assert.equal(languageForPath('.gitignore'), null);
+  assert.equal(languageForPath('.unknown'), null);
 });
 
 test('render limit stays below the backend preview cap', () => {

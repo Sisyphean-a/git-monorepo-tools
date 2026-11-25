@@ -1,4 +1,4 @@
-import hljs from 'highlight.js/lib/common';
+import hljs from './preview-highlighter.js';
 import DOMPurify from 'dompurify';
 import { languageForPath } from './file-preview-kind.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
