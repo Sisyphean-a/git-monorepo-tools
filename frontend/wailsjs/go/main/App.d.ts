@@ -16,6 +16,10 @@ export function GenerateCommitMessage(arg1:string,arg2:snapshot.Request,arg3:sna
 
 export function GetCommitDetail(arg1:string,arg2:snapshot.Request,arg3:string):Promise<snapshot.CommitDetail>;
 
+export function GetDockerOperation(arg1:string,arg2:boolean):Promise<snapshot.DockerOperation>;
+
+export function GetDockerProject(arg1:string,arg2:string):Promise<snapshot.DockerProject>;
+
 export function GetFileDiff(arg1:snapshot.FileDiffRequest):Promise<snapshot.FileDiff>;
 
 export function GetRepoHistory(arg1:string,arg2:snapshot.Request,arg3:number,arg4:number):Promise<snapshot.RepoHistoryPage>;
@@ -52,6 +56,8 @@ export function ReadClipboardImagePath():Promise<string>;
 
 export function ReadClipboardText():Promise<string>;
 
+export function ReadDockerLogs(arg1:string,arg2:string,arg3:string):Promise<snapshot.DockerOutput>;
+
 export function ReadRepoFile(arg1:string,arg2:snapshot.Request,arg3:string):Promise<snapshot.RepoFileContent>;
 
 export function ReadRepoFileIfChanged(arg1:string,arg2:snapshot.Request,arg3:string,arg4:string):Promise<snapshot.RepoFileContent>;
@@ -71,6 +77,8 @@ export function RunRepoCommand(arg1:snapshot.RepoCommandRequest):Promise<snapsho
 export function SetReadActivity(arg1:string,arg2:boolean):Promise<void>;
 
 export function StartBackgroundTask(arg1:snapshot.BackgroundTaskRequest):Promise<snapshot.BackgroundTaskState>;
+
+export function StartDockerOperation(arg1:string,arg2:string,arg3:string,arg4:string):Promise<snapshot.DockerOperation>;
 
 export function StopBackgroundTask(arg1:string,arg2:string):Promise<void>;
 

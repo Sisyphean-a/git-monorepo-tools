@@ -11,7 +11,7 @@
 - Windows 终端剪贴板经专用绑定读取：`App.ReadClipboardImagePath` 通过 STA 读取器返回临时 PNG 路径，`App.ReadClipboardText` 通过原生 Win32 文本格式返回字符串。前端只能通过运行时端口取得这些值，不能依赖 WebView 的 `navigator.clipboard`、浏览器 `paste` 事件或 Wails runtime `ClipboardGetText`，这些路径在桌面 WebView 中可能不派发或永久不返回。Wails 会把 Go 错误以字符串或对象形式拒绝，前端诊断必须保留非 `Error` 错误详情。
 - `App.OpenLocalPath` 是前端请求系统默认程序打开本地文件或目录的唯一桥接：桌面层必须拒绝空值、相对路径和不存在目标，并以参数化进程调用执行，不能经 shell 拼接目标文本。
 - `App.RevealInExplorer` 是前端在系统文件管理器中定位本地目标的唯一桥接：桌面层必须拒绝空值、相对路径和不存在目标，以参数化进程调用执行；目录直接打开，文件打开所在目录并选中该文件，不得把文件转交系统默认程序。文件页签右键菜单按被点击条目调用，仓库根目录仍由 `App.OpenFolder` 打开。
-- 外部链接统一经 `src/app/infrastructure/wails-runtime.ts` 的 `openExternalURL`（`BrowserOpenURL`）交给系统默认浏览器；终端链接与 Markdown 预览外链是仅有的两个使用者，渲染层不得直接把链接交给 WebView 导航。
+- 外部链接统一经 `src/app/infrastructure/wails-runtime.ts` 的 `openExternalURL`（`BrowserOpenURL`）交给系统默认浏览器；使用者包括终端链接、Markdown 预览外链和 Docker 容器已发布的本地端口，渲染层不得直接把链接交给 WebView 导航。
 - 长输出使用事件：仓库终端为 `repo-terminal-output`、`repo-terminal-exit`，自定义命令为 `repo-command-output`；负载必须携带会话或流标识，避免不同仓库/命令串流。新增终端标签通过 `CreateTerminalSession` 创建独立会话，关闭时通过 `CloseTerminalSession` 显式终止。
 - `RepoHistoryPage` 的提交摘要包含父提交哈希，供前端在不额外请求提交详情的前提下绘制历史拓扑。
 - `App.GetWorkingDiffFiles` 只重新读取当前仓库已跟踪的暂存/未暂存文件状态和行数，不扫描未跟踪文件，也不计算文件系统大小；统一差异查看器用它快速建立清单，再通过 `App.GetFileDiff` 按当前文件读取正文。
@@ -21,6 +21,7 @@
 - `App.SetReadActivity(repoID, fileBrowserActive)` 是读取资源生命周期的唯一桥接：空仓库标识表示窗口失焦或不可见，文件浏览标记只在当前文件页可读时为真；前端按调用顺序交付活动变化，后端不让失焦后的迟到目录请求保留持久会话。此绑定不终止命令或终端，缓存与回收策略由 `requirements/CONTEXT.md` 的读取资源规则定义。
 - `App.StopRepoCommand` 是终止自定义命令的唯一桥接：按 `streamId` 定位运行中的命令并杀掉整棵进程树，未知或已结束的 `streamId` 必须返回错误，不得静默成功；前端只在命令运行中把它显示为“终止”，失败时必须恢复可重试状态。
 - 后台任务经 `App.ListBackgroundTasks`、`StartBackgroundTask`、`StopBackgroundTask`、`ReadBackgroundTaskLog` 与 `ForgetBackgroundTask` 访问独立管理器；领域 DTO 与 `BackgroundTaskBackend` 对应，组件仍只调用应用层端口。`background-task-state` 只携带任务身份与状态，禁止携带日志；日志按项目 ID、配置 ID、runId 和字节游标显式读取，关闭弹窗不需要后端日志订阅或续租。会话、revision、游标与回收协议统一见 [后台任务运行时](background-tasks.md)。
+- Docker 使用 `GetDockerProject`、`StartDockerOperation`、`GetDockerOperation`、`ReadDockerLogs`，经 `DockerBackend` 访问。Go 校验工作树标识与绝对路径，将参数化 CLI 固定到检测过的本地套接字，Compose 变更串行并核对同名容器的工作目录；仅有未证实归属的数据卷或网络时拒绝启动，不接管或删除。更新按构建、启动、检查分阶段：只拉取缺失且允许拉取的非构建镜像，启动不拉取同名远端标签，事后核对容器镜像并在有健康检查时等待通过。支持 Docker API 1.49 的引擎和 CLI 以容器实际平台将已捕获的镜像 ID 解析为平台清单后核对，不能用 OCI 索引 ID 与容器的镜像配置 ID 直接判不匹配；状态展示与更新校验共用此规则。仅保留最近一轮操作及有界输出，不落盘；Docker 页可见且聚焦时才读取运行中操作进度。App 退出取消本应用发出的 CLI 进程，不撤销已发生的 Docker 变更。
 - `frontend/wailsjs/` 由 Wails 生成，只能通过生成流程更新。
 
 ## 变更规则

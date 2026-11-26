@@ -171,6 +171,7 @@ export interface RepoDetail extends Repo {
   history: CommitSummary[];
   historyTotal: number;
   historyHasMore: boolean;
+  dockerFiles?: import('./docker-project.js').DockerFiles;
   historyRevision?: string;
 }
 

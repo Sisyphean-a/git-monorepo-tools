@@ -302,6 +302,10 @@ func (executor gitExecutor) buildRepoSnapshotWithRemoteMode(entry repoEntry, sca
 		History:       []CommitSummary{},
 	}
 
+	if files := findDockerFiles(repoPath); files != (DockerFiles{}) {
+		detail.DockerFiles = &files
+	}
+
 	return repoSnapshot{
 		repo:       repo,
 		detail:     detail,

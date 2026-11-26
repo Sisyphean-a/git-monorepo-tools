@@ -137,6 +137,7 @@ type RepoDetail struct {
 	History        []CommitSummary `json:"history"`
 	HistoryTotal   int             `json:"historyTotal"`
 	HistoryHasMore bool            `json:"historyHasMore"`
+	DockerFiles    *DockerFiles    `json:"dockerFiles,omitempty"`
 }
 
 type FileChange struct {

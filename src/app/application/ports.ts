@@ -152,7 +152,14 @@ export interface BackgroundTaskBackend {
   forgetBackgroundTask(repoId: string, taskId: string): Promise<void>;
 }
 
-export type AppBackend = WorkspaceBackend & RepoInteractionBackend & RuntimeBackend & ResourceMonitorBackend & BackgroundTaskBackend;
+export interface DockerBackend {
+  getDockerProject(repoId: string, repoPath: string): Promise<import('../domain/docker-project.js').DockerProject>;
+  startDockerOperation(repoId: string, repoPath: string, action: import('../domain/docker-project.js').DockerAction, service: string): Promise<import('../domain/docker-project.js').DockerOperation>;
+  getDockerOperation(repoId: string, includeOutput: boolean): Promise<import('../domain/docker-project.js').DockerOperation | null>;
+  readDockerLogs(repoId: string, repoPath: string, service: string): Promise<import('../domain/docker-project.js').DockerOutput>;
+}
+
+export type AppBackend = WorkspaceBackend & RepoInteractionBackend & RuntimeBackend & ResourceMonitorBackend & BackgroundTaskBackend & DockerBackend;
 
 export interface SettingsStore {
   loadSettings(): AppSettings;

@@ -26,6 +26,14 @@ export function GetCommitDetail(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetCommitDetail'](arg1, arg2, arg3);
 }
 
+export function GetDockerOperation(arg1, arg2) {
+  return window['go']['main']['App']['GetDockerOperation'](arg1, arg2);
+}
+
+export function GetDockerProject(arg1, arg2) {
+  return window['go']['main']['App']['GetDockerProject'](arg1, arg2);
+}
+
 export function GetFileDiff(arg1) {
   return window['go']['main']['App']['GetFileDiff'](arg1);
 }
@@ -98,6 +106,10 @@ export function ReadClipboardText() {
   return window['go']['main']['App']['ReadClipboardText']();
 }
 
+export function ReadDockerLogs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReadDockerLogs'](arg1, arg2, arg3);
+}
+
 export function ReadRepoFile(arg1, arg2, arg3) {
   return window['go']['main']['App']['ReadRepoFile'](arg1, arg2, arg3);
 }
@@ -136,6 +148,10 @@ export function SetReadActivity(arg1, arg2) {
 
 export function StartBackgroundTask(arg1) {
   return window['go']['main']['App']['StartBackgroundTask'](arg1);
+}
+
+export function StartDockerOperation(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['StartDockerOperation'](arg1, arg2, arg3, arg4);
 }
 
 export function StopBackgroundTask(arg1, arg2) {

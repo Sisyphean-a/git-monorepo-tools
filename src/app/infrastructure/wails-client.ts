@@ -3,6 +3,7 @@ import type {
   BatchResponse,
   BackgroundTaskBackend,
   CommitDetailRequest,
+  DockerBackend,
   FileDiffRequest,
   LocalRepoAction,
   RepoCommandRequest,
@@ -66,6 +67,10 @@ type WailsFileDiffRequest = {
 };
 
 type WailsBindings = {
+  GetDockerProject?: DockerBackend['getDockerProject'];
+  StartDockerOperation?: DockerBackend['startDockerOperation'];
+  GetDockerOperation?: DockerBackend['getDockerOperation'];
+  ReadDockerLogs?: DockerBackend['readDockerLogs'];
   ListBackgroundTasks?: BackgroundTaskBackend['listBackgroundTasks'];
   StartBackgroundTask?: BackgroundTaskBackend['startBackgroundTask'];
   StopBackgroundTask?: BackgroundTaskBackend['stopBackgroundTask'];
@@ -408,7 +413,17 @@ export async function forgetBackgroundTask(repoId: string, taskId: string) {
   return binding(repoId, taskId);
 }
 
-export const wailsClient: WorkspaceBackend & RepoInteractionBackend & ResourceMonitorBackend & BackgroundTaskBackend = {
+function dockerBinding<K extends 'GetDockerProject' | 'StartDockerOperation' | 'GetDockerOperation' | 'ReadDockerLogs'>(key: K): NonNullable<WailsBindings[K]> {
+  const binding = getWailsBindings()[key];
+  if (!binding) throw new Error('Wails Docker 绑定不可用');
+  return binding;
+}
+
+export const wailsClient: WorkspaceBackend & RepoInteractionBackend & ResourceMonitorBackend & BackgroundTaskBackend & DockerBackend = {
+  getDockerProject: async (...args) => dockerBinding('GetDockerProject')(...args),
+  startDockerOperation: async (...args) => dockerBinding('StartDockerOperation')(...args),
+  getDockerOperation: async (...args) => dockerBinding('GetDockerOperation')(...args),
+  readDockerLogs: async (...args) => dockerBinding('ReadDockerLogs')(...args),
   listBackgroundTasks,
   startBackgroundTask,
   stopBackgroundTask,

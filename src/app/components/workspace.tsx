@@ -25,6 +25,7 @@ import type {
 } from '../domain/types';
 
 type MainTab = WorkspaceMainTab;
+const RepoDockerTab = lazy(async () => ({ default: (await import('./repo-docker-tab')).RepoDockerTab }));
 const RepoFilesTab = lazy(async () => ({ default: (await import('./repo-files-tab')).RepoFilesTab }));
 const RepoTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).RepoTerminalTab }));
 const IndependentTerminalTab = lazy(async () => ({ default: (await import('./repo-terminal-tab')).IndependentTerminalTab }));
@@ -175,7 +176,7 @@ export function Workspace({
     [repo, repoDetails],
   );
   const {
-    mainTab,
+    mainTab: selectedMainTab,
     terminalEnabled,
     independentTerminals,
     repoIndependentTerminals,
@@ -187,6 +188,7 @@ export function Workspace({
     closeDefaultTerminal,
     closeIndependentTerminal,
   } = terminalTabs;
+  const mainTab = selectedMainTab === 'docker' && !repo?.dockerFiles ? 'changes' : selectedMainTab;
   const [filesEnabled, setFilesEnabled] = useState(false);
   // Effect: 每仓库只保留轻量阅读位置，切换后释放正文和目录缓存。
   const filePositions = useRef(new Map<string, RepoFilePosition>());
@@ -268,6 +270,7 @@ export function Workspace({
     { key: 'history', label: '历史' },
     { key: 'files', label: '文件' },
   ];
+  if (repo.dockerFiles) mainTabs.push({ key: 'docker', label: 'Docker' });
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: C.appBg }}>
@@ -290,6 +293,7 @@ export function Workspace({
         {mainTabs.map(tab => (
           <button
             key={tab.key}
+            aria-current={mainTab === tab.key ? 'page' : undefined}
             disabled={isChecking}
             onClick={() => {
               if (!isChecking) selectMainTab(tab.key);
@@ -407,6 +411,11 @@ export function Workspace({
                 </Suspense>
               )}
             </div>
+            {mainTab === 'docker' && repo.dockerFiles && (
+              <Suspense fallback={<p role="status" style={{ margin: 16, color: C.textSecondary, fontSize: 12 }}>正在加载 Docker…</p>}>
+                <RepoDockerTab key={repo.id} repoId={repo.id} repoPath={repo.path} windowActive={windowActive} />
+              </Suspense>
+            )}
           </>
         )}
         {terminalEnabled && (

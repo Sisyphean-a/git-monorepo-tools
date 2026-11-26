@@ -4,7 +4,7 @@ import type { RepoDetail, TerminalSessionInfo } from '../../domain/types.js';
 import { retainExistingRepoIdSet } from './terminal-repo-state.js';
 
 export type RepoTerminalState = 'idle' | 'starting' | 'running' | 'active' | 'exited' | 'failed';
-export type WorkspaceMainTab = 'changes' | 'history' | 'files' | 'terminal' | IndependentTerminalTabId;
+export type WorkspaceMainTab = 'changes' | 'history' | 'files' | 'docker' | 'terminal' | IndependentTerminalTabId;
 export type IndependentTerminalTabId = `terminal-${number}`;
 export type WorkspaceMainTabsByRepo = Readonly<Record<string, WorkspaceMainTab>>;
 

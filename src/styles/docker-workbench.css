@@ -1,0 +1,134 @@
+.docker-workbench {
+  --docker-bg: #0b1220;
+  --docker-panel: #101824;
+  --docker-raised: #141f2d;
+  --docker-line: #253244;
+  --docker-text: #ddebff;
+  --docker-secondary: #8fa6bf;
+  --docker-primary: #3b82f6;
+  --docker-success: #10b981;
+  --docker-warning: #f59e0b;
+  --docker-danger: #f87171;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+  background: var(--docker-bg);
+  color: var(--docker-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.docker-heading,
+.docker-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  background: var(--docker-panel);
+}
+.docker-heading { justify-content: space-between; border-bottom: 1px solid var(--docker-line); }
+.docker-heading-text { min-width: 0; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.docker-heading h1 { margin: 0; font-size: 15px; font-weight: 600; }
+.docker-workbench h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.docker-content { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 0 16px; }
+.docker-service { padding: 12px 0 8px; }
+.docker-service + .docker-service { border-top: 1px solid var(--docker-line); }
+.docker-service h2 { padding-bottom: 4px; }
+.docker-code, .docker-output pre { font: 11px/16px 'Cascadia Code', Consolas, monospace; }
+.docker-heading .docker-code { color: var(--docker-secondary); }
+.docker-ellipsis { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.docker-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) minmax(96px, auto) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border-top: 1px solid var(--docker-line);
+  color: var(--docker-secondary);
+}
+.docker-row > :nth-child(2), .docker-container > :first-child { color: var(--docker-text); }
+.docker-dockerfile { padding: 12px 0; }
+.docker-dockerfile .docker-row { border-top: 0; }
+.docker-dockerfile p { color: var(--docker-secondary); }
+.docker-container-row { grid-template-columns: 48px minmax(0, 1fr) auto; }
+.docker-container-list { min-width: 0; }
+.docker-container { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: 32px; }
+.docker-container + .docker-container { border-top: 1px solid var(--docker-line); }
+.docker-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.docker-notice { margin: 20px 0; max-width: 640px; }
+.docker-notice p, .docker-detail-text { color: var(--docker-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.docker-detail-text { margin: 4px 0; max-height: 96px; overflow: auto; }
+.docker-operation-note { flex-shrink: 0; padding: 6px 16px; border-top: 1px solid var(--docker-line); overflow-wrap: anywhere; }
+.docker-progress-steps { margin-left: 12px; color: var(--docker-secondary); }
+.docker-output { min-height: 0; max-height: 34%; overflow: auto; padding: 8px 16px; border-top: 1px solid var(--docker-line); background: var(--docker-panel); }
+.docker-output pre { margin: 0; padding: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.docker-output p { margin: 4px 0; }
+.docker-log-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.docker-log-heading h2 { margin-right: auto; }
+.docker-footer { min-height: 32px; border-top: 1px solid var(--docker-line); padding-block: 0; color: var(--docker-secondary); }
+.docker-footer-status { display: inline-flex; align-items: center; gap: 6px; }
+.docker-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.docker-output-toggle { margin-left: auto; }
+.docker-ok { color: var(--docker-success); }
+.docker-warning { color: var(--docker-warning); }
+.docker-error { color: var(--docker-danger); }
+
+.docker-workbench button, .docker-more summary {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--docker-text);
+  text-align: center;
+  cursor: pointer;
+}
+.docker-workbench button:hover:enabled, .docker-more summary:hover { background: var(--docker-raised); }
+.docker-workbench button:disabled { opacity: 0.55; cursor: not-allowed; }
+.docker-workbench :focus-visible { outline: 2px solid var(--docker-primary); outline-offset: 1px; }
+.docker-workbench .docker-primary,
+.docker-workbench .docker-primary:hover:enabled { min-height: 32px; background: var(--docker-primary); color: var(--docker-bg); font-weight: 600; }
+.docker-workbench .docker-primary:hover:enabled,
+.docker-workbench .docker-danger:hover:enabled { border-color: currentColor; }
+.docker-workbench .docker-link { color: var(--docker-text); text-decoration: underline; text-underline-offset: 2px; }
+.docker-more { position: relative; }
+.docker-more summary { list-style: none; }
+.docker-more[open] button { position: absolute; z-index: 1; top: 100%; right: 0; min-width: max-content; background: var(--docker-panel); border-color: var(--docker-line); }
+.docker-confirm {
+  width: min(440px, calc(100% - 32px));
+  padding: 24px;
+  border: 1px solid var(--docker-line);
+  border-radius: 12px;
+  background: var(--docker-panel);
+  color: var(--docker-text);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.docker-confirm::backdrop { background: rgba(5, 8, 14, 0.72); }
+.docker-confirm h2 { font-size: 15px; overflow-wrap: anywhere; }
+.docker-confirm p { color: var(--docker-secondary); }
+.docker-workbench .docker-danger,
+.docker-workbench .docker-danger:hover:enabled { min-height: 32px; background: var(--docker-danger); color: var(--docker-bg); }
+.docker-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--docker-line);
+  border-top-color: var(--docker-primary);
+  animation: docker-spin 0.8s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes docker-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .docker-spinner { animation: none; } }
+@container (max-width: 560px) {
+  .docker-row { grid-template-columns: 48px minmax(0, 1fr) auto; }
+  .docker-container-row { grid-template-columns: 48px minmax(0, 1fr); }
+  .docker-row > .docker-actions { grid-column: 2 / -1; justify-content: flex-start; }
+  .docker-more[open] button { right: auto; left: 0; }
+  .docker-progress-steps { display: block; margin-left: 0; }
+}

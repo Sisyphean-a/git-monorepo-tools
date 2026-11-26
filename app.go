@@ -66,6 +66,7 @@ type App struct {
 	terminals         terminalGateway
 	monitor           *monitor.Sampler
 	backgroundTasks   *snapshot.BackgroundTasks
+	docker            *snapshot.DockerProjects
 	maintenanceCancel context.CancelFunc
 	maintenanceDone   chan struct{}
 }
@@ -79,7 +80,7 @@ func NewApp() (*App, error) {
 }
 
 func newApp(workspace workspaceService, desktopClient desktopGateway) *App {
-	app := &App{workspace: workspace, desktop: desktopClient}
+	app := &App{workspace: workspace, desktop: desktopClient, docker: snapshot.NewDockerProjects()}
 	app.backgroundTasks = snapshot.NewBackgroundTasks(func(state snapshot.BackgroundTaskState) {
 		if app.ctx != nil {
 			wruntime.EventsEmit(app.ctx, "background-task-state", state)
@@ -134,6 +135,9 @@ func (a *App) shutdown(context.Context) {
 	if a.maintenanceCancel != nil {
 		a.maintenanceCancel()
 		<-a.maintenanceDone
+	}
+	if a.docker != nil {
+		a.docker.Close()
 	}
 	if a.backgroundTasks != nil {
 		if err := a.backgroundTasks.Close(); err != nil {
@@ -230,6 +234,22 @@ func (a *App) RunRepoCommand(request snapshot.RepoCommandRequest) (snapshot.Repo
 
 func (a *App) StopRepoCommand(streamID string) error {
 	return a.workspace.StopRepoCommand(streamID)
+}
+
+func (a *App) GetDockerProject(repoID, repoPath string) (snapshot.DockerProject, error) {
+	return a.docker.Inspect(repoID, repoPath)
+}
+
+func (a *App) StartDockerOperation(repoID, repoPath, action, service string) (snapshot.DockerOperation, error) {
+	return a.docker.Start(repoID, repoPath, action, service)
+}
+
+func (a *App) GetDockerOperation(repoID string, includeOutput bool) *snapshot.DockerOperation {
+	return a.docker.Operation(repoID, includeOutput)
+}
+
+func (a *App) ReadDockerLogs(repoID, repoPath, service string) (snapshot.DockerOutput, error) {
+	return a.docker.Logs(repoID, repoPath, service)
 }
 
 func (a *App) ListBackgroundTasks() []snapshot.BackgroundTaskState {

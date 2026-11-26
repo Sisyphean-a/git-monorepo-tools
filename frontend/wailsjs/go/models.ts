@@ -397,6 +397,20 @@ export namespace snapshot {
 		    return a;
 		}
 	}
+	export class DockerFiles {
+	    compose?: string;
+	    dockerfile?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerFiles(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.compose = source["compose"];
+	        this.dockerfile = source["dockerfile"];
+	    }
+	}
 	export class CommitSummary {
 	    hash: string;
 	    shortHash: string;
@@ -490,6 +504,7 @@ export namespace snapshot {
 	    history: CommitSummary[];
 	    historyTotal: number;
 	    historyHasMore: boolean;
+	    dockerFiles?: DockerFiles;
 	
 	    static createFrom(source: any = {}) {
 	        return new RepoDetail(source);
@@ -523,6 +538,7 @@ export namespace snapshot {
 	        this.history = this.convertValues(source["history"], CommitSummary);
 	        this.historyTotal = source["historyTotal"];
 	        this.historyHasMore = source["historyHasMore"];
+	        this.dockerFiles = this.convertValues(source["dockerFiles"], DockerFiles);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -873,6 +889,157 @@ export namespace snapshot {
 		    return a;
 		}
 	}
+	
+	export class DockerContainer {
+	    name: string;
+	    state: string;
+	    health?: string;
+	    otherImage?: boolean;
+	    localPorts?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerContainer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.state = source["state"];
+	        this.health = source["health"];
+	        this.otherImage = source["otherImage"];
+	        this.localPorts = source["localPorts"];
+	    }
+	}
+	
+	export class DockerOperation {
+	    id: number;
+	    action: string;
+	    service?: string;
+	    stage: string;
+	    status: string;
+	    error?: string;
+	    output?: string;
+	    truncated?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerOperation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.action = source["action"];
+	        this.service = source["service"];
+	        this.stage = source["stage"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.output = source["output"];
+	        this.truncated = source["truncated"];
+	    }
+	}
+	export class DockerOutput {
+	    text: string;
+	    truncated: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerOutput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.truncated = source["truncated"];
+	    }
+	}
+	export class DockerProjectImage {
+	    name: string;
+	    id?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerProjectImage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.id = source["id"];
+	    }
+	}
+	export class DockerService {
+	    name: string;
+	    buildable: boolean;
+	    image: DockerProjectImage;
+	    containers: DockerContainer[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerService(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.buildable = source["buildable"];
+	        this.image = this.convertValues(source["image"], DockerProjectImage);
+	        this.containers = this.convertValues(source["containers"], DockerContainer);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DockerProject {
+	    files: DockerFiles;
+	    engine: string;
+	    error?: string;
+	    services: DockerService[];
+	    image?: DockerProjectImage;
+	
+	    static createFrom(source: any = {}) {
+	        return new DockerProject(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.files = this.convertValues(source["files"], DockerFiles);
+	        this.engine = source["engine"];
+	        this.error = source["error"];
+	        this.services = this.convertValues(source["services"], DockerService);
+	        this.image = this.convertValues(source["image"], DockerProjectImage);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	
 	
 	export class FileDiff {

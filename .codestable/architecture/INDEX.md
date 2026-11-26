@@ -12,6 +12,7 @@
 | Git 工作区 | 扫描仓库、状态、变更、Git 操作、历史与差异 | `snapshot/service.go`、`snapshot/operations.go`、`snapshot/git_*.go` |
 | 终端 | 按仓库管理 ConPTY 会话并批量转发输出 | `internal/terminal/manager.go`、`internal/terminal/output_batcher.go` |
 | 后台任务 | 按项目托管非交互进程与有界日志，应用关闭回收 | `snapshot/background_tasks.go`、`src/app/features/background-tasks/` |
+| Docker | 识别当前仓库 Docker 配置、读取本地引擎并管理项目级构建与容器 | `snapshot/docker_project.go`、`snapshot/docker_operations.go`、`src/app/components/repo-docker-tab.tsx` |
 | 只读资源监控 | 应用生命周期内采样当前进程、Go 运行时与系统内存，面板打开时附带进程树明细 | `internal/monitor/`、`app.go` |
 | 桌面能力 | 选目录、打开目录/终端/冲突工具 | `internal/desktop/client.go` |
 | 前端领域与应用层 | 纯数据规则、页面流程和端口 | `src/app/domain/`、`src/app/application/` |
